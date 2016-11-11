@@ -1,7 +1,7 @@
-function f = computeEncodings(img,filters,method,numBins)
-% COMPUTEENCODINGS Compute encodings f across the image for all filters
+function f = encoding(img,filters,method,numBins)
+% ENCODING Compute encodings f across the image for all filters.
 % 
-%   f = computeEncodings(img,filters,method) computes the encodings of
+%   f = ENCODING(img,filters,method) computes the encodings of
 %   the filters contained in the cell array "filters", at all locations
 %   in the image. Filters are typically disk shaped with varying radii.
 %   "Method" controls the type of the encoding used, which is one of the 
@@ -25,39 +25,60 @@ function f = computeEncodings(img,filters,method,numBins)
 %   Stavros Tsogkas <tsogkas@cs.toronto.edu>
 %   Last update: November 2016
 
+if nargin < 3, method  = 'average'; end
 if nargin < 4, numBins = 32; end
-
-[H,W,numChannels] = size(img);
-numScales = numel(filters);
-f = zeros(H,W,numChannels,numScales);
 
 switch method
     case 'average'
-        for c=1:numChannels
-            for r=1:numScales
-                f(:,:,c,r) = conv2(img(:,:,c), ...
-                    double(filters{r})/nnz(filters{r}), 'same');
-            end
-        end
+        f = meanEncodings(img,filters);
     case 'hist-color'
-        img = computeLabBins(img,numBins);
-        h   = computeHistogram(img,numBins);
+        img = labBins(img,numBins);
+        f   = histogram(img,filters,numBins);
     case 'hist-text'
-        img = computeTextons(img,numBins);
-        h   = computeHistogram(img,numBins);
+        img = textons(img,numBins);
+        f   = histogram(img,filters,numBins);
     case 'hist'       
-        lab = computeLabBins(img,numBins);
-        text= computeTextons(img,numBins);
-        h   = computeHistogram();
+        lab   = labBins(img,numBins);
+        text  = textons(img,numBins);
+        flab  = histogram(lab, filters,numBins);
+        ftext = histogram(text,filters,numBins);
+        f     = cat(4,flab,ftext);
     otherwise, error('Method is not supported')
 end
 
-% -------------------------------------------------------------------------
-function c = computeHistoGram()
-% -------------------------------------------------------------------------
 
 % -------------------------------------------------------------------------
-function lab = computeLabBins(img,numBins)
+function f = meanEncodings(img,filters)
+% -------------------------------------------------------------------------
+[H,W,numChannels] = size(img);
+numScales = numel(filters);
+f = zeros(H,W,numChannels,numScales);
+for c=1:numChannels
+    for s=1:numScales
+        f(:,:,c,s) = conv2(img(:,:,c), ...
+            double(filters{s})/nnz(filters{s}), 'same');
+    end
+end
+
+% -------------------------------------------------------------------------
+function f = histogram(img,filters,numBins)
+% -------------------------------------------------------------------------
+[H,W,numChannels] = size(img);
+numScales = numel(filters);
+f = zeros(H,W,numChannels,numBins,numScales);
+for c=1:numChannels
+    imgc = img(:,:,c);
+    parfor b=1:numBins
+        imgcb = double(imgc == b);
+        for s=1:numScales
+            f(:,:,c,b,s) = conv2(imgcb, ...
+                double(filters{s})/nnz(filters{s}), 'same');
+        end
+    end
+end
+
+% -------------------------------------------------------------------------
+function lab = labBins(img,numBins)
 % -------------------------------------------------------------------------
 if isscalar(numBins), numBins = repmat(numBins, [3,1]); end
 if ismatrix(img) % grayscale image
@@ -69,11 +90,12 @@ else             % rgb image
     end
 end
 
+% -------------------------------------------------------------------------
 % The following code was taken from the Berkeley pb boundary detector package.
 % https://www2.eecs.berkeley.edu/Research/Projects/CS/vision/bsds/
 % We include everything in a single file for convenience.
 % -------------------------------------------------------------------------
-function text = computeTextons(img,numBins)
+function text = textons(img,numBins)
 % -------------------------------------------------------------------------
 no = 6; ss = 1; ns = 2; sc = sqrt(2); el = 2;
 fname = sprintf('unitex_%.2g_%.2g_%.2g_%.2g_%.2g_%d.mat',no,ss,ns,sc,el,numBins);
