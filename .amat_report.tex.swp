@@ -1,0 +1,106 @@
+\documentclass{article}
+
+%% Set helvetica (arial clone) as font and 
+%\usepackage{helvet}
+%\renewcommand{\familydefault}{\sfdefault}
+%\renewcommand\thesection{\arabic{section}}
+
+\usepackage[utf8]{inputenc}
+\usepackage{cite}
+\usepackage{amssymb}
+\usepackage{url}
+\usepackage{fullpage}
+\usepackage{graphicx}
+\usepackage{subfig}
+\usepackage{fancyhdr}
+\usepackage[pagebackref=true,breaklinks=true,colorlinks,bookmarks=false]{hyperref}
+\usepackage{algorithmic}
+
+% New command definitions -----------------------------------------------------------------------------------
+\newcommand{\refsec}[1]{Section~\ref{#1}}
+\newcommand{\reffig}[1]{Figure~\ref{#1}}
+\newcommand{\refeq}[1]{Equation~\ref{#1}}
+\newcommand{\sota}{state-of-the-art}
+\newcommand{\stavros}[1]{{\textcolor{blue}{[\emph{stavros}: #1]}}}
+\def\groundtruth{ground truth}
+
+% MATH DEFINITIONS ------------------------------------------------------------------------------------------
+\newcommand{\set}[1]{\set{#1}}
+\newcommand{\pd}[2]{\frac{\partial #1}{\partial #2}}
+\newcommand{\mat}[1]{\mathbf{#1}} 
+\renewcommand{\vec}[1]{\mathbf{#1}}
+\newcommand{\inprod}[1]{{\left< \, #1 \, \right>}}
+\def\abs{\operatorname{abs}}
+\def\argmax{\operatornamewithlimits{arg\,max}}
+\def\argmin{\operatornamewithlimits{arg\,min}}
+
+
+% Author and title ------------------------------------------------------------------------------------------
+\author{Stavros Tsogkas, University of Toronto}
+\title{Appearance-MAT: Extending the Medial Axis Transform to Color Images}
+
+
+\begin{document}
+\maketitle
+
+\section{Medial axis transform for binary shapes}\label{sec:mat}
+Blum defined the Medial Axis of a shape, as the set of points that lie in the interior of the shape and that are equidistant from its boundary. 
+An alternative way of defining the medial axis is to imagine all possible circles that are entirely contained in the interior of the shape, and touch the shape boundary at \emph{exactly two points}.
+If we connect the centres of all these circles, we obtain the medial axis of the shape, which is alternatively called the \emph{skeleton} of the shape. 
+
+In addition to the position, the medial axis definition also involves a \emph{scale} parameter at each point.
+Scale represents the distance of the skeleton from the boundary or, equivalently, the radius of the circle that is centred around the point and touches the boundary.
+The procedure of converting the boundary of a shape to its medial axis is called the \emph{medial axis transform}, or simply \emph{MAT}.
+The inverse transformation is also possible: given the MAT of shape, we can \emph{precisely} reconstruct the boundaries of the input, thus reconstructing the shape itself.
+
+\section{Extracting medial axes from natural images}\label{sec:colormedial}
+Extending the above definition in the context of natural images would suggest the following two-step procedure:
+first, extract the boundary of a shape; second, apply the MAT to this boundary.
+However, despite significant progress in computer vision, reliably extracting object boundaries remains challenging
+when dealing with natural images.
+Even when a crude boundary can be extracted, tiny inaccuracies can drastically change the corresponding medial axis, making this approach non-robust and practically inapplicable.
+What we would really like to do is have a way to directly infer the medial axis from raw image data, without relying on an intermediate boundary extraction step.
+
+Tsogkas and Kokkinos took first steps in developing such an algorithm for directly extracting skeletons, using a data-driven learning approach~\cite{tsogkas2012learning}.
+Learning approaches have proven very fruitful in the extraction of other low- and mid-level features, such as boundaries~\cite{konishi2003statistical,martin2004learning}, corners~\cite{rosten2006machine} and junctions~\cite{apostoloff2005learning,maire2008using}.
+Their approach reduces medial point extraction to a supervised classification problem: 
+features tailored to capture local symmetry at multiple scales and orientations, are extracted in regions centred around each point in the image. 
+Then they use the multiple instance learning (MIL) framework~\cite{keeler1990integrated,dietterich1997solving}
+to train a classifier that computes the probability of each pixel belonging to an object's medial axis, at \emph{any} combination of scale and orientation.  
+Shen et al use the more powerful machine learning machinery of convolutional neural networks (CNN), for the same task, significantly improving medial point detection performance~\cite{shen2016object}.
+
+Both methods take a colour image as input and produce a dense probability map of ``medialness'' without requiring a
+boundary extraction step.
+However, their output does not constitute a complete MAT, as it is characterized by some important limitations.
+First, they only provide locations of medial axis points, without any scale information;
+remember that scale is an essential component of the binary MAT, since it allows us to reconstruct the original shape.
+Local scale estimation can be achieved in~\cite{tsogkas2012learning,shen2016object} by computing symmetry responses
+for a finite set of scales and then simply select the scale that gives the highest response.
+Unfortunately this is not ideal, as a particular point can exhibit symmetry at more than one scales. 
+For example, the center of a rectangle lies in three axes of reflective symmetry, at $0^\circ, 90^\circ,$ and $180^\circ$. 
+Handling such ambiguities is challenging. Should we associate every point with a single scale? 
+And if yes, using what criteria?
+
+A second, fundamental limitation of these methods is that, given their data-driven nature, they rely on 
+\groundtruth\ data for the supervised training of the algorithms.
+
+
+
+
+\section{Defining A-MAT}\label{sec:amat}
+In order to extend the notion of the MAT to natural colour images, while avoiding the pitfalls
+analyzed in~\refsec{sec:colormedial}, we ground our approach on the two key components of the original MAT:
+a) associating each medial point with a particular scale; b) being able to reconstruct the input, given its MAT.
+Consider a RGB image $\set{I}$ and let $D_r(\vec{p})$ be the circular disc of radius $r$, 
+centred at pixel $\vec{p} \in \set{I}\subset\mathbb{R}^2$:
+We will define two functions: the first one is a function $f(D_r(\vec{p})) = f_{D_r}(\vec{p}) : \set{D}_r \mapsto
+\set{Y}$, where $\set{D}_r$ is the domain of all disks with radius $r \in \set{R}$, and $\set{Y}$
+is an arbitrary co-domain, depending on $f$. For example, $f$ may compute the average of the image pixels within the circular disk, returning a scalar 
+value, or a histogram of RGB values, in which case it returns a vector of (normalized) frequences.
+The second  function is $f^{-1}(\vec{p},r)$
+
+The first step of our algorithm is to compute $f_{D_r}(\vec{p})\,,\ \forall (\vec{p},r) \in \set{I}\times\set{R}$. Then, we want to select
+
+
+
+\end{document}
