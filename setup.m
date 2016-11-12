@@ -13,7 +13,7 @@ filters = cell(numScales,1);
 for r=1:numScales, filters{r} = disk(r); end
 
 %% Compute encodings f(D_I(x,y,r)) at every point.
-f = encoding(img,filters);
+f = encodeImage(img,filters);
 
 %% Compute decodings g and reconstruction errors at all points and scales
 [x,y] = meshgrid(1:W,1:H); % H x W

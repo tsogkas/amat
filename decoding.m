@@ -1,5 +1,5 @@
-function g = decoding(f,method)
-% DECODING Compute decodings g across the image for all filters. 
+function g = decodeImage(f,method)
+% DECODEIMAGE Compute decodings g at every pixel in the image. 
 % 
 %   Stavros Tsogkas <tsogkas@cs.toronto.edu>
 %   Last update: November 2016

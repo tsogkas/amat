@@ -1,10 +1,10 @@
-function f = encoding(img,filters,method,numBins)
-% ENCODING Compute encodings f across the image for all filters. Given an
-%   input image, the encoding f(x,y,s) is a "summary" of the appearance
-%   content of the image at a region filters{s}, centered at pixel (x,y),
-%   at scale s.
+function f = encodeImage(img,filters,method,numBins)
+% ENCODEIMAGE Compute encodings f across the image for all given filters. 
+%   Given an input image, the encoding f(x,y,s) is a "summary" of the 
+%   appearance content of the image at a region filters{s}, centered at 
+%   pixel (x,y), at scale s.
 % 
-%   f = ENCODING(img,filters,method) computes the encodings of
+%   f = ENCODEIMAGE(img,filters,method) computes the encodings of
 %   the filters contained in the cell array "filters", at all locations
 %   in the image. Filters are typically disk shaped with varying radii.
 %   "Method" controls the type of the encoding used, which is one of the 
@@ -19,7 +19,7 @@ function f = encoding(img,filters,method,numBins)
 %   can also be a Cx1 vector, where C is the number of image channels, to
 %   allow for a different number of bins per channel.
 % 
-%   See also: conv2, rgb2lab
+%   See also: conv2, rgb2lab, decodeImage
 % 
 %   Stavros Tsogkas <tsogkas@cs.toronto.edu>
 %   Last update: November 2016
