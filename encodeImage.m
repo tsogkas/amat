@@ -32,6 +32,7 @@ switch method
         f = meanEncoding(img,filters);
     case 'hist'
         f = histogramEncoding(img,filters,numBins);
+        f = compressHistograms(f);
     otherwise, error('Method is not supported')
 end
 
@@ -65,4 +66,9 @@ for c=1:numChannels
         end
     end
 end
+
+% -------------------------------------------------------------------------
+function f = compressHistograms(f)
+% -------------------------------------------------------------------------
+
 
