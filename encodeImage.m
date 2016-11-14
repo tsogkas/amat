@@ -2,7 +2,7 @@ function f = encodeImage(img,filters,method,numBins)
 % ENCODEIMAGE Compute encodings f across the image for all given filters. 
 %   Given an input image, the encoding f(x,y,s) is a "summary" of the 
 %   appearance content of the image at a region filters{s}, centered at 
-%   pixel (x,y), at scale s.
+%   pixel (x,y), at scale r.
 % 
 %   f = ENCODEIMAGE(img,filters,method) computes the encodings of
 %   the filters contained in the cell array "filters", at all locations
@@ -29,10 +29,10 @@ if nargin < 4, numBins = 32; end
 
 switch method
     case 'average'
-        f = meanEncoding(img,filters);
+        f = meanEncoding(img,filters); % HxWxCxR
     case 'hist'
-        f = histogramEncoding(img,filters,numBins);
-        f = compressHistograms(f);
+        f = histogramEncoding(img,filters,numBins); % HxWxCxBxR
+        f = compressHistogram(f);
     otherwise, error('Method is not supported')
 end
 
@@ -58,7 +58,7 @@ numScales = numel(filters);
 f = zeros(H,W,numChannels,numBins,numScales);
 for c=1:numChannels
     imgc = img(:,:,c);
-    parfor b=1:numBins
+    for b=1:numBins
         imgcb = double(imgc == b);
         for s=1:numScales
             f(:,:,c,b,s) = conv2(imgcb, ...
@@ -68,7 +68,17 @@ for c=1:numChannels
 end
 
 % -------------------------------------------------------------------------
-function f = compressHistograms(f)
+function f = compressHistogram(f)
 % -------------------------------------------------------------------------
+% Summarize a Nx1 histogram distribution using the single bin with the most
+% counts.
+[H,W,C,B,R] = size(f);
+[~,maxBin] = max(f,[],2);
+[rows,cols,chann,rads] = ndgrid(1:H,1:W,1:C,1:R);
+inds = sub2ind([H,W,C,B,R], rows(:),cols(:),chann(:),maxBin(:),rads(:));
+f = reshape(f(inds),[H,W,C,R]);
+
+
+
 
 
