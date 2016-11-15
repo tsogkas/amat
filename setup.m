@@ -2,12 +2,12 @@
 numScales = 25;
 numBins   = 128;
 img0 = im2double(imresize(imread('google.jpg'), [128 128], 'nearest')); 
-% img0 = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/41004.jpg'), [128 128], 'nearest')); 
+img0 = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/41004.jpg'), [128 128], 'nearest')); 
 [H,W,numChannels] = size(img0);
-imgLab = rgb2lab(img0);
-img = clusterImageValues(imgLab, 5); % simplify input
+% imgLab = rgb2lab(img0);
+% img = clusterImageValues(imgLab, 5); % simplify input
 % img = imgLab;
-% img = img0;
+img = img0;
 
 %% Construct filters, calculate perimeneters and disk areas
 filters = cell(numScales,1);

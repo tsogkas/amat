@@ -23,7 +23,8 @@ if nargin < 3, numBins = 32; end
 
 % Force the input into a standard shape.
 if isvector(patch) % grayscale image
-    patch = patch(:); 
+    patch = patch(:);
+elseif ismatrix(patch) % do nothing
 elseif ndims(patch) == 3
     patch = reshape(patch,[],size(patch,3));
 else error('Input should be a vector, a matrix, or a 3D array.')
