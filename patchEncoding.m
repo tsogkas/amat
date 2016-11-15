@@ -1,7 +1,7 @@
-function f = encodePatch(patch, method, numBins)
-% ENCODEPATCH returns an encoding of the pixels contained in a patch.
+function f = patchEncoding(patch, method, numBins)
+% PATCHENCODING returns an encoding of the pixels contained in a patch.
 % 
-%   p = ENCODEPATCH(patch,method) returns the encoding of the patch
+%   p = PATCHENCODING(patch,method) returns the encoding of the patch
 %   according to one of the following methods (default enclosed in 
 %   brackets):
 % 
@@ -32,11 +32,13 @@ end
 % Compute encoding
 switch method
     case 'average'
-        f   = mean(patch); % scalar or 1x3 vector 
+        f = mean(patch); % scalar or 1x3 vector 
     case 'hist'
         f = zeros(numBins,size(patch,2));
         for i=1:size(patch,2)
             f(:,i) = histcounts(patch(:,i),1:numBins);
         end
+        [~,f] = max(f,[],1); % 1x3 vector
+        f = (f-0.5)/numBins; % turn histogram bin to color values
     otherwise, error('Method is not supported')
 end

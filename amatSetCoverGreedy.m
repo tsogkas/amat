@@ -1,16 +1,11 @@
 %% Greedy approximation of the weighted set cover problem associated with AMAT
 % TODO:
-% - Check the out-of-bounds errors that are computed in the setup.m script.
 % - Manually compare errors and find out why after some point excessively
-%   large disks are preferred than smaller disks with zero-error. This may
-%   have to do with the fact that 
-% - Write function that takes as input center and radius coordinates and
-%   computes on the fly the local reconstruction error for some disk.
-% - Replace average value with chi-histogram description.
+%   large disks are preferred than smaller disks with zero-error. 
 % - Keep track of disk inclusions using sparse matrix and replace for loops
-% - Write code for grouping medial points into branches.
-% - Use continueity of the radii of the disks that are included in a newly
-%   placed disk to avoid disks that are larger than desired.
+% - Replace nrms error with ssim.
+% - Maybe add an extra regularization term that discourages disks with
+%   radius that does not agree with the radii of neighboring/enclosed disks
 
 %% Initializations
 amat.input          = img;
@@ -21,8 +16,6 @@ amat.depth          = zeros(H,W);
 amat.covered        = false(H,W);
 % Used in the greedy approximate algorithm. Not sure how we will exploit it
 amat.price          = inf(H,W); 
-
-
 
 % Easy way to compute the number of NEW pixels that will be covered by each 
 % disk if it is added in the solution, taking into account the fact that
@@ -44,10 +37,14 @@ costEffectiveness = reconstructionError./ numNewPixelsCovered;
 [sortedCosts, indSorted] = sort(costEffectiveness(:),'ascend');
 top = 1e2;
 [yy,xx,rr] = ind2sub([H,W,numScales], indSorted(1:top));
-figure(1); imshow(amat.input); viscircles([xx,yy],rr,'EdgeColor','w','LineWidth',0.5);
+figure(1); imshow(amat.input); 
+viscircles([xx,yy],rr,'Color','w','LineWidth',0.5);
+viscircles([xx(1),yy(1)],rr(1),'Color','b','EnhanceVisibility',false); 
+title(sprintf('W: Top-%d disks, B: Top-1 disk',top))
 
 
 %% Run the greedy algorithm
+[x,y] = meshgrid(1:W,1:H);
 while ~all(amat.covered(:))
     % Find the most cost-effective set in the current iteration
     [minCost, indMin] = min(costEffectiveness(:));
@@ -99,17 +96,17 @@ while ~all(amat.covered(:))
         % Sort costs in ascending order to visualize updated top disks.
         [sortedCosts, indSorted] = sort(costEffectiveness(:),'ascend');
         [yy,xx,rr] = ind2sub([H,W,numScales], indSorted(1:top));
-        figure(2); clf;
         subplot(221); imshow(amat.input); 
-        viscircles([xc,yc],rc, 'EdgeColor','k','DrawBackgroundCircle',false);
+        viscircles([xc,yc],rc, 'Color','k','EnhanceVisibility',false);
         title('Selected disk');
         subplot(222); imshow(bsxfun(@times, amat.input, double(~amat.covered))); 
-        viscircles([xx,yy],rr,'EdgeColor','w','DrawBackgroundCircle',false,'Linewidth',0.5); 
-        viscircles([xx(1),yy(1)],rr(1),'EdgeColor','b','DrawBackgroundCircle',false); 
-        viscircles([xc,yc],rc,'EdgeColor','y','DrawBackgroundCircle',false); 
-        title(sprintf('B: covered %d/%d, W: Top-%d disks, G: Top-1 disk, Y: previous disk',nnz(amat.covered),H*W,top))
+        viscircles([xx,yy],rr,'Color','w','EnhanceVisibility',false,'Linewidth',0.5); 
+        viscircles([xx(1),yy(1)],rr(1),'Color','b','EnhanceVisibility',false); 
+        viscircles([xc,yc],rc,'Color','y','EnhanceVisibility',false); 
+        title(sprintf('K: covered %d/%d, W: Top-%d disks,\nB: Top-1 disk, Y: previous disk',nnz(amat.covered),H*W,top))
         subplot(223); imshow(amat.axis); title('A-MAT axes')
         subplot(224); imshow(amat.radius,[]); title('A-MAT radii')
+        drawnow;
     end
 end
 amat.reconstruction = reshape(amat.reconstruction,H,W,numChannels);
