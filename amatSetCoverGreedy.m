@@ -6,7 +6,7 @@ img0 = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/66
 [H,W,numChannels] = size(img0);
 imgLab = rgb2lab(img0);
 imgClustered = clusterImageValues(imgLab, 5); % simplify input
-% img = imgLab;
+img = imgLab;
 img = img0;
 
 %% Construct filters, calculate perimeneters and disk areas
@@ -18,14 +18,18 @@ f = imageEncoding(img,filters);
 % f = imageEncoding(binImage(img,numBins),filters,'hist',numBins);
 
 %% Compute decodings g and reconstruction errors at all points and scales
-reconstructionError = imageError(img,f,filters,'rse');
+reconstructionError = imageError(img,f,filters,'se');
+
+%% Interactive visualization of reconstructions
+fh = figure(1); imshow(img);
+r = 5;
+set(fh, 'WindowButtonDownFcn', {@drawDiskOnFigure,img,f,r});
 
 %% Greedy approximation of the weighted set cover problem associated with AMAT
 % TODO:
 % - Manually compare errors and find out why after some point excessively
 %   large disks are preferred than smaller disks with zero-error. 
 % - Keep track of disk inclusions using sparse matrix and replace for loops
-% - Replace nrms error with ssim.
 % - Maybe add an extra regularization term that discourages disks with
 %   radius that does not agree with the radii of neighboring/enclosed disks
 
@@ -52,7 +56,7 @@ numNewPixelsCovered = reshape(numNewPixelsCovered ,H*W,numScales);
 % We must *add* a scale-based regularization term, to favour larger radii
 % even when the errors are 0. Dividing by the respective radius would not
 % work in that case.
-lambda = 1e1
+lambda = 1e0;
 diskCost = reshape(reconstructionError, H*W,numScales);
 diskCost = bsxfun(@plus, diskCost, lambda./(1:numScales));
 diskCostEffective = diskCost./ numNewPixelsCovered;
@@ -86,14 +90,15 @@ while ~all(amat.covered(:))
     amat.radius(yc,xc) = rc;
 
     % TL;DR: Subtract newly covered pixels from all overlapping disks. 
-    % LOND VERSION: We have decided to place a disk centered at (xc,yc)
+    % LONG STORY: We have decided to place a disk centered at (xc,yc)
     % with radius r. This disks covers all points (xd,yd) that lie within
     % radius r. For each point (xd,yd) we must find how many disks it is
     % covered by and subtract 1 from the number of NEW pixels covered by
-    % these disks (if they were to be selected as part of the solution).
+    % those disks (if they were to be selected as part of the solution).
     % Each (xd,yd) is covered by all disks that have centers at distance <=
     % maxRadius from them.
-    [yd,xd] = ind2sub([H,W],find(newPixelsCovered)); % find coordinates of all newly covered pixels inside D
+    % find coordinates of all newly covered pixels inside D
+    [yd,xd] = ind2sub([H,W],find(newPixelsCovered)); 
     for i=1:numel(yd)
         distFromCoveredPointSquared = (x-xd(i)).^2 + (y-yd(i)).^2;
         % All the points that lie within max radius distance from the 
@@ -106,6 +111,7 @@ while ~all(amat.covered(:))
         for r=1:numScales
             inds = centersOfCoveringDisks & (distFromCoveredPointSquared <= r^2);
             numNewPixelsCovered(inds, r) = numNewPixelsCovered(inds, r) - 1;
+            diskCost(inds,r) = diskCost(inds,r) - sum((amat.input(yd(i),xd(i),:) - f(yd(i),xd(i),:,r)).^2);
         end        
     end
     

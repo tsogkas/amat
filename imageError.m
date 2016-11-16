@@ -10,11 +10,11 @@ function E = imageError(img,enc,filters,method)
 % 
 %   The supported methods for computing the reconstruction error are:
 % 
-%   {rse}:  root squared error E = sqrt(sum((y-x).^2))
-%   rmse :  root mean squared error E = sqrt(mean((y-x).^2))
-%   nrmse:  normalized rms E = sqrt(sum((y-x).^2) / sum(x.^2))
-%   dssim:  structural dissimilarity E = (1-ssim(y,x))/2, where ssim is the
-%           structural similarity index.
+%   {(r)se}:  (root) squared error E = sqrt(sum((y-x).^2))
+%   (r)mse :  root mean squared error E = sqrt(mean((y-x).^2))
+%   n(r)mse:  normalized rms E = sqrt(sum((y-x).^2) / sum(x.^2))
+%   dssim:    structural dissimilarity E = (1-ssim(y,x))/2, where ssim is 
+%             the structural similarity index.
 %   
 %   See also: immse, ssim
 % 
@@ -25,12 +25,10 @@ function E = imageError(img,enc,filters,method)
 [H,W,numChannels,numScales] = size(enc);
 E = zeros(H,W,numScales);
 switch method
-    case {'rse','rmse','nrmse'}
+    case {'se','mse','nmse','rse','rmse','nrmse'}
         for r=1:numScales
-            if strcmp(method,'nrmse')
-                denom = zeros(H,W);
-            end
-            numer = zeros(H,W);
+            numer = 0;
+            denom = 0;
             D = double(filters{r});
             A = nnz(D);
             % Compute the terms needed to compute the (relative) NRMS error:
@@ -47,19 +45,24 @@ switch method
                 sumg2 = A * g.^2;
                 sumgI = g .* sumI;
                 numer = numer + sumg2 + sumI2 - 2*sumgI;
-                if strcmp(method,'nrmse')
+                if strcmp(method,'nrmse') || strcmp(method,'nmse')
                     denom = denom + sumI2;
                 end
             end
-            if strcmp(method,'rse')            
-                E(:,:,r) = max(0,numer);
-            elseif strcmp(method,'rmse')
-                E(:,:,r) = max(0, min(1, numer ./ (3*A)));
-            elseif strcmp(method,'nrmse')
-                E(:,:,r) = max(0, min(1, numer ./ denom));
+            % Normalize
+            if strcmp(method,'rmse') || strcmp(method,'mse')
+                E(:,:,r) = numer ./ (numChannels*A);
+            elseif strcmp(method,'nrmse') || strcmp(method,'nmse')
+                E(:,:,r) = numer ./ denom;
+            else 
+                E(:,:,r) = numer;
             end
-        end        
-        E = sqrt(E); 
+        end
+        % Make positive and take square root if needed
+        E = max(0,E);
+        if ismember({'rse','rmse','nrmse'}, method)
+            E = sqrt(E); 
+        end
     case 'dssim'
         % default constant values (wikipedia)
         k1 = 0.01; k2 = 0.03; L  = 1;
