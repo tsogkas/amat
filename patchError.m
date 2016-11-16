@@ -10,6 +10,6 @@ switch encodeMethod
         f = patchEncoding(p,encodeMethod, encodeParam);
     otherwise, error('Encoding method not supported')
 end
-nomin = sum(sum(bsxfun(@minus,p,f).^2));
+numer = sum(sum(bsxfun(@minus,p,f).^2));
 denom = sum(sum(p.^2));
-e = sqrt(nomin ./ denom);
+e = sqrt(numer ./ denom);

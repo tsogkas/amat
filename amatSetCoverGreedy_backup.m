@@ -2,7 +2,7 @@
 numScales = 25;
 numBins   = 64;
 % img0 = im2double(imresize(imread('google.jpg'), [128 128], 'nearest')); 
-img0 = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/66075.jpg'), [128 128], 'nearest')); 
+img0 = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/41004.jpg'), [128 128], 'nearest')); 
 [H,W,numChannels] = size(img0);
 imgLab = rgb2lab(img0);
 imgClustered = clusterImageValues(imgLab, 5); % simplify input
@@ -52,12 +52,12 @@ numNewPixelsCovered = reshape(numNewPixelsCovered ,H*W,numScales);
 % We must *add* a scale-based regularization term, to favour larger radii
 % even when the errors are 0. Dividing by the respective radius would not
 % work in that case.
-lambda = 1e1
-diskCost = reshape(reconstructionError, H*W,numScales);
-diskCost = bsxfun(@plus, diskCost, lambda./(1:numScales));
-diskCostEffective = diskCost./ numNewPixelsCovered;
+lambda = 0;
+reconstructionError = reshape(reconstructionError, H*W,numScales);
+reconstructionError = bsxfun(@plus, reconstructionError, lambda./(1:numScales));
+costEffectiveness = reconstructionError./ numNewPixelsCovered;
 % Sort costs in ascending order and visualize top disks.
-[sortedCosts, indSorted] = sort(diskCostEffective(:),'ascend');
+[sortedCosts, indSorted] = sort(costEffectiveness(:),'ascend');
 top = 1e2;
 [yy,xx,rr] = ind2sub([H,W,numScales], indSorted(1:top));
 figure(1); imshow(amat.input); 
@@ -70,7 +70,7 @@ title(sprintf('W: Top-%d disks, B: Top-1 disk',top))
 [x,y] = meshgrid(1:W,1:H);
 while ~all(amat.covered(:))
     % Find the most cost-effective set in the current iteration
-    [minCost, indMin] = min(diskCostEffective(:));
+    [minCost, indMin] = min(costEffectiveness(:));
     % Build set D on the fly
     [yc,xc,rc] = ind2sub([H,W,numScales], indMin);
     distFromCenterSquared = (x-xc).^2 + (y-yc).^2;
@@ -110,14 +110,14 @@ while ~all(amat.covered(:))
     end
     
     % Update cost effectiveness score
-    diskCostEffective = diskCost./ numNewPixelsCovered;
-    assert(all(isinf(diskCostEffective(sub2ind([H,W],yc,xc), 1:rc))))
+    costEffectiveness = reconstructionError./ numNewPixelsCovered;
+    assert(all(isinf(costEffectiveness(sub2ind([H,W],yc,xc), 1:rc))))
 
     
     % Visualize progress
     if 1
         % Sort costs in ascending order to visualize updated top disks.
-        [sortedCosts, indSorted] = sort(diskCostEffective(:),'ascend');
+        [sortedCosts, indSorted] = sort(costEffectiveness(:),'ascend');
         [yy,xx,rr] = ind2sub([H,W,numScales], indSorted(1:top));
         subplot(221); imshow(amat.input); 
         viscircles([xc,yc],rc, 'Color','k','EnhanceVisibility',false);
