@@ -21,6 +21,7 @@ function fh = drawDiskOnFigureInteractive(img)
 
 % TODO: debug histogram encoding because it gives weird results
 % TODO: perhaps add patchEncoding function inside this file
+% TODO: add dialog box to choose error type with double-click
 
 % Default parameters
 r = 5;
@@ -124,7 +125,6 @@ img     = reshape(img, [], C);
         drawDisk(fh)
     end
 
-    
     function e = patchError(imgPatch,encPatch)
         switch errorType
             case {'se','mse','nmse','rse','rmse','nrmse'}
@@ -146,7 +146,7 @@ img     = reshape(img, [], C);
                 % Channel-wise implementation of ssim
                 mx = mean(imgPatch);
                 sx = mean(bsxfun(@minus,imgPatch,mx).^2);
-                my = encPatch;
+                my = encPatch(1,:); % all rows in encPatch are the same
                 sy = 0;
                 sxy= 0;
                 e = ((2 .* mx .* my) .* (2 .* sxy + c2)) ./ ... % ssim
