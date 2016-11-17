@@ -35,11 +35,14 @@ switch method
     case 'average'
         f = mean(patch); % scalar or 1x3 vector 
     case 'hist'
-        f = zeros(numBins,size(patch,2));
-        for i=1:size(patch,2)
-            f(:,i) = histcounts(patch(:,i),1:numBins);
+        numChannels = size(patch,2);
+        counts   = zeros(numBins,numChannels);
+        binEdges = (0:numBins)/numBins;
+        binWidth = binEdges(2);
+        for i=1:numChannels
+            counts(:,i) = histcounts(patch(:,i),binEdges);
         end
-        [~,f] = max(f,[],1); % 1x3 vector
-        f = (f-0.5)/numBins; % turn histogram bin to color values
+        [~,f] = max(counts,[],1); % 1x3 vector
+        f = binEdges(f)+binWidth; % turn histogram bin to color values
     otherwise, error('Method is not supported')
 end

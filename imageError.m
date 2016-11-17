@@ -2,6 +2,9 @@ function E = imageError(img,enc,filters,method)
 % IMAGEERROR Computes local reconstructions g at every pixel in the image
 %   and outputs the reconstruction error. 
 % 
+%   TODO: handle cases when the image boundary is crossed (maybe add
+%   infinite cost?)
+% 
 %   E = IMAGEERROR(img,enc,filters,method) where img is an input image and
 %   enc is its encoding, computes the local reconstruction error for all 
 %   patches of the shapes defined in the filters cell array. The function
@@ -60,7 +63,7 @@ switch method
         end
         % Make positive and take square root if needed
         E = max(0,E);
-        if ismember({'rse','rmse','nrmse'}, method)
+        if ismember(method,{'rse','rmse','nrmse'})
             E = sqrt(E); 
         end
     case 'dssim'

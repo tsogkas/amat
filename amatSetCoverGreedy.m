@@ -56,7 +56,7 @@ numNewPixelsCovered = reshape(numNewPixelsCovered ,H*W,numScales);
 % We must *add* a scale-based regularization term, to favour larger radii
 % even when the errors are 0. Dividing by the respective radius would not
 % work in that case.
-lambda = 1e0;
+lambda = 1e0;   
 diskCost = reshape(reconstructionError, H*W,numScales);
 diskCost = bsxfun(@plus, diskCost, lambda./(1:numScales));
 diskCostEffective = diskCost./ numNewPixelsCovered;

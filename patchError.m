@@ -1,5 +1,5 @@
 function e = patchError(img,center,radius,encodeMethod,encodeParam)
-% TODO: add errorMethod as additional input argument
+% TODO: update error methods
 if nargin < 4, encodeMethod = 'average'; end
 
 p = diskPatch(img,center,radius);
