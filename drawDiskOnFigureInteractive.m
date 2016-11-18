@@ -1,4 +1,4 @@
-function fh = drawDiskOnFigureInteractive(img)
+function fh = drawDiskOnFigureInteractive(imgRGB)
 % DRAWDISKONFIGUREINTERACTIVE Draw reconstructed disk patches on the 
 %   original image and display useful information. This tool allows the 
 %   user to interactively change various parameters, such as the size of
@@ -21,7 +21,7 @@ function fh = drawDiskOnFigureInteractive(img)
 
 % TODO: debug histogram encoding because it gives weird results
 % TODO: perhaps add patchEncoding function inside this file
-% TODO: add dialog box to choose error type with double-click
+% TODO: compute all errors in the CIE Lab color space
 
 % Default parameters
 r = 5;
@@ -34,12 +34,13 @@ errorCounter = 1;
 encodingCounter = 1;
 
 % Plot figure and set callbacks
-fh = figure; imshow(img);
+fh = figure; imshow(imgRGB);
 set(fh, 'WindowButtonMotionFcn', @changePoint);
 set(fh, 'WindowButtonDownFcn',   @changeMethod);
 set(fh, 'WindowScrollWheelFcn',  @changeRadius);
-[H,W,C] = size(img);
-img     = reshape(img, [], C);
+[H,W,C] = size(imgRGB);
+imgRGB  = reshape(imgRGB, [], C);
+imgLab  = rgb2labNormalized(imgRGB);
 [xx,yy] = meshgrid(1:W,1:H);
 
 
@@ -54,23 +55,33 @@ img     = reshape(img, [], C);
             title('Disk crosses the image boundary'); drawnow; return
         end
         
+        % Disk logical mask
         D = (xx-x).^2 + (yy-y).^2 <= r^2;
-        imgPatch = img(D,:);
+
+        % The dssim metric should be used on RGB data
+        if strcmp(errorType, 'dssim')
+            imgPatch = imgRGB(D,:);
+        else
+            imgPatch = imgLab(D,:);
+        end
+        
+        % Encode the patch and compute error
         encPatch = patchEncoding(imgPatch,encodingType,numBins);
+        err = patchError(imgPatch,encPatch);
         
         % Replace pixels in the input image
-        encPatch = repmat(encPatch, [nnz(D),1]);
-        img(D,:) = encPatch;
-        
-        % Compute local patch error
-        err = patchError(imgPatch,encPatch);
+        originalPatch = imgRGB(D,:);
+        if ~strcmp(errorType, 'dssim')
+            encPatch = labNormalized2rgb(encPatch);
+        end
+        imgRGB(D,:) = repmat(encPatch, [nnz(D), 1]);
         
         % Disable annoying docking error that clutters the command line
         if strcmp(fh.WindowStyle, 'docked')
             warning('off','images:imshow:magnificationMustBeFitForDockedFigure')
         end
         % Display image and then restore original patch
-        imshow(reshape(img,H,W,C)); img(D,:) = imgPatch;         
+        imshow(reshape(imgRGB,H,W,C)); imgRGB(D,:) = originalPatch;         
         if strcmp(encodingType, 'hist')
             title(sprintf('Point (%d,%d), r=%d, hist (%d bins), %s: %.4f',...
                 x,y,r,numBins,errorType,err));
@@ -128,7 +139,7 @@ img     = reshape(img, [], C);
     function e = patchError(imgPatch,encPatch)
         switch errorType
             case {'se','mse','nmse','rse','rmse','nrmse'}
-                e = sum((imgPatch(:)-encPatch(:)).^2);
+                e = sum(sum(bsxfun(@minus,imgPatch,encPatch).^2));
                 % Normalize
                 if strcmp(errorType,'rmse') || strcmp(errorType,'mse')
                     e = e / (C*size(imgPatch,1));
@@ -146,7 +157,7 @@ img     = reshape(img, [], C);
                 % Channel-wise implementation of ssim
                 mx = mean(imgPatch);
                 sx = mean(bsxfun(@minus,imgPatch,mx).^2);
-                my = encPatch(1,:); % all rows in encPatch are the same
+                my = encPatch;
                 sy = 0;
                 sxy= 0;
                 e = ((2 .* mx .* my) .* (2 .* sxy + c2)) ./ ... % ssim
