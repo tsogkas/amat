@@ -1,29 +1,29 @@
 %% Setup global parameters and preprocess image
 numScales = 25;
 numBins   = 64;
+errorType = 'se';
+encodingType = 'average';
+colorWeights = [.7 .15 .15];
+
 % img0 = im2double(imresize(imread('google.jpg'), [128 128], 'nearest')); 
-img0 = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/66075.jpg'), [128 128], 'nearest')); 
-[H,W,numChannels] = size(img0);
-imgLab = rgb2labNormalized(img0);
-imgClustered = clusterImageValues(imgLab, 5); % simplify input
-img = imgLab;
-img = img0;
+imgRGB = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/66075.jpg'), [128 128], 'nearest')); 
+[H,W,numChannels] = size(imgRGB);
+imgLab = rgb2labNormalized(imgRGB);
+% imgClustered = clusterImageValues(imgLab, 5); % simplify input
+if strcmp(errorType, 'dssim'), img = imgRGB; else img = imgLab; end
 
 %% Construct filters, calculate perimeneters and disk areas
 filters = cell(numScales,1); for r=1:numScales, filters{r} = disk(r); end
 
 %% Compute encodings f(D_I(x,y,r)) at every point.
-% Compute individual encodings for color and texture
-f = imageEncoding(img,filters);
-% f = imageEncoding(binImage(img,numBins),filters,'hist',numBins);
+if strcmp(encodingType,'average')
+    f = imageEncoding(img,filters);
+elseif strcmp(encodingType,'hist')
+    f = imageEncoding(binImage(img,numBins),filters,'hist',numBins);
+end
 
 %% Compute decodings g and reconstruction errors at all points and scales
-reconstructionError = imageError(img,f,filters,'se');
-
-%% Interactive visualization of reconstructions
-fh = figure(1); imshow(img);
-r = 5;
-set(fh, 'WindowButtonDownFcn', {@drawDiskOnFigure,img,f,r});
+reconstructionError = imageError(img,f,filters,errorType,colorWeights);
 
 %% Greedy approximation of the weighted set cover problem associated with AMAT
 % TODO:
@@ -34,7 +34,7 @@ set(fh, 'WindowButtonDownFcn', {@drawDiskOnFigure,img,f,r});
 %   radius that does not agree with the radii of neighboring/enclosed disks
 
 %% Initializations
-amat.input          = img;
+amat.input          = imgRGB;
 amat.reconstruction = zeros(H*W,numChannels);
 amat.axis           = zeros(H,W,numChannels);
 amat.radius         = zeros(H,W);
@@ -56,9 +56,8 @@ numNewPixelsCovered = reshape(numNewPixelsCovered ,H*W,numScales);
 % We must *add* a scale-based regularization term, to favour larger radii
 % even when the errors are 0. Dividing by the respective radius would not
 % work in that case.
-lambda = 1e0;   
 diskCost = reshape(reconstructionError, H*W,numScales);
-diskCost = bsxfun(@plus, diskCost, lambda./(1:numScales));
+% diskCost = bsxfun(@plus, diskCost, (0)./(1:numScales));
 diskCostEffective = diskCost./ numNewPixelsCovered;
 % Sort costs in ascending order and visualize top disks.
 [sortedCosts, indSorted] = sort(diskCostEffective(:),'ascend');

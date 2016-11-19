@@ -6,3 +6,13 @@ Created by Stavros Tsogkas at the University of Toronto.
 ### License
 
 This code is released under the MIT License (refer to the LICENSE file for details).
+
+### TODO:
+**amatSetCoverGreedy**
+- Keep track of disk inclusions using sparse matrix and replace for loops
+- Maybe add an extra regularization term that discourages disks with radius that does not agree with the radii of neighboring/enclosed disks --> this can probably be implicitly modeled by the next point in the list
+- Update the costs of all disks at all iterations, using the values of the _reconstructed_ pixels that they are covering.
+
+**imageError()**
+- handle cases when the image boundary is crossed (maybe add infinite cost?). This is _IMPORTANT_ when the background of the input image is black, in which case it matches the default (zero)padding of conv2 and can lead to erroneous high scores for disks that extend beyond the image boundaries.
+

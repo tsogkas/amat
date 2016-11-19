@@ -1,15 +1,62 @@
-function e = patchError(img,center,radius,encodeMethod,encodeParam)
-% TODO: update error methods
-if nargin < 4, encodeMethod = 'average'; end
+function e = patchError(imgPatch,encPatch,errorType,errorParams)
+% PATCHERROR Computes the error between an encoded patch and the respective
+%   patch from the original image.
+% 
+%   e = PATCHERROR(imgPatch,encPatch,errorType) the parameter "errorType"
+%   determines the type of the error metric used:
+% 
+%   {(r)se}:  (root) squared error E = sqrt(sum((y-x).^2))
+%   (r)mse :  root mean squared error E = sqrt(mean((y-x).^2))
+%   n(r)mse:  normalized rms E = sqrt(sum((y-x).^2) / sum(x.^2))
+%   dssim}    computes the local structural dissimilarity (1-ssim(y,x))/2. 
+%             This should be used in the RGB color space.
+% 
+%   See also: immse, ssim, imageError
+% 
+%   Stavros Tsogkas <tsogkas@cs.toronto.edu>
+%   Last update: November 2016
 
-p = diskPatch(img,center,radius);
-switch encodeMethod 
-    case 'average'
-        f = patchEncoding(p,encodeMethod);
-    case 'hist'
-        f = patchEncoding(p,encodeMethod, encodeParam);
-    otherwise, error('Encoding method not supported')
+if nargin < 3, errorType = 'se'; end
+
+switch errorType
+    case {'se','mse','nmse','rse','rmse','nrmse'} 
+        % errorParams should be a 1x3 vector containing the weights for the
+        % three color channels. This is useful when using a color space
+        % that is different than RGB (e.g. CIE Lab), where the channels do
+        % not have equal discriminative importance.
+        w = [1/3 1/3 1/3]; % be default all channels contribute equally
+        if nargin == 4 
+            assert(sum(errorParams(:))==1, 'Color channel weights should sum to 1');
+            w = errorParams; 
+        end
+        % Compute per-channel squared error
+        e = sum(bsxfun(@minus,imgPatch,encPatch).^2);
+        % Normalize across each channel
+        if strcmp(errorType,'rmse') || strcmp(errorType,'mse')
+            e = e ./ size(imgPatch,1);
+        elseif strcmp(errorType,'nrmse') || strcmp(errorType,'nmse')
+            e = e ./ sum(imgPatch.^2);
+        end
+        % Combine channels, make positive and get sqrt if needed
+        e = max(0, w * e');
+        if any(strcmp({'rse','rmse','nrmse'},errorType))
+            e = sqrt(e);
+        end
+    case 'dssim' % NOTE: dssim should be used directly on the RGB space
+        k1  = 0.01; k2 = 0.03; L = 1; % default constant values
+        if nargin == 4
+            k1 = errorParams(1); k2 = errorParams(2); L  = errorParams(3);
+        end
+        c1  = (k1*L)^2; c2 = (k2*L)^2;
+        % Channel-wise implementation of ssim
+        mx  = mean(imgPatch);
+        my  = encPatch;
+        sx2 = mean(bsxfun(@minus,imgPatch,mx).^2);
+        sy2 = 0;
+        sxy = 0;
+        e = ((2 .* mx .* my) .* (2 .* sxy + c2)) ./ ... % ssim
+            ((mx.^2 + my.^2 + c1).* (sx2 + sy2 + c2));
+        e = (1-mean(e,2))/2; % mean across channels and dssim
+        e = max(-1, min(1,e));
+    otherwise, error('Error type not supported')
 end
-numer = sum(sum(bsxfun(@minus,p,f).^2));
-denom = sum(sum(p.^2));
-e = sqrt(numer ./ denom);
