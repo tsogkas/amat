@@ -28,7 +28,7 @@ E = zeros(H,W,R);
 switch method
     case {'se','mse','nmse','rse','rmse','nrmse'}
         w = [1/3 1/3 1/3]; % default channel weights
-        if nargin == 5
+        if nargin == 5 && ~isempty(params)
             assert(sum(params(:)) == 1, 'Channel weights should sum to 1')
             w = params;
         end
@@ -43,15 +43,13 @@ switch method
             % expanding the identity: abs(g-I)^2 = (g-I)^2 = g^2 + I^2 - 2*g*I
             % Also note that since we expand a single scalar value across the
             % disk area, Sum(g^2) = A*g^2, where A is the area of the disk.
+            % As a result, in the end we get Sum(g-I)^2 = Sum(I.^2) - A2*g.^2.
             % The following quantities are sums withing the disk region D.
             for c=1:C
                 I = img(:,:,c);
                 g = enc(:,:,c,r);
                 sumI2 = conv2(I.^2, D, 'same');
-                sumI  = conv2(I,    D, 'same');
-                sumg2 = A * g.^2;
-                sumgI = g .* sumI;
-                numer(:,:,c) = sumg2 + sumI2 - 2*sumgI;                
+                numer(:,:,c) = sumI2 - A * g.^2;                
                 if strcmp(method,'nrmse') || strcmp(method,'nmse')
                     denom(:,:,c) = sumI2;
                 end
@@ -72,7 +70,7 @@ switch method
         end
     case 'dssim'
         k1 = 0.01; k2 = 0.03; L = 1; % default constant values
-        if nargin == 5
+        if nargin == 5 && ~isempty(params)
             k1 = params(1); k2 = params(2); L  = params(3);
         end
         c1 = (k1*L)^2; c2 = (k2*L)^2;
@@ -85,9 +83,9 @@ switch method
             % implementation, that avoids gaussian weighting for
             % efficiency.
             for c=1:C
-                I  = img(:,:,c);
-                g  = enc(:,:,c,r);
-                mi = conv2(I, D/A, 'same');
+                I   = img(:,:,c);
+                g   = enc(:,:,c,r);
+                mi  = conv2(I, D/A, 'same');
                 si2 = conv2((I-mi).^2, D/(A-1), 'same'); % unbiased estimate
                 mg  = g; % since g is constant within the disk area
                 sg2 = 0;

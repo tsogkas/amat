@@ -3,7 +3,7 @@ numScales = 25;
 numBins   = 64;
 errorType = 'se';
 encodingType = 'average';
-colorWeights = [.7 .15 .15];
+colorWeights = [];
 
 % img0 = im2double(imresize(imread('google.jpg'), [128 128], 'nearest')); 
 imgRGB = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/66075.jpg'), [128 128], 'nearest')); 
@@ -26,22 +26,14 @@ end
 reconstructionError = imageError(img,f,filters,errorType,colorWeights);
 
 %% Greedy approximation of the weighted set cover problem associated with AMAT
-% TODO:
-% - Manually compare errors and find out why after some point excessively
-%   large disks are preferred than smaller disks with zero-error. 
-% - Keep track of disk inclusions using sparse matrix and replace for loops
-% - Maybe add an extra regularization term that discourages disks with
-%   radius that does not agree with the radii of neighboring/enclosed disks
-
-%% Initializations
+% Initializations
 amat.input          = imgRGB;
-amat.reconstruction = zeros(H*W,numChannels);
+amat.reconstruction = reshape(amat.input, H*W, numChannels);
 amat.axis           = zeros(H,W,numChannels);
 amat.radius         = zeros(H,W);
-amat.depth          = zeros(H,W); 
+amat.depth          = zeros(H,W); % #disks points(x,y) is covered by
 amat.covered        = false(H,W);
-% Used in the greedy approximate algorithm. Not sure how we will exploit it
-amat.price          = inf(H,W); 
+amat.price          = inf(H,W);   % error contributed by each point
 
 % Easy way to compute the number of NEW pixels that will be covered by each 
 % disk if it is added in the solution, taking into account the fact that
@@ -52,13 +44,33 @@ for r=1:numScales
 end
 numNewPixelsCovered = reshape(numNewPixelsCovered ,H*W,numScales);
 
-%% Error balancing and visualizaion of top (low-cost) disks
-% We must *add* a scale-based regularization term, to favour larger radii
-% even when the errors are 0. Dividing by the respective radius would not
-% work in that case.
+%% Error balancing and visualization of top (low-cost) disks
+% -------------------------------------------------------------------------
+% Disk cost: refers to the cost contributed to the total absolute cost of 
+% placing the disk in the image.
+% -------------------------------------------------------------------------
+% Disk cost effective: refers to the "normalized" cost of the disk, divided
+% by the number of *new* pixels it covers when it is added in the solution.
+% -------------------------------------------------------------------------
+% Before running the algorithm we must add a regularization term, that
+% favors larger radii. This is necessary, in order to select "maximal"
+% disks. This term must be *added* (not a multiplicative factor), to handle 
+% cases when the reconstruction error is 0.
+% We consider a threshold T. If the increase in the relative error
+% (e_{i+1}/N_{i+1}-e_i/N_i)/(e_i/N_i) < T then the additive factor must be 
+% such that it e_{i+1} + f_{i+1} < e_i + f_i. This term must be added to 
+% thcost BEFORE normalization, and only in the beginning (no need to
+% regularize in the next iterations).
+% -------------------------------------------------------------------------
+% The final recursive formula for the regularization term is:
+% REG(r_R) = 0; REG(r_i) = T*e_i + (N_i / N_{i+1})*REG_{i+1}, for i=1,...,R-1
+T = 0.12;
 diskCost = reshape(reconstructionError, H*W,numScales);
-% diskCost = bsxfun(@plus, diskCost, (0)./(1:numScales));
-diskCostEffective = diskCost./ numNewPixelsCovered;
+REG = diskCost ./ numNewPixelsCovered; REG(:,end) = 0; 
+REG = T * numNewPixelsCovered .* cumsum(REG ,2,'reverse');
+diskCost = diskCost + REG;
+diskCostEffective = diskCost ./ numNewPixelsCovered;
+freshaped = reshape(f, [],numChannels,numScales);
 % Sort costs in ascending order and visualize top disks.
 [sortedCosts, indSorted] = sort(diskCostEffective(:),'ascend');
 top = 1e2;
@@ -72,19 +84,21 @@ title(sprintf('W: Top-%d disks, B: Top-1 disk',top))
 %% Run the greedy algorithm
 [x,y] = meshgrid(1:W,1:H);
 while ~all(amat.covered(:))
-    % Find the most cost-effective set in the current iteration
+    % Find the most cost-effective set at the current iteration
     [minCost, indMin] = min(diskCostEffective(:));
-    % Build set D on the fly
+    % D is the set of points covered by the selected disk
     [yc,xc,rc] = ind2sub([H,W,numScales], indMin);
     distFromCenterSquared = (x-xc).^2 + (y-yc).^2;
     D = distFromCenterSquared <= rc^2;
     newPixelsCovered = D & ~amat.covered;
     
-    % Update AMAT
-    amat.price(newPixelsCovered) = minCost; % Set price for new elements
+    % Update AMAT ()
+    reconstructedDisk = repmat(reshape(f(yc,xc,:,rc),[1 3]), [nnz(newPixelsCovered),1]);
+    amat.price(newPixelsCovered) = mean(( ...
+        amat.reconstruction(newPixelsCovered,:) - reconstructedDisk ).^2,2);
     amat.covered(D) = true;
     amat.depth(D) = amat.depth(D) + 1;
-    amat.reconstruction(newPixelsCovered,:) = repmat(f(yc,xc,:,rc), [nnz(newPixelsCovered),1]);
+    amat.reconstruction(newPixelsCovered,:) = reconstructedDisk;
     amat.axis(yc,xc,:) = f(yc,xc,:,rc);
     amat.radius(yc,xc) = rc;
 
@@ -110,13 +124,16 @@ while ~all(amat.covered(:))
         for r=1:numScales
             inds = centersOfCoveringDisks & (distFromCoveredPointSquared <= r^2);
             numNewPixelsCovered(inds, r) = numNewPixelsCovered(inds, r) - 1;
-            diskCost(inds,r) = diskCost(inds,r) - sum((amat.input(yd(i),xd(i),:) - f(yd(i),xd(i),:,r)).^2);
+            diskCost(inds,r) = diskCost(inds,r) - ...
+                mean(bsxfun(@minus, freshaped(inds,:,r), ... % subtract old cost for pixel
+                reshape(amat.input(yd(i),xd(i),:), [1 3])).^2, 2);
+%             freshaped(inds,:,r) = freshaped(inds,:,r) - 
         end        
     end
     
     % Update cost effectiveness score
     diskCostEffective = diskCost./ numNewPixelsCovered;
-    assert(all(isinf(diskCostEffective(sub2ind([H,W],yc,xc), 1:rc))))
+    assert(allvec(numNewPixelsCovered(sub2ind([H,W],yc,xc), 1:rc)==0))
 
     
     % Visualize progress

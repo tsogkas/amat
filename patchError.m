@@ -25,7 +25,7 @@ switch errorType
         % that is different than RGB (e.g. CIE Lab), where the channels do
         % not have equal discriminative importance.
         w = [1/3 1/3 1/3]; % be default all channels contribute equally
-        if nargin == 4 
+        if nargin == 4 && ~isempty(errorParams)
             assert(sum(errorParams(:))==1, 'Color channel weights should sum to 1');
             w = errorParams; 
         end
@@ -43,8 +43,8 @@ switch errorType
             e = sqrt(e);
         end
     case 'dssim' % NOTE: dssim should be used directly on the RGB space
-        k1  = 0.01; k2 = 0.03; L = 1; % default constant values
-        if nargin == 4
+        k1  = 0.01; k2 = 0.03; L = 1; % default values
+        if nargin == 4 && ~isempty(errorParams)
             k1 = errorParams(1); k2 = errorParams(2); L  = errorParams(3);
         end
         c1  = (k1*L)^2; c2 = (k2*L)^2;
