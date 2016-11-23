@@ -16,6 +16,12 @@ function E = imageError(img,enc,filters,method,params)
 %   dssim:    structural dissimilarity E = (1-ssim(y,x))/2, where ssim is 
 %             the structural similarity index. This should be used in the
 %             RGB color space.
+%   hist-chi2: chi-squared histogram distance (assumes inputs img and enc
+%              are histograms of dimensions HxWxCxBxR.
+%   hist-chi2-kernel: chi-squared histogram distance + kernel density 
+%                     estimate.
+%   hist-intersection: 1-histogram intersection distance (assumes inputs 
+%              img and enc are histograms of dimensions HxWxCxBxR.
 %   
 %   See also: immse, ssim
 % 
@@ -23,10 +29,43 @@ function E = imageError(img,enc,filters,method,params)
 %   Last update: November 2016
 
 
-[H,W,C,R] = size(enc);
-E = zeros(H,W,R);
 switch method
+    case {'hist-intersection','hist-chi2','hist-chi2-kernel'}
+        if strcmp(method,'hist-intersection')
+            E = min(img,enc,[],4); % histogram intersection
+        elseif strcmp(method,'hist-chi2')
+            E = sum((img-enc).^2 ./ (img + enc + eps), 4);
+        else
+            [H,W,C,B,R] = size(img);
+            % Compute color bin weighted distance using gaussian kernel
+            binCenters = ((1:B)-0.5)/B;
+            [x,y] = meshgrid(binCenters,binCenters);
+            % Compute distance at each channel and scale
+            elab = zeros(H*W*3,R);
+            imgc = reshape(img(:,:,1:3,:,:),H*W*3,B,R);
+            encc = reshape(enc(:,:,1:3,:,:),H*W*3,B,R);
+            for r=1:R
+                binCenterDistance = 1-exp((x-y).^2./(2*r.^2)); % BxB
+                dabs = abs(imgc(:,:,r)-encc(:,:,r)); % H*W*C x B
+                elab(:,r) = sum((dabs*binCenterDistance) .* dabs, 2);
+            end
+            elab = reshape(elab,H,W,3,1,R);
+            % If we use texture, it's the 4th channel.
+            % For texture we compute the chi-squared distance as usual.
+            if C > 3
+                imgt = img(:,:,4,:,:); enct = enc(:,:,4,:,:);
+                etexture = sum((imgt-enct).^2 ./ (imgt + enct + eps), 4);
+            else
+                etexture = [];
+            end
+            E = cat(3,elab,etexture);
+        end
+        E(:,:,2,:,:) = E(:,:,2,:,:) + E(:,:,3,:,:); % merge color channels
+        E(:,:,3,:,:) = [];  % remove redundant color channel
+        E = squeeze(E);
     case {'se','mse','nmse','rse','rmse','nrmse'}
+        [H,W,C,R] = size(enc);
+        E = zeros(H,W,R);        
         w = [1/3 1/3 1/3]; % default channel weights
         if nargin == 5 && ~isempty(params)
             assert(sum(params(:)) == 1, 'Channel weights should sum to 1')
@@ -69,6 +108,8 @@ switch method
             E = sqrt(E); 
         end
     case 'dssim'
+        [H,W,C,R] = size(enc);
+        E = zeros(H,W,R);        
         k1 = 0.01; k2 = 0.03; L = 1; % default constant values
         if nargin == 5 && ~isempty(params)
             k1 = params(1); k2 = params(2); L  = params(3);

@@ -13,4 +13,10 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 
 **imageError(), drawHistGradOnFigureInteractive(), amatHistGrad()**
 - handle cases when the image boundary is crossed (maybe add infinite cost?). This is _IMPORTANT_ when the background of the input image is black, in which case it matches the default (zero)padding of conv2 and can lead to erroneous high scores for disks that extend beyond the image boundaries.
+- Change the space on which we perform comparisons to the space of histograms (penalize dissimilar histograms instead of penalizing bad raw image reconstructions).
 
+**imageEncoding(), patchEncoding()**
+- Change encoding for histograms: choosing maximum vote for each bin _independently_ is not the right way to do it. We must look for more frequent Lab _triplets_.
+
+**drawHistGradOnFigureInteractive()**
+- Combine reconstruction error and maximality error into the visualization

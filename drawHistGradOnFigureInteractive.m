@@ -29,8 +29,8 @@ function fh = drawHistGradOnFigureInteractive(imgRGB,filters)
 r  = 5;  % default radius
 dr = 1;  % default radius difference when comparing histograms
 B  = 32; % used for histogram encodings
-R  = 25; % default range of scales
-channelType   = {'luminance','colora','colorb','texture'};
+R  = 40; % default range of scales
+channelType   = {'luminance','color','texture'};
 distanceType  = {'chi2','intersection'};
 distanceIndex = find(strcmp(distanceType, 'chi2'));
 channelIndex  = find(strcmp(channelType, 'luminance'));
@@ -54,13 +54,13 @@ drawHistogramGradients(fh); % first draw
 
     function drawHistogramGradients(fh)
         % Compute distance
-        c = channelIndex;
+        if channelIndex == 2, c = [2;3]; else c = channelIndex; end
         switch distanceType{distanceIndex}
             case 'intersection'
-                d = sum(min(h(:,:,c,:,r+dr),h(:,:,c,:,r)),4);
+                d = sum(sum(min(h(:,:,c,:,r+dr),h(:,:,c,:,r)),4),3);
             case 'chi2'
-                d = 0.5*sum(((h(:,:,c,:,r+dr)-h(:,:,c,:,r)).^2) ./ ...
-                    (h(:,:,c,:,r+dr)+h(:,:,c,:,r)+eps), 4);
+                d = 0.5*sum(sum(((h(:,:,c,:,r+dr)-h(:,:,c,:,r)).^2) ./ ...
+                    (h(:,:,c,:,r+dr)+h(:,:,c,:,r)+eps), 4),3);
             otherwise, error('Distance type is not supported')
         end
         % Disable annoying docking error that clutters the command line

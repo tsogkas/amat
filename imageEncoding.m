@@ -1,4 +1,4 @@
-function f = imageEncoding(img,filters,method,numBins)
+function f = imageEncoding(img,filters,method,B)
 % IMAGEENCODING Compute encodings f across the image for all given filters. 
 %   Given an input image, the encoding f(x,y,s) is a "summary" of the 
 %   appearance content of the image at a region filters{s}, centered at 
@@ -15,7 +15,7 @@ function f = imageEncoding(img,filters,method,numBins)
 %   'hist'      : computes a histogram of the binned values in the disk.
 % 
 %   If the chosen method is histogram-based, then an additional parameter
-%   numBins {32} is required, determining the number of bins used. numBins
+%   B {32} is required, determining the number of bins used. numBins
 %   can also be a Cx1 vector, where C is the number of image channels, to
 %   allow for a different number of bins per channel.
 % 
@@ -28,17 +28,17 @@ function f = imageEncoding(img,filters,method,numBins)
 %   Last update: November 2016
 
 if nargin < 3, method  = 'average'; end
-if nargin < 4, numBins = 32; end
+if nargin < 4, B = 32; end
 
 switch method
     case 'average'
         f = meanEncoding(img,filters); % HxWxCxR
     case 'hist'
-        f = histogramEncoding(img,filters,numBins); % HxWxCxBxR
-        % Summarize a Nx1 histogram using the single bin with the most counts. 
-        [~,f] = max(f,[],4); % HxWxCxR
-        f = squeeze(f);
-        f = (f-0.5)/numBins; % turn histogram bin to color values
+        f = histogramEncoding(img,filters,B); % HxWxCxBxR
+%         % Summarize a Nx1 histogram using the single bin with the most counts. 
+%         [~,f] = max(f,[],4); % HxWxCxR
+%         f = squeeze(f);
+%         f = (f-0.5)/numBins; % turn histogram bin to color values
     otherwise, error('Method is not supported')
 end
 
@@ -46,27 +46,27 @@ end
 % -------------------------------------------------------------------------
 function f = meanEncoding(img,filters)
 % -------------------------------------------------------------------------
-[H,W,numChannels] = size(img);
-numScales = numel(filters);
-f = zeros(H,W,numChannels,numScales);
-for c=1:numChannels
-    for s=1:numScales
+[H,W,C] = size(img);
+R = numel(filters);
+f = zeros(H,W,C,R);
+for c=1:C
+    for s=1:R
         D = double(filters{s})/nnz(filters{s});
         f(:,:,c,s) = conv2(img(:,:,c), D, 'same');
     end
 end
 
 % -------------------------------------------------------------------------
-function f = histogramEncoding(img,filters,numBins)
+function f = histogramEncoding(img,filters,B)
 % -------------------------------------------------------------------------
-[H,W,numChannels] = size(img);
-numScales = numel(filters);
-f = zeros(H,W,numChannels,numBins,numScales);
-for c=1:numChannels
+[H,W,C] = size(img);
+R = numel(filters);
+f = zeros(H,W,C,B,R);
+for c=1:C
     imgc = img(:,:,c);
-    for b=1:numBins
+    for b=1:B
         imgcb = double(imgc == b);
-        for s=1:numScales
+        for s=1:R
             D = double(filters{s})/nnz(filters{s});
             f(:,:,c,b,s) = conv2(imgcb, D, 'same');
         end
