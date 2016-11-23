@@ -130,38 +130,4 @@ imgLab  = rgb2labNormalized(imgRGB);
         end
         drawDisk(fh)
     end
-
-%     function e = patchError(imgPatch,encPatch)
-%         switch errorType
-%             % These should be computed in the CIE Lab color space.
-%             case {'se','mse','nmse','rse','rmse','nrmse'}
-%                 e = sum(sum(bsxfun(@minus,imgPatch,encPatch).^2));
-%                 % Normalize
-%                 if strcmp(errorType,'rmse') || strcmp(errorType,'mse')
-%                     e = e / (C*size(imgPatch,1));
-%                 elseif strcmp(errorType,'nrmse') || strcmp(errorType,'nmse')
-%                     e = e / sum(imgPatch(:).^2);
-%                 end
-%                 e = max(0,e);
-%                 if ismember(errorType,{'rse','rmse','nrmse'})
-%                     e = sqrt(e); 
-%                 end                
-%             case 'dssim' % NOTE: dssim operates on the RGB color space
-%                 % default constant values (wikipedia)
-%                 k1 = 0.01; k2 = 0.03; L  = 1;
-%                 c1 = (k1*L)^2; c2 = (k2*L)^2;
-%                 % Channel-wise implementation of ssim
-%                 mx = mean(imgPatch);
-%                 sx = mean(bsxfun(@minus,imgPatch,mx).^2);
-%                 my = encPatch;
-%                 sy = 0;
-%                 sxy= 0;
-%                 e = ((2 .* mx .* my) .* (2 .* sxy + c2)) ./ ... % ssim
-%                     ((mx.^2 + my.^2 + c1).* (sx.^2 + sy.^2 + c2));
-%                 e = (1-mean(e,2))/2; % mean across channels and dssim
-%                 e = max(-1, min(1,e));
-%             otherwise, error('Error type not supported')
-%         end
-%     end
-
 end
