@@ -50,9 +50,9 @@ for r=1:R-1
 end
 
 %% Debug
-r2 = 6;
-r1 = 5;
-c  = 3;
+r2 = 2;
+r1 = 1;
+c  = 1;
 figure(1);
 subplot(131); imagesc(0.5*sum(((h(:,:,c,:,r2)-h(:,:,c,:,r1)).^2) ./ (h(:,:,c,:,r2)+h(:,:,c,:,r1)+eps), 4),[0,1]); title('Chi-square ')
 subplot(132); imagesc(max(abs(h(:,:,c,:,r2)-h(:,:,c,:,r1)),[],4),[0,1]); title('Max absolute')
