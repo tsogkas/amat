@@ -8,6 +8,17 @@ function E = imageError(img,enc,filters,method,params)
 %   assumes that the reconstruction is equivalent to "expanding" a single
 %   RGB triplet across the whole disk area. 
 % 
+%   E = IMAGEERROR(img,enc,[],method) where method is one of the supported
+%   histogram distance metrics, assumes that both img and enc are HxWxCxBxR
+%   histograms. 
+% 
+%   E = IMAGEERROR(img,enc,filters,'smirnov',params) assumes img is a HxWxCxR
+%   input image and enc is its HxWxCxBxR histogram encoding. In this case,
+%   IMAGEERROR computes local reconstructions using the inverse transform
+%   sampling or smirnov method, for creating random samples from a
+%   histogram distribution, and then computes the reconstruction error
+%   using the method specified in params.
+% 
 %   The supported methods for computing the reconstruction error are:
 % 
 %   {(r)se}:  (root) squared error E = sqrt(sum((y-x).^2))
@@ -23,13 +34,34 @@ function E = imageError(img,enc,filters,method,params)
 %   hist-intersection: 1-histogram intersection distance (assumes inputs 
 %              img and enc are histograms of dimensions HxWxCxBxR.
 %   
-%   See also: immse, ssim
+%   See also: immse, ssim, histogram
 % 
 %   Stavros Tsogkas <tsogkas@cs.toronto.edu>
 %   Last update: November 2016
 
 
 switch method
+    % ---------------------------------------------------------------------
+    % Inverse tranform sampling or Smirnov transform
+    % ---------------------------------------------------------------------
+    case {'smirnov','inverse'}
+        [H,W,C,B,R] = size(enc);
+        binCenters = (0:(B-1))/B;
+        % Compute filter areas at all scales
+        areas = zeros(numel(filters));
+        for r=1:R, areas(r) = nnz(filters{r}); end
+        % Compute cumulative distribution functions
+        CDF = cumsum(enc,4);
+        % Create random numbers in (0,1)
+        for r=1:R
+            % do single to save RAM. Maybe preallocate to save time.
+            u = rand(H,W,C,1,areas(r),'single'); 
+            [~,binIndexes] = max(bsxfun(@gt,u,CDF),[],4);
+            
+        end
+    % ---------------------------------------------------------------------
+    % Histogram comparison methods
+    % ---------------------------------------------------------------------
     case {'hist-intersection','hist-chi2','hist-chi2-kernel'}
         if strcmp(method,'hist-intersection')
             E = min(img,enc,[],4); % histogram intersection
@@ -63,6 +95,9 @@ switch method
         E(:,:,2,:,:) = E(:,:,2,:,:) + E(:,:,3,:,:); % merge color channels
         E(:,:,3,:,:) = [];  % remove redundant color channel
         E = squeeze(E);
+    % ---------------------------------------------------------------------        
+    % Pixels-wise squared and root squared metrics
+    % ---------------------------------------------------------------------
     case {'se','mse','nmse','rse','rmse','nrmse'}
         [H,W,C,R] = size(enc);
         E = zeros(H,W,R);        
@@ -107,6 +142,9 @@ switch method
         if any(strcmp(method,{'rse','rmse','nrmse'}))
             E = sqrt(E); 
         end
+    % ---------------------------------------------------------------------        
+    % Structural similarity based metric
+    % ---------------------------------------------------------------------        
     case 'dssim'
         [H,W,C,R] = size(enc);
         E = zeros(H,W,R);        
