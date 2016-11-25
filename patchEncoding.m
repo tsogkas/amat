@@ -1,12 +1,13 @@
-function f = patchEncoding(patch, method, numBins)
+function f = patchEncoding(patch, method, B)
 % PATCHENCODING returns an encoding of the pixels contained in a patch.
 % 
 %   p = PATCHENCODING(patch,method) returns the encoding of the patch
 %   according to one of the following methods (default enclosed in 
 %   brackets):
 % 
-%   {'average'} : simple average 
-%   'hist'      : histogram of the binned values in the patch
+%   {'average'} : simple average (returns a 1xC) vector.
+%   'hist'      : histogram of the binned values in the patch (returns a
+%                 BxC matrix of histograms for each channel).
 % 
 %   Patch can be a Nx1 vector where N is the number of the pixels in the 
 %   patch (grayscale image), a NxC matrix, where C is the number of the 
@@ -19,7 +20,7 @@ function f = patchEncoding(patch, method, numBins)
 %   Last update: November 2016
 
 if nargin < 2, method  = 'average'; end
-if nargin < 3, numBins = 32; end
+if nargin < 3, B = 32; end
 
 % Force the input into a standard shape.
 if isvector(patch) % grayscale image
@@ -35,14 +36,11 @@ switch method
     case 'average'
         f = mean(patch); % scalar or 1x3 vector 
     case 'hist'
-        numChannels = size(patch,2);
-        counts   = zeros(numBins,numChannels);
-        binEdges = (0:numBins)/numBins;
-        binWidth = binEdges(2);
-        for i=1:numChannels
+        C = size(patch,2);
+        counts = zeros(B,C);
+        binEdges = (0:B)/B;
+        for i=1:C
             counts(:,i) = histcounts(patch(:,i),binEdges);
         end
-        [~,f] = max(counts,[],1); % 1x3 vector
-        f = binEdges(f)+binWidth; % turn histogram bin to color values
     otherwise, error('Method is not supported')
 end

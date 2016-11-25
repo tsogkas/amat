@@ -62,14 +62,27 @@ imgLab  = rgb2labNormalized(imgRGB);
         
         % Encode the patch and compute error
         encPatch = patchEncoding(imgPatch,encodingType,numBins);
-        err = patchError(imgPatch,encPatch,errorType,[.7 .15 .15]);
+        if strcmp(encodingType,'average')
+            err = patchError(imgPatch,encPatch,errorType);
+        else
+            % for patch encoding using the hist method, we will try to
+            % decode the patch with the Smirnov transform.
+            encPatch = histinv(encPatch',size(imgPatch,1));
+            err = patchError(imgPatch,encPatch,errorType);
+        end
+        
         
         % Replace pixels in the input image
         originalPatch = imgRGB(D,:);
         if ~strcmp(errorType, 'dssim')
             encPatch = labNormalized2rgb(encPatch);
         end
-        imgRGB(D,:) = repmat(encPatch, [nnz(D), 1]);
+        if isvector(encPatch)
+            imgRGB(D,:) = repmat(encPatch, [nnz(D), 1]);
+        elseif ismatrix
+            imgRGB(D,:) = encPatch;
+        else error('Something went wrong with encPatch')
+        end
         
         % Disable annoying docking error that clutters the command line
         if strcmp(fh.WindowStyle, 'docked')

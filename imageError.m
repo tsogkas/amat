@@ -4,9 +4,10 @@ function E = imageError(img,enc,filters,method,params)
 % 
 %   E = IMAGEERROR(img,enc,filters,method) where img is an input image and
 %   enc is its encoding, computes the local reconstruction error for all 
-%   patches of the shapes defined in the filters cell array. The function
-%   assumes that the reconstruction is equivalent to "expanding" a single
-%   RGB triplet across the whole disk area. 
+%   patches of the shapes defined in the filters cell array. Both img and 
+%   enc are HxWxCxR arrays and IMAGEERROR assumes that reconstructing a 
+%   patch locally is equivalent to "expanding" a single color (RGB or LAB)
+%   triplet across the whole disk area. 
 % 
 %   E = IMAGEERROR(img,enc,[],method) where method is one of the supported
 %   histogram distance metrics, assumes that both img and enc are HxWxCxBxR
@@ -34,7 +35,7 @@ function E = imageError(img,enc,filters,method,params)
 %   hist-intersection: 1-histogram intersection distance (assumes inputs 
 %              img and enc are histograms of dimensions HxWxCxBxR.
 %   
-%   See also: immse, ssim, histogram
+%   See also: immse, ssim, patchError, compressHistogram
 % 
 %   Stavros Tsogkas <tsogkas@cs.toronto.edu>
 %   Last update: November 2016
@@ -45,6 +46,7 @@ switch method
     % Inverse tranform sampling or Smirnov transform
     % ---------------------------------------------------------------------
     case {'smirnov','inverse'}
+        error('Under construction. Not ready yet.')
         [H,W,C,B,R] = size(enc);
         binCenters = (0:(B-1))/B;
         % Compute filter areas at all scales
@@ -52,21 +54,24 @@ switch method
         for r=1:R, areas(r) = nnz(filters{r}); end
         % Compute cumulative distribution functions
         CDF = cumsum(enc,4);
-        % Create random numbers in (0,1)
         for r=1:R
-            % do single to save RAM. Maybe preallocate to save time.
-            u = rand(H,W,C,1,areas(r),'single'); 
-            [~,binIndexes] = max(bsxfun(@gt,u,CDF),[],4);
-            
+            % Create random numbers in (0,1). Single precision to save RAM. 
+            % Maybe preallocate to save time.
+            u = rand(H,W,C,1,areas(r),'single');
+            % Hijack max function. Its input is logical, so it will return
+            % the index of the first element across the selected dimension
+            % that is nonzero.
+            [~,u] = max(bsxfun(@gt,u,CDF),[],4);
+            u = reshape(binCenters(u), H,W,C,[]);
         end
     % ---------------------------------------------------------------------
     % Histogram comparison methods
     % ---------------------------------------------------------------------
     case {'hist-intersection','hist-chi2','hist-chi2-kernel'}
         if strcmp(method,'hist-intersection')
-            E = min(img,enc,[],4); % histogram intersection
+            E = sum(min(img,enc),4); % histogram intersection
         elseif strcmp(method,'hist-chi2')
-            E = sum((img-enc).^2 ./ (img + enc + eps), 4);
+            E = 0.5*sum((img-enc).^2 ./ (img + enc + eps), 4);
         else
             [H,W,C,B,R] = size(img);
             % Compute color bin weighted distance using gaussian kernel
@@ -86,7 +91,7 @@ switch method
             % For texture we compute the chi-squared distance as usual.
             if C > 3
                 imgt = img(:,:,4,:,:); enct = enc(:,:,4,:,:);
-                etexture = sum((imgt-enct).^2 ./ (imgt + enct + eps), 4);
+                etexture = 0.5*sum((imgt-enct).^2 ./ (imgt + enct + eps), 4);
             else
                 etexture = [];
             end
