@@ -80,7 +80,8 @@ switch errorType
         % three color channels. This is useful when using a color space
         % that is different than RGB (e.g. CIE Lab), where the channels do
         % not have equal discriminative importance.
-        w = [1/3 1/3 1/3]; % be default all channels contribute equally
+        [N,C] = size(imgPatch);
+        w = ones(1,C)/C; % be default all channels have equal weights
         if nargin == 4 && ~isempty(errorParams)
             assert(sum(errorParams(:))==1, 'Color channel weights should sum to 1');
             w = errorParams; 
@@ -89,7 +90,7 @@ switch errorType
         e = sum(bsxfun(@minus,imgPatch,encPatch).^2);
         % Normalize across each channel
         if strcmp(errorType,'rmse') || strcmp(errorType,'mse')
-            e = e ./ size(imgPatch,1);
+            e = e ./ N;
         elseif strcmp(errorType,'nrmse') || strcmp(errorType,'nmse')
             e = e ./ sum(imgPatch.^2);
         end

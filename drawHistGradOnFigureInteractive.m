@@ -45,7 +45,7 @@ end
 imgLab  = rgb2labNormalized(imgRGB);
 imgBinned = cat(3, binImage(imgLab,B),textonMap(imgRGB, B));
 h = imageEncoding(imgBinned,filters,'hist',B);
-m = imageError(imgLab,imageEncoding(imgLab,filters,'average'));
+m = imageEncoding(imgLab,filters,'average');
 
 % Plot figure and set callbacks
 fh = figure; subplot(121); imshow(imgRGB); 
@@ -76,8 +76,13 @@ drawHistogramGradients(fh); % first draw
             case 'combined'
                 dmaxim = 0.5*sum(sum(((h(:,:,c,:,r+dr)-h(:,:,c,:,r)).^2) ./ ...
                     (h(:,:,c,:,r+dr)+h(:,:,c,:,r)+eps), 4),3);
-                drecon = m(:,:,c,r)
-
+                if channelIndex == 2
+                    drecon = imageError(imgLab(:,:,c(1)),m(:,:,c(1),r),filters(r),'nrmse') + ...
+                        imageError(imgLab(:,:,c(2)),m(:,:,c(2),r),filters(r),'nrmse');
+                else
+                    drecon = imageError(imgLab(:,:,c(1)),m(:,:,c(1),r),filters(r),'nrmse');
+                end
+                d = drecon + dmaxim;
             otherwise, error('Distance type is not supported')
         end
         % Disable annoying docking error that clutters the command line

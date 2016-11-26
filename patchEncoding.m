@@ -16,7 +16,7 @@ function f = patchEncoding(patch, method, B)
 %   image channels, or a HxWxC array, where HxW are the dimensions of the 
 %   patch.
 %   
-%   See also: histcounts, extractDiskPatch, imageEncoding
+%   See also: histcounts, diskPatch, imageEncoding
 % 
 %   Stavros Tsogkas <tsogkas@cs.toronto.edu>
 %   Last update: November 2016

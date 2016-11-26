@@ -106,7 +106,7 @@ switch method
     case {'se','mse','nmse','rse','rmse','nrmse'}
         [H,W,C,R] = size(enc);
         E = zeros(H,W,R);        
-        w = [1/3 1/3 1/3]; % default channel weights
+        w = ones(1,C)/C; % be default all channels have equal weights
         if nargin == 5 && ~isempty(params)
             assert(sum(params(:)) == 1, 'Channel weights should sum to 1')
             w = params;

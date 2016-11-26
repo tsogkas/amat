@@ -14,6 +14,3 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 - Modify *diskPatch()/patchEncoding()* so that they take into account out of border pixels?
 - Consider grouping _triplets_ of Lab values instead of each channel individually.
 
-**drawHistGradOnFigureInteractive()**
-- Combine reconstruction error and maximality error into the visualization
-
