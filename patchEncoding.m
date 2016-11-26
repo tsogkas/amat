@@ -7,14 +7,16 @@ function f = patchEncoding(patch, method, B)
 % 
 %   {'average'} : simple average (returns a 1xC) vector.
 %   'hist'      : histogram of the binned values in the patch (returns a
-%                 BxC matrix of histograms for each channel).
+%                 CxB matrix of histograms for each channel, where B is the
+%                 number of bins used and is specified by the user as a 3rd
+%                 input argument).
 % 
 %   Patch can be a Nx1 vector where N is the number of the pixels in the 
 %   patch (grayscale image), a NxC matrix, where C is the number of the 
 %   image channels, or a HxWxC array, where HxW are the dimensions of the 
 %   patch.
 %   
-%   See also: histcounts, extractDiskPatch
+%   See also: histcounts, extractDiskPatch, imageEncoding
 % 
 %   Stavros Tsogkas <tsogkas@cs.toronto.edu>
 %   Last update: November 2016
@@ -36,11 +38,12 @@ switch method
     case 'average'
         f = mean(patch); % scalar or 1x3 vector 
     case 'hist'
-        C = size(patch,2);
-        counts = zeros(B,C);
+        [N,C] = size(patch);
+        f = zeros(C,B);
         binEdges = (0:B)/B;
         for i=1:C
-            counts(:,i) = histcounts(patch(:,i),binEdges);
+            f(i,:) = histcounts(patch(:,i),binEdges);
         end
+        f = f/N;
     otherwise, error('Method is not supported')
 end

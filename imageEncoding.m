@@ -35,10 +35,6 @@ switch method
         f = meanEncoding(img,filters); % HxWxCxR
     case 'hist'
         f = histogramEncoding(img,filters,B); % HxWxCxBxR
-%         % Summarize a Nx1 histogram using the single bin with the most counts. 
-%         [~,f] = max(f,[],4); % HxWxCxR
-%         f = squeeze(f);
-%         f = (f-0.5)/numBins; % turn histogram bin to color values
     otherwise, error('Method is not supported')
 end
 

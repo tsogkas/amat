@@ -82,7 +82,7 @@ switch method
             imgc = reshape(img(:,:,1:3,:,:),H*W*3,B,R);
             encc = reshape(enc(:,:,1:3,:,:),H*W*3,B,R);
             for r=1:R
-                binCenterDistance = 1-exp((x-y).^2./(2*r.^2)); % BxB
+                binCenterDistance = 1-exp(-(x-y).^2./(2*r.^2)); % BxB
                 dabs = abs(imgc(:,:,r)-encc(:,:,r)); % H*W*C x B
                 elab(:,r) = sum((dabs*binCenterDistance) .* dabs, 2);
             end

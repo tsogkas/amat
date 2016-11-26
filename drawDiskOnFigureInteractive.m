@@ -29,7 +29,7 @@ errorCounter = find(strcmp(methods.error, errorType));
 encodingCounter = find(strcmp(methods.encoding, encodingType));
 
 % Plot figure and set callbacks
-fh = figure; imshow(imgRGB);
+fh = figure(1); imshow(imgRGB);
 set(fh, 'WindowButtonMotionFcn', @changePoint);
 set(fh, 'WindowButtonDownFcn',   @changeMethod);
 set(fh, 'WindowScrollWheelFcn',  @changeRadius);
@@ -67,7 +67,8 @@ imgLab  = rgb2labNormalized(imgRGB);
         else
             % for patch encoding using the hist method, we will try to
             % decode the patch with the Smirnov transform.
-            encPatch = histinv(encPatch',size(imgPatch,1));
+            hists = encPatch;
+            encPatch = histinv(encPatch,size(imgPatch,1))';
             err = patchError(imgPatch,encPatch,errorType);
         end
         
@@ -79,7 +80,7 @@ imgLab  = rgb2labNormalized(imgRGB);
         end
         if isvector(encPatch)
             imgRGB(D,:) = repmat(encPatch, [nnz(D), 1]);
-        elseif ismatrix
+        elseif ismatrix(encPatch)
             imgRGB(D,:) = encPatch;
         else error('Something went wrong with encPatch')
         end
@@ -89,10 +90,15 @@ imgLab  = rgb2labNormalized(imgRGB);
             warning('off','images:imshow:magnificationMustBeFitForDockedFigure')
         end
         % Display image and then restore original patch
-        imshow(reshape(imgRGB,H,W,C)); imgRGB(D,:) = originalPatch;         
+        figure(1); imshow(reshape(imgRGB,H,W,C)); imgRGB(D,:) = originalPatch; drawnow;
         if strcmp(encodingType, 'hist')
             title(sprintf('Point (%d,%d), r=%d, hist (%d bins), %s: %.4f',...
                 x,y,r,numBins,errorType,err));
+            figure(2);
+            subplot(131); bar(hists(1,:)); title('luminance');
+            subplot(132); bar(hists(2,:)); title('colora');
+            subplot(133); bar(hists(3,:)); title('colorb');
+            drawnow;
         else
             title(sprintf('Point (%d,%d), r=%d, average, %s: %.4f',...
                 x,y,r,errorType,err));

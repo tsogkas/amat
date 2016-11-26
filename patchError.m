@@ -57,7 +57,7 @@ switch errorType
             binCenters = ((1:B)-0.5)/B;
             [x,y] = meshgrid(binCenters,binCenters);
             % Estimate kernel scale (sigma) from the number of pixels 
-            binCenterDistance = 1-exp((x-y).^2./(2*r.^2)); % BxB
+            binCenterDistance = 1-exp(-(x-y).^2./(2*r.^2)); % BxB
             dabs = abs(imgPatch(:,1:3)-encPatch(:,1:3)); 
             elab = sum((binCenterDistance*dabs) .* dabs);
             % If we use texture, it's the 4th channel.

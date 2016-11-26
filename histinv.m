@@ -26,7 +26,7 @@ else
     sz = size(h);
     B = sz(end);
     binCenters = (0:(B-1))/B;
-    y = rand([sz, 1, n]);
-    [~,y] = max(bsxfun(@gt,cumsum(h,dim),y),[],dim);
-    y = reshape(binCenters(y), [sz(1:dim-1),b]);
+    y = rand([sz(1:dim-1), 1, n]);
+    [~,y] = max(bsxfun(@gt,cumsum(h,dim),y),[],dim); % hijack max function
+    y = reshape(binCenters(y), [sz(1:dim-1),n]);
 end

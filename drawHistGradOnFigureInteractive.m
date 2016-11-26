@@ -20,7 +20,7 @@ function fh = drawHistGradOnFigureInteractive(imgRGB,filters)
 %   Learning to detect natural image boundaries using local brightness,
 %   color, and texture cues. IEEE Trans. PAMI, 2004.
 % 
-%   See also: drawDiskOnFgureInteractive
+%   See also: drawDiskOnFgureInteractive, imageEncoding
 % 
 %   Stavros Tsogkas <tsogkas@cs.toronto.edu>
 %   Last update: November 2016
@@ -31,7 +31,7 @@ dr = 1;  % default radius difference when comparing histograms
 B  = 32; % used for histogram encodings
 R  = 40; % default range of scales
 channelType   = {'luminance','color','texture'};
-distanceType  = {'chi2','intersection'};
+distanceType  = {'chi2','chi2-kernel','intersection','combined'};
 distanceIndex = find(strcmp(distanceType, 'chi2'));
 channelIndex  = find(strcmp(channelType, 'luminance'));
 
@@ -43,7 +43,9 @@ end
 % Compute Lab color transformation and histograms with default parameters
 [H,W,~] = size(imgRGB);
 imgLab  = rgb2labNormalized(imgRGB);
-h       = computeHistograms();
+imgBinned = cat(3, binImage(imgLab,B),textonMap(imgRGB, B));
+h = imageEncoding(imgBinned,filters,'hist',B);
+m = imageError(imgLab,imageEncoding(imgLab,filters,'average'));
 
 % Plot figure and set callbacks
 fh = figure; subplot(121); imshow(imgRGB); 
@@ -57,10 +59,25 @@ drawHistogramGradients(fh); % first draw
         if channelIndex == 2, c = [2;3]; else c = channelIndex; end
         switch distanceType{distanceIndex}
             case 'intersection'
-                d = sum(sum(min(h(:,:,c,:,r+dr),h(:,:,c,:,r)),4),3);
+                d = 1-sum(sum(min(h(:,:,c,:,r+dr),h(:,:,c,:,r)),4),3);
             case 'chi2'
                 d = 0.5*sum(sum(((h(:,:,c,:,r+dr)-h(:,:,c,:,r)).^2) ./ ...
                     (h(:,:,c,:,r+dr)+h(:,:,c,:,r)+eps), 4),3);
+            case 'chi2-kernel'
+                bc = ((1:B)-0.5)/B;
+                [xb,yb] = meshgrid(bc,bc);
+                bcd  = 1-exp(-(xb-yb).^2./(2*r.^2));
+                dabs = reshape(abs(h(:,:,c,:,r+dr)-h(:,:,c,:,r)),[],B);
+                numer= sum(sum(reshape((dabs * bcd) .* dabs,H,W,[],B),4),3);
+                denom= reshape(h(:,:,c,:,r+dr)+h(:,:,c,:,r)+eps,[],B);
+                denom= sum(sum(reshape((denom * bcd) .* denom,H,W,[],B),4),3);
+                d = 0.5*numer./denom;
+%                 d    = sum(sum(reshape((dabs * bcd) .* dabs,H,W,[],B),4),3);
+            case 'combined'
+                dmaxim = 0.5*sum(sum(((h(:,:,c,:,r+dr)-h(:,:,c,:,r)).^2) ./ ...
+                    (h(:,:,c,:,r+dr)+h(:,:,c,:,r)+eps), 4),3);
+                drecon = m(:,:,c,r)
+
             otherwise, error('Distance type is not supported')
         end
         % Disable annoying docking error that clutters the command line
@@ -72,23 +89,6 @@ drawHistogramGradients(fh); % first draw
         title(sprintf('r_i=%d, r_o=%d, #bins=%d, %s, %s',...
                 r,r+dr,B,channelType{channelIndex},distanceType{distanceIndex}));
         drawnow;
-    end
-
-
-    function h = computeHistograms()
-        % Compute histograms
-        f = cat(3, binImage(imgLab,B),textonMap(imgRGB, B));
-        h = zeros(H,W,size(f,3),B,R);
-        for c=1:size(f,3)
-            imgc = f(:,:,c);
-            for b=1:B
-                imgcb = double(imgc == b);
-                for s=1:R
-                    h(:,:,c,b,s) = conv2(imgcb, ...
-                        double(filters{s})/nnz(filters{s}), 'same');
-                end
-            end
-        end
     end
 
     function changeRadius(fh,callbackData)
@@ -152,7 +152,7 @@ drawHistogramGradients(fh); % first draw
             distanceIndex = max(1,mod(distanceIndex + 1, numel(distanceType)+1));
         elseif strcmp(fh.SelectionType, 'extend') % change #bins
             changeHistGradParams(fh);
-            h = computeHistograms(); % must recompute the histograms
+            h = imageEncoding(imgBinned,filters,'hist',B);
         end
         drawHistogramGradients(fh)
     end
