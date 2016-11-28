@@ -10,8 +10,8 @@ function E = imageError(img,enc,filters,method,params)
 %   triplet across the whole disk area. 
 % 
 %   E = IMAGEERROR(img,enc,[],method) where method is one of the supported
-%   histogram distance metrics, assumes that both img and enc are HxWxCxBxR
-%   histograms. 
+%   histogram distance metrics, computes the error in the "histogram space"
+%   assuming that both img and enc are HxWxCxBxR histograms. 
 % 
 %   E = IMAGEERROR(img,enc,filters,'smirnov',params) assumes img is a HxWxCxR
 %   input image and enc is its HxWxCxBxR histogram encoding. In this case,
@@ -42,28 +42,6 @@ function E = imageError(img,enc,filters,method,params)
 
 
 switch method
-    % ---------------------------------------------------------------------
-    % Inverse tranform sampling or Smirnov transform
-    % ---------------------------------------------------------------------
-    case {'smirnov','inverse'}
-        error('Under construction. Not ready yet.')
-        [H,W,C,B,R] = size(enc);
-        binCenters = (0:(B-1))/B;
-        % Compute filter areas at all scales
-        areas = zeros(numel(filters));
-        for r=1:R, areas(r) = nnz(filters{r}); end
-        % Compute cumulative distribution functions
-        CDF = cumsum(enc,4);
-        for r=1:R
-            % Create random numbers in (0,1). Single precision to save RAM. 
-            % Maybe preallocate to save time.
-            u = rand(H,W,C,1,areas(r),'single');
-            % Hijack max function. Its input is logical, so it will return
-            % the index of the first element across the selected dimension
-            % that is nonzero.
-            [~,u] = max(bsxfun(@gt,u,CDF),[],4);
-            u = reshape(binCenters(u), H,W,C,[]);
-        end
     % ---------------------------------------------------------------------
     % Histogram comparison methods
     % ---------------------------------------------------------------------
@@ -106,7 +84,7 @@ switch method
     case {'se','mse','nmse','rse','rmse','nrmse'}
         [H,W,C,R] = size(enc);
         E = zeros(H,W,R);        
-        w = ones(1,C)/C; % be default all channels have equal weights
+        w = ones(1,C)/C; % by default all channels have equal weights
         if nargin == 5 && ~isempty(params)
             assert(sum(params(:)) == 1, 'Channel weights should sum to 1')
             w = params;

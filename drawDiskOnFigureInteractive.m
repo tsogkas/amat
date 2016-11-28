@@ -62,14 +62,18 @@ imgLab  = rgb2labNormalized(imgRGB);
         
         % Encode the patch and compute error
         encPatch = patchEncoding(imgPatch,encodingType,numBins);
-        if strcmp(encodingType,'average')
-            err = patchError(imgPatch,encPatch,errorType);
-        else
-            % for patch encoding using the hist method, we will try to
-            % decode the patch with the Smirnov transform.
-            hists = encPatch;
-            encPatch = histinv(encPatch,size(imgPatch,1))';
-            err = patchError(imgPatch,encPatch,errorType);
+        switch encodingType
+            case 'average'
+                err = patchError(imgPatch,encPatch,errorType);
+            case 'hist-smirnov'
+                % for patch encoding using the hist method, we will try to
+                % decode the patch with the Smirnov transform.
+                hists = encPatch;
+                encPatch = histinv(encPatch,size(imgPatch,1))';
+                err = patchError(imgPatch,encPatch,errorType);
+            case 'mode'
+            case 'expectation'
+            otherwise, error('Encoding type not supported')
         end
         
         

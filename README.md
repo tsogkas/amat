@@ -14,3 +14,12 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 - Modify *diskPatch()/patchEncoding()* so that they take into account out of border pixels?
 - Consider grouping _triplets_ of Lab values instead of each channel individually.
 
+**imageError(), patchError()**
+- Put histogram distances in separate function, and replace respective code in imageError(), patchError() and drawHistGradOnFigureInteractive().
+- Handle different sizes and dimensionalities of inputs.
+
+**drawDiskOnFigureInteractive()**
+- Update using methods in _compressHistogram()_
+
+### Low priority
+- Add mask shapes into a separate matlab class
