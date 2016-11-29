@@ -26,12 +26,12 @@ function fh = drawHistGradOnFigureInteractive(imgRGB,filters)
 %   Last update: November 2016
 
 % Default parameters
-r  = 5;  % default radius
+r  = 1;  % default radius
 dr = 1;  % default radius difference when comparing histograms
 B  = 32; % used for histogram encodings
 R  = 40; % default range of scales
 channelType   = {'luminance','color','texture'};
-distanceType  = {'chi2','chi2-kernel','intersection','reconstruction','combined'};
+distanceType  = {'chi2','chi2-gaussian','reconstruction','sum'};
 distanceIndex = find(strcmp(distanceType, 'chi2'));
 channelIndex  = find(strcmp(channelType, 'luminance'));
 
@@ -56,31 +56,34 @@ drawHistogramGradients(fh); % first draw
 
     function drawHistogramGradients(fh)
         % Compute distance
+        et = 'nrmse';
         if channelIndex == 2, c = [2;3]; else c = channelIndex; end
         switch distanceType{distanceIndex}
             case 'intersection'
                 d = min(1,sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'intersection'),3));
             case 'chi2'
-                d = sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'chi2'),3);
-            case 'chi2-kernel'
-                d = sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'chi2-kernel',r),3);
+                d = min(1,sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'chi2'),3));
+            case 'chi2-gaussian'
+                d = min(1,sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'chi2-gaussian',0.2),3));
             case 'reconstruction'
                 if channelIndex == 2
-                    d = imageError(imgLab(:,:,c(1)),m(:,:,c(1),r),filters(r),'nrmse') + ...
-                        imageError(imgLab(:,:,c(2)),m(:,:,c(2),r),filters(r),'nrmse');
+                    d = imageError(imgLab(:,:,c(1)),m(:,:,c(1),r),filters(r),et) + ...
+                        imageError(imgLab(:,:,c(2)),m(:,:,c(2),r),filters(r),et);
                 else
-                    d = imageError(imgLab(:,:,c(1)),m(:,:,c(1),r),filters(r),'nrmse');
+                    d = imageError(imgLab(:,:,c(1)),m(:,:,c(1),r),filters(r),et);
                 end
-                d = 1-d;
+            case 'sum'
+                d = min(1, ...
+                    sum(histogramDistance(h(:,:,1:3,:,r+dr),h(:,:,1:3,:,r),'chi2-gaussian',.2),3)...
+                    + histogramDistance(h(:,:,4,:,r+dr),h(:,:,4,:,r),'chi2'));
             case 'combined'
                 dmaxim = sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'chi2'),3);
                 if channelIndex == 2
-                    drecon = imageError(imgLab(:,:,c(1)),m(:,:,c(1),r),filters(r),'nrmse') + ...
-                        imageError(imgLab(:,:,c(2)),m(:,:,c(2),r),filters(r),'nrmse');
+                    drecon = imageError(imgLab(:,:,c(1)),m(:,:,c(1),r),filters(r),et) + ...
+                        imageError(imgLab(:,:,c(2)),m(:,:,c(2),r),filters(r),et);
                 else
-                    drecon = imageError(imgLab(:,:,c(1)),m(:,:,c(1),r),filters(r),'nrmse');
+                    drecon = imageError(imgLab(:,:,c(1)),m(:,:,c(1),r),filters(r),et);
                 end
-                drecon = 1-drecon;
                 d = drecon + dmaxim;
             otherwise, error('Distance type is not supported')
         end
@@ -89,7 +92,7 @@ drawHistogramGradients(fh); % first draw
             warning('off','images:imshow:magnificationMustBeFitForDockedFigure')
         end
         % Display image and then restore original patch
-        subplot(122); imagesc(d,[0,1]); axis off image;
+        subplot(122); imagesc(d); axis off image;
         title(sprintf('r_i=%d, r_o=%d, #bins=%d, %s, %s',...
                 r,r+dr,B,channelType{channelIndex},distanceType{distanceIndex}));
         drawnow;
