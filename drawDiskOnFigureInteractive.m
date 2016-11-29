@@ -22,7 +22,7 @@ function fh = drawDiskOnFigureInteractive(imgRGB)
 r = 5;
 numBins = 32; % used for histogram encodings
 methods.error    = {'se','mse','nmse','rse','rmse','nrmse','dssim'};
-methods.encoding = {'average','hist'};
+methods.encoding = {'average','hist-smirnov','hist-expectation','hist-mode'};
 encodingType  = 'average';
 errorType = 'se';
 errorCounter = find(strcmp(methods.error, errorType));
@@ -61,7 +61,11 @@ imgLab  = rgb2labNormalized(imgRGB);
         end
         
         % Encode the patch and compute error
-        encPatch = patchEncoding(imgPatch,encodingType,numBins);
+        if strcmp(encodingType,'average')
+            encPatch = patchEncoding(imgPatch,'average');
+        else
+            encPatch = patchEncoding(imgPatch,'hist',numBins);
+        end
         switch encodingType
             case 'average'
                 err = patchError(imgPatch,encPatch,errorType);
@@ -71,8 +75,14 @@ imgLab  = rgb2labNormalized(imgRGB);
                 hists = encPatch;
                 encPatch = histinv(encPatch,size(imgPatch,1))';
                 err = patchError(imgPatch,encPatch,errorType);
-            case 'mode'
-            case 'expectation'
+            case 'hist-mode'
+                hists = encPatch;
+                encPatch = reshape(compressHistogram(hists,'mode',2),1,[]);
+                err = patchError(imgPatch,encPatch,errorType);
+            case 'hist-expectation'
+                hists = encPatch;
+                encPatch = reshape(compressHistogram(hists,'expectation',2),1,[]);
+                err = patchError(imgPatch,encPatch,errorType);
             otherwise, error('Encoding type not supported')
         end
         
@@ -95,17 +105,16 @@ imgLab  = rgb2labNormalized(imgRGB);
         end
         % Display image and then restore original patch
         figure(1); imshow(reshape(imgRGB,H,W,C)); imgRGB(D,:) = originalPatch; drawnow;
-        if strcmp(encodingType, 'hist')
-            title(sprintf('Point (%d,%d), r=%d, hist (%d bins), %s: %.4f',...
-                x,y,r,numBins,errorType,err));
+        if strcmp(encodingType, 'average')
+            title(sprintf('Point (%d,%d), r=%d, average, %s: %.4f',...
+                x,y,r,errorType,err));
+        else
+            title(sprintf('Point (%d,%d), r=%d, %s (%d bins), %s: %.4f',...
+                x,y,r,encodingType,numBins,errorType,err));
             figure(2);
             subplot(131); bar(hists(1,:)); title('luminance');
             subplot(132); bar(hists(2,:)); title('colora');
             subplot(133); bar(hists(3,:)); title('colorb');
-            drawnow;
-        else
-            title(sprintf('Point (%d,%d), r=%d, average, %s: %.4f',...
-                x,y,r,errorType,err));
         end
         drawnow;
     end

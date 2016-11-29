@@ -24,9 +24,8 @@ switch method
         y = squeeze(binCenters(maxInds));
     case 'expectation'
         % this can become more efficient with reshape and matrix
-        % multiplication but the code will won't probably generalize so
-        % easily
-        reshapeVector = ones(size(hin)); reshapeVector(dim) = B;
+        % multiplication but the code probably won't generalize so easily.
+        reshapeVector = ones(1,ndims(hin)); reshapeVector(dim) = B;
         binCenters = reshape(binCenters, reshapeVector);
         y = squeeze(sum(bsxfun(@times,hin,binCenters),dim)); 
     otherwise, error('Method not supported')

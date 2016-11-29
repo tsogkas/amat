@@ -4,7 +4,7 @@ function E = maximalityError(enc,dr)
 % independend of the image reconstruction error at the respective points.
 
 if nargin < 2, dr = 1; end
-E = imageError(enc(:,:,:,:,1:(R-dr)), enc(:,:,:,:,(dr+1):R));
+E = histogramDistance(enc(:,:,:,:,1:(R-dr)), enc(:,:,:,:,(dr+1):R));
 
 
 

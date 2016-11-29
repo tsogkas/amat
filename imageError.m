@@ -9,17 +9,6 @@ function E = imageError(img,enc,filters,method,params)
 %   patch locally is equivalent to "expanding" a single color (RGB or LAB)
 %   triplet across the whole disk area. 
 % 
-%   E = IMAGEERROR(img,enc,[],method) where method is one of the supported
-%   histogram distance metrics, computes the error in the "histogram space"
-%   assuming that both img and enc are HxWxCxBxR histograms. 
-% 
-%   E = IMAGEERROR(img,enc,filters,'smirnov',params) assumes img is a HxWxCxR
-%   input image and enc is its HxWxCxBxR histogram encoding. In this case,
-%   IMAGEERROR computes local reconstructions using the inverse transform
-%   sampling or smirnov method, for creating random samples from a
-%   histogram distribution, and then computes the reconstruction error
-%   using the method specified in params.
-% 
 %   The supported methods for computing the reconstruction error are:
 % 
 %   {(r)se}:  (root) squared error E = sqrt(sum((y-x).^2))
@@ -28,56 +17,14 @@ function E = imageError(img,enc,filters,method,params)
 %   dssim:    structural dissimilarity E = (1-ssim(y,x))/2, where ssim is 
 %             the structural similarity index. This should be used in the
 %             RGB color space.
-%   hist-chi2: chi-squared histogram distance (assumes inputs img and enc
-%              are histograms of dimensions HxWxCxBxR.
-%   hist-chi2-kernel: chi-squared histogram distance + kernel density 
-%                     estimate.
-%   hist-intersection: 1-histogram intersection distance (assumes inputs 
-%              img and enc are histograms of dimensions HxWxCxBxR.
 %   
-%   See also: immse, ssim, patchError, compressHistogram
+%   See also: immse, ssim, patchError
 % 
 %   Stavros Tsogkas <tsogkas@cs.toronto.edu>
 %   Last update: November 2016
 
 
 switch method
-    % ---------------------------------------------------------------------
-    % Histogram comparison methods
-    % ---------------------------------------------------------------------
-    case {'hist-intersection','hist-chi2','hist-chi2-kernel'}
-        if strcmp(method,'hist-intersection')
-            E = sum(min(img,enc),4); % histogram intersection
-        elseif strcmp(method,'hist-chi2')
-            E = 0.5*sum((img-enc).^2 ./ (img + enc + eps), 4);
-        else
-            [H,W,C,B,R] = size(img);
-            % Compute color bin weighted distance using gaussian kernel
-            binCenters = ((1:B)-0.5)/B;
-            [x,y] = meshgrid(binCenters,binCenters);
-            % Compute distance at each channel and scale
-            elab = zeros(H*W*3,R);
-            imgc = reshape(img(:,:,1:3,:,:),H*W*3,B,R);
-            encc = reshape(enc(:,:,1:3,:,:),H*W*3,B,R);
-            for r=1:R
-                binCenterDistance = 1-exp(-(x-y).^2./(2*r.^2)); % BxB
-                dabs = abs(imgc(:,:,r)-encc(:,:,r)); % H*W*C x B
-                elab(:,r) = sum((dabs*binCenterDistance) .* dabs, 2);
-            end
-            elab = reshape(elab,H,W,3,1,R);
-            % If we use texture, it's the 4th channel.
-            % For texture we compute the chi-squared distance as usual.
-            if C > 3
-                imgt = img(:,:,4,:,:); enct = enc(:,:,4,:,:);
-                etexture = 0.5*sum((imgt-enct).^2 ./ (imgt + enct + eps), 4);
-            else
-                etexture = [];
-            end
-            E = cat(3,elab,etexture);
-        end
-        E(:,:,2,:,:) = E(:,:,2,:,:) + E(:,:,3,:,:); % merge color channels
-        E(:,:,3,:,:) = [];  % remove redundant color channel
-        E = squeeze(E);
     % ---------------------------------------------------------------------        
     % Pixels-wise squared and root squared metrics
     % ---------------------------------------------------------------------

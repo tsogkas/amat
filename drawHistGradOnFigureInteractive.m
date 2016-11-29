@@ -31,7 +31,7 @@ dr = 1;  % default radius difference when comparing histograms
 B  = 32; % used for histogram encodings
 R  = 40; % default range of scales
 channelType   = {'luminance','color','texture'};
-distanceType  = {'chi2','chi2-kernel','intersection','combined'};
+distanceType  = {'chi2','chi2-kernel','intersection','reconstruction','combined'};
 distanceIndex = find(strcmp(distanceType, 'chi2'));
 channelIndex  = find(strcmp(channelType, 'luminance'));
 
@@ -59,29 +59,28 @@ drawHistogramGradients(fh); % first draw
         if channelIndex == 2, c = [2;3]; else c = channelIndex; end
         switch distanceType{distanceIndex}
             case 'intersection'
-                d = 1-sum(sum(min(h(:,:,c,:,r+dr),h(:,:,c,:,r)),4),3);
+                d = min(1,sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'intersection'),3));
             case 'chi2'
-                d = 0.5*sum(sum(((h(:,:,c,:,r+dr)-h(:,:,c,:,r)).^2) ./ ...
-                    (h(:,:,c,:,r+dr)+h(:,:,c,:,r)+eps), 4),3);
+                d = sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'chi2'),3);
             case 'chi2-kernel'
-                bc = ((1:B)-0.5)/B;
-                [xb,yb] = meshgrid(bc,bc);
-                bcd  = 1-exp(-(xb-yb).^2./(2*r.^2));
-                dabs = reshape(abs(h(:,:,c,:,r+dr)-h(:,:,c,:,r)),[],B);
-                numer= sum(sum(reshape((dabs * bcd) .* dabs,H,W,[],B),4),3);
-                denom= reshape(h(:,:,c,:,r+dr)+h(:,:,c,:,r)+eps,[],B);
-                denom= sum(sum(reshape((denom * bcd) .* denom,H,W,[],B),4),3);
-                d = 0.5*numer./denom;
-%                 d    = sum(sum(reshape((dabs * bcd) .* dabs,H,W,[],B),4),3);
+                d = sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'chi2-kernel',r),3);
+            case 'reconstruction'
+                if channelIndex == 2
+                    d = imageError(imgLab(:,:,c(1)),m(:,:,c(1),r),filters(r),'nrmse') + ...
+                        imageError(imgLab(:,:,c(2)),m(:,:,c(2),r),filters(r),'nrmse');
+                else
+                    d = imageError(imgLab(:,:,c(1)),m(:,:,c(1),r),filters(r),'nrmse');
+                end
+                d = 1-d;
             case 'combined'
-                dmaxim = 0.5*sum(sum(((h(:,:,c,:,r+dr)-h(:,:,c,:,r)).^2) ./ ...
-                    (h(:,:,c,:,r+dr)+h(:,:,c,:,r)+eps), 4),3);
+                dmaxim = sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'chi2'),3);
                 if channelIndex == 2
                     drecon = imageError(imgLab(:,:,c(1)),m(:,:,c(1),r),filters(r),'nrmse') + ...
                         imageError(imgLab(:,:,c(2)),m(:,:,c(2),r),filters(r),'nrmse');
                 else
                     drecon = imageError(imgLab(:,:,c(1)),m(:,:,c(1),r),filters(r),'nrmse');
                 end
+                drecon = 1-drecon;
                 d = drecon + dmaxim;
             otherwise, error('Distance type is not supported')
         end
@@ -90,7 +89,7 @@ drawHistogramGradients(fh); % first draw
             warning('off','images:imshow:magnificationMustBeFitForDockedFigure')
         end
         % Display image and then restore original patch
-        subplot(122); imagesc(d); axis off image;
+        subplot(122); imagesc(d,[0,1]); axis off image;
         title(sprintf('r_i=%d, r_o=%d, #bins=%d, %s, %s',...
                 r,r+dr,B,channelType{channelIndex},distanceType{distanceIndex}));
         drawnow;

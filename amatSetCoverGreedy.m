@@ -6,8 +6,8 @@ encodingType = 'hist';
 colorWeights = [];
 
 % imgRGB = im2double(imresize(imread('google.jpg'), [128 128], 'nearest')); 
-imgRGB = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/66075.jpg'), [128 128], 'nearest')); 
-% imgRGB = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/41004.jpg'), [128 128], 'nearest')); 
+% imgRGB = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/66075.jpg'), [128 128], 'nearest')); 
+imgRGB = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/41004.jpg'), [128 128], 'nearest')); 
 [H,W,C] = size(imgRGB);
 imgLab = rgb2labNormalized(imgRGB);
 imgClustered = clusterImageValues(imgLab, 5); % simplify input
