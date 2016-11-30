@@ -38,7 +38,9 @@ switch method
         end
         numer = zeros(H,W,C);
         denom = zeros(H,W,C);
+%         img0  = img;
         for r=1:R
+%             img = imgaussfilt(img0,(size(filters{r},1)-1)/4);
             numer(:) = 0; denom(:) = 0;
             D = double(filters{r});
             A = nnz(D);

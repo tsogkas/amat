@@ -60,12 +60,14 @@ switch method
         % d = sum((cumsum(h1,dim) - cumsum(h2,dim)).^2, dim); 
     case {'emd','EMD','earth-mover'}
         % NOT IMPLEMENTED YET
+        error('Not implemented yet');
     case 'cosine'
         d = 1-sum(h1 .* h2, dim);
     case 'canberra'
         d = sum(abs(h1-h2) ./ (h1+h2+eps), dim);
     case 'pearson'
         % NOT IMPLEMENTED YET
+        error('Not implemented yet');
     case 'square-chord'
         d = sum((sqrt(h1)-sqrt(h2)).^2, dim);
     case 'jeffrey' % (symmetric KL-div)
@@ -74,10 +76,18 @@ switch method
         d = 0.5*sum(h1 .* log( 2*h1 ./ (h1+h2+eps)) + h2 .* log( 2*h2 ./ (h1+h2+eps)), dim);
     case 'quadratic'
         assert(nargin == 4 && ~isempty(params), ...
-            'You must provide the bin similarity matrix')        
-        similarityMatrix = params;
+            ['You must provide the bin similarity matrix or the ' ...
+             'function handle (kernel) to be applied on the bin distances'])        
         sz = size(h1);
         B = sz(dim);
+        if ismatrix(params), similarityMatrix = params;
+        elseif isa(params,'function_handle')
+            kernel = params;
+            binCenters = ((1:B)-0.5)/B;
+            [x,y] = meshgrid(binCenters,binCenters);
+            similarityMatrix = kernel(x,y);
+        else error('You must provide either a similarity matrix or a function handle')
+        end
         h1 = reshape(h1,[],B);
         h2 = reshape(h2,[],B);
         df = h1-h2;
@@ -85,6 +95,7 @@ switch method
         d  = reshape(d, [sz(1:dim-1) sz(dim+1:end)]); 
     case 'chi-quadratic'
         % NOT IMPLEMENTED YET
+        error('Not implemented yet');
     case 'intersection'
         d = 1-sum(min(h1,h2),dim); % 1-histogram intersection
     case 'chi2'
