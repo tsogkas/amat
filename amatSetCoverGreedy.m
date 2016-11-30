@@ -1,14 +1,14 @@
 %% Setup global parameters and preprocess image
 R = 40; % #scales
 B = 32; % #bins
+errorType = 'se';
 
-imgRGB = im2double(imresize(imread('google.jpg'), [128 128], 'nearest')); 
-% imgRGB = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/66075.jpg'), [128 128], 'nearest')); 
+% imgRGB = im2double(imresize(imread('google.jpg'), [128 128], 'nearest')); 
+imgRGB = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/66075.jpg'), [128 128], 'nearest')); 
 % imgRGB = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/35070.jpg'), [128 128], 'nearest')); 
 [H,W,C] = size(imgRGB);
 imgLab = rgb2labNormalized(imgRGB);
 % imgClustered = clusterImageValues(imgLab, 5); % simplify input
-if strcmp(errorType, 'dssim'), img = imgRGB; else img = imgLab; end
 
 %% Construct filters, calculate perimeneters and disk areas
 filters = cell(R,1); for r=1:R, filters{r} = disk(r); end
@@ -17,9 +17,21 @@ filters = cell(R,1); for r=1:R, filters{r} = disk(r); end
 m = imageEncoding(imgRGB,filters);
 h = imageEncoding(binImage(imgLab,B),filters,'hist',B);
 
-%% Compute decodings g and reconstruction errors at all points and scales
-reconstructionError = imageError(imgRGB,m,filters,'dssim');
-% maximalityError = imageError(imgLab,h,
+%% Compute reconstruction and maximality errors at all points and scales
+%  Compute reconstruction error by using the dssim (structural
+%  dissimilarity metric in the RGB color space, or a (nm)se metric on the
+%  perceptually linear Lab color space. 
+if strcmp(errorType,'dssim')
+    reconstructionError = imageError(imgRGB,m,filters,'dssim');
+else
+    luminanceError = imageError(imgLab(:,:,1), m(:,:,1,:),filters, errorType);
+    colorError = imageError(imgLab(:,:,2), m(:,:,2,:), filters, errorType) + ...
+                 imageError(imgLab(:,:,3), m(:,:,3,:), filters, errorType);
+    reconstructionError = luminanceError + colorError;
+end
+%  The maximality error that encourages the selection of maximal disks
+dr = 
+maximalityError = histogramDistance()
 
 %% Greedy approximation of the weighted set cover problem associated with AMAT
 % Initializations
@@ -90,7 +102,7 @@ while ~all(amat.covered(:))
     % the image and subtract the respective counts from those disks.
     % (conv2 for everything, it's the way to go).
     % TODO: HOWEVER, we may have to limit the domain of the convolutions to
-    % further speed up, before conv2 get unnecessarily slow when
+    % further speed up, before conv2 gets unnecessarily slow when
     % nnz(newPixelsCovered) is low.
     [yy,xx] = find(newPixelsCovered);
     xmin = min(xx); xmax = max(xx);

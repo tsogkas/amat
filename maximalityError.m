@@ -5,7 +5,12 @@ function E = maximalityError(enc,dr,method)
 
 if nargin < 2, dr = 1; end
 if nargin < 3, method = 'chi2'; end
-E = histogramDistance(enc(:,:,:,:,1:(R-dr)), enc(:,:,:,:,(dr+1):R),method);
+
+[H,W,C,B,R] = size(enc);
+E = ones(H,W,C,R); % start by setting all the errors to the max value
+for r=1:R
+    E(:,:,:,r) = histogramDistance(enc(:,:,:,:,r+dr), enc(:,:,:,:,r),method);
+end
 
 
 

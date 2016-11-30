@@ -109,8 +109,6 @@ switch method
                               ((mg.^2 + mi.^2 + c1).* (si2 + sg2 + c2));
             end
             E(:,:,r) = (1-ssim/C)/2; % DSSIM
-            % Assign large error to disks that cross the image boundaries
-            E(border(E(:,:,r),r)) = 1;            
         end
         E = max(0, min(1,E));
     otherwise, error('Error type not supported')
