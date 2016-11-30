@@ -58,16 +58,21 @@ function f = histogramEncoding(img,filters,B)
 [H,W,C] = size(img);
 R = numel(filters);
 f = zeros(H,W,C,B,R);
-for c=1:C
-    imgc = img(:,:,c);
+for s=1:R
+    D = double(filters{s})/nnz(filters{s});
     for b=1:B
-        imgcb = double(imgc == b);
-        for s=1:R
-            D = double(filters{s})/nnz(filters{s});
-            f(:,:,c,b,s) = conv2(imgcb, D, 'same');
+        imgb = double(img == b);
+        for c=1:C
+            f(:,:,c,b,s) = conv2(imgb(:,:,c), D, 'same');
         end
     end
+    csum = sum(f(:,:,:,2:end,s),4);
+    f(1:s,:,:,1,s) = 1-csum(1:s,:,:);
+    f(:,1:s,:,1,s) = 1-csum(:,1:s,:);
+    f(end-s+1:end,:,:,1,s) = 1-csum(end-s+1:end,:,:);
+    f(:,end-s+1:end,:,1,s) = 1-csum(:,end-s+1:end,:);
 end
+assert(allvec(sum(f,4)==1),'Histograms do not sum up to 1')
 
 
 

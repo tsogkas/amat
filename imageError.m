@@ -68,6 +68,8 @@ switch method
             end
             % Combine channels with different weights
             E(:,:,r) = reshape(reshape(numer,[],C)*w', H,W);
+            % Assign large error to disks that cross the image boundaries
+            E(border(E(:,:,r),r)) = inf;
         end
         % Make positive and take square root if needed
         E = max(0,E);
@@ -85,7 +87,9 @@ switch method
             k1 = params(1); k2 = params(2); L  = params(3);
         end
         c1 = (k1*L)^2; c2 = (k2*L)^2;
+%         img0  = img;
         for r=1:R
+%             img = imgaussfilt(img0,(size(filters{r},1)-1)/4);
             D = double(filters{r});
             A = nnz(D);
             ssim = zeros(H,W);
@@ -101,11 +105,13 @@ switch method
                 mg  = g; % since g is constant within the disk area
                 sg2 = 0;
                 sig = 0; 
-                ssim = ssim + ((2 .* mi .* mg) .* (2 .* sig + c2)) ./ ...
+                ssim = ssim + ((2 .* mi .* mg + c1) .* (2 .* sig + c2)) ./ ...
                               ((mg.^2 + mi.^2 + c1).* (si2 + sg2 + c2));
             end
             E(:,:,r) = (1-ssim/C)/2; % DSSIM
+            % Assign large error to disks that cross the image boundaries
+            E(border(E(:,:,r),r)) = 1;            
         end
-        E = max(-1, min(1,E));
+        E = max(0, min(1,E));
     otherwise, error('Error type not supported')
 end

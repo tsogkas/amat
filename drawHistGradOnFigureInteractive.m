@@ -45,7 +45,8 @@ end
 imgLab  = rgb2labNormalized(imgRGB);
 imgBinned = cat(3, binImage(imgLab,B),textonMap(imgRGB, B));
 h = imageEncoding(imgBinned,filters,'hist',B);
-m = imageEncoding(imgLab,filters,'average');
+mlab = imageEncoding(imgLab,filters,'average');
+mrgb = imageEncoding(imgRGB,filters,'average');
 
 % Plot figure and set callbacks
 fh = figure; subplot(121); imshow(imgRGB); 
@@ -56,36 +57,47 @@ drawHistogramGradients(fh); % first draw
 
     function drawHistogramGradients(fh)
         % Compute distance
-        et = 'mse';
-        dr = ceil(r/3);
+        et = 'nmse';
+        dr = ceil(r/4);
         if channelIndex == 2, c = [2;3]; else c = channelIndex; end
         switch distanceType{distanceIndex}
             case 'intersection'
-                d = min(1,sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'intersection'),3));
-                d = 1-d;
+                d = sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'intersection'),3);
+%                 d(border(d,dr)) = 1;
+                d = 1-min(1,d);
             case 'chi2'
-                d = min(1,sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'chi2'),3));
-                d = 1-d;
+                d = sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'chi2'),3);
+%                 d(border(d,dr)) = 1;
+                d = 1-min(1,d);
             case 'chi2-gaussian'
-                d = min(1,sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'chi2-gaussian',0.2),3));
-                d = 1-d;
+                d = sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'chi2-gaussian',0.2),3);
+%                 d(border(d,dr)) = 1;
+                d = 1-min(1,d);
             case 'reconstruction'
-                if channelIndex == 2
-                    d = imageError(imgLab(:,:,c(1)),m(:,:,c(1),r),filters(r),et) + ...
-                        imageError(imgLab(:,:,c(2)),m(:,:,c(2),r),filters(r),et);
+                if strcmp(et,'dssim')
+                    d = imageError(imgRGB, mrgb(:,:,:,r),filters(r),'dssim');
                 else
-                    d = imageError(imgLab(:,:,c(1)),m(:,:,c(1),r),filters(r),et);
+                    d = (imageError(imgLab(:,:,1),mlab(:,:,1,r),filters(r),et) +...
+                         imageError(imgLab(:,:,2),mlab(:,:,2,r),filters(r),et) +...
+                         imageError(imgLab(:,:,3),mlab(:,:,3,r),filters(r),et))/2;
+                    d = min(1,d); 
                 end
             case 'sum'
                 d = min(1, ...
                     sum(histogramDistance(h(:,:,1:3,:,r+dr),h(:,:,1:3,:,r),'chi2-gaussian',.2),3)...
                     + histogramDistance(h(:,:,4,:,r+dr),h(:,:,4,:,r),'chi2'));
             case 'combined'
-                dmaxim = 1-min(1,sum(histogramDistance(h(:,:,1:3,:,r+dr),h(:,:,1:3,:,r),'chi2-gaussian',.2),3)...
-                    + histogramDistance(h(:,:,4,:,r+dr),h(:,:,4,:,r),'chi2'));
-                drecon = imageError(imgLab(:,:,1),m(:,:,1,r),filters(r),et) + ...
-                    imageError(imgLab(:,:,2),m(:,:,2,r),filters(r),et) + ...
-                    imageError(imgLab(:,:,3),m(:,:,3,r),filters(r),et);
+                dmaxim = sum(histogramDistance(h(:,:,1:3,:,r+dr),h(:,:,1:3,:,r),'chi2-gaussian',0.2),3)...
+                    + histogramDistance(h(:,:,4,:,r+dr),h(:,:,4,:,r),'chi2');
+                dmaxim(border(dmaxim,dr)) = 1;
+                dmaxim = 1-min(1,dmaxim);
+                if strcmp(et,'dssim')
+                    drecon = imageError(imgRGB,mrgb(:,:,:,r),filters(r),et);
+                else
+                    drecon = (imageError(imgLab(:,:,1),mlab(:,:,1,r),filters(r),et) +...
+                              imageError(imgLab(:,:,2),mlab(:,:,2,r),filters(r),et) +...
+                              imageError(imgLab(:,:,3),mlab(:,:,3,r),filters(r),et))/2;
+                end
                 d = min(1,drecon + dmaxim);
             otherwise, error('Distance type is not supported')
         end
@@ -161,6 +173,7 @@ drawHistogramGradients(fh); % first draw
             distanceIndex = max(1,mod(distanceIndex + 1, numel(distanceType)+1));
         elseif strcmp(fh.SelectionType, 'extend') % change #bins
             changeHistGradParams(fh);
+            imgBinned = cat(3, binImage(imgLab,B),textonMap(imgRGB, B));
             h = imageEncoding(imgBinned,filters,'hist',B);
         end
         drawHistogramGradients(fh)

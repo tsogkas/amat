@@ -1,13 +1,10 @@
 %% Setup global parameters and preprocess image
 R = 40; % #scales
 B = 32; % #bins
-errorType = 'se';
-encodingType = 'hist';
-colorWeights = [];
 
 imgRGB = im2double(imresize(imread('google.jpg'), [128 128], 'nearest')); 
 % imgRGB = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/66075.jpg'), [128 128], 'nearest')); 
-% imgRGB = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/41004.jpg'), [128 128], 'nearest')); 
+% imgRGB = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/35070.jpg'), [128 128], 'nearest')); 
 [H,W,C] = size(imgRGB);
 imgLab = rgb2labNormalized(imgRGB);
 % imgClustered = clusterImageValues(imgLab, 5); % simplify input
@@ -17,14 +14,12 @@ if strcmp(errorType, 'dssim'), img = imgRGB; else img = imgLab; end
 filters = cell(R,1); for r=1:R, filters{r} = disk(r); end
 
 %% Compute encodings f(D_I(x,y,r)) at every point.
-if strcmp(encodingType,'average')
-    f = imageEncoding(img,filters);
-elseif strcmp(encodingType,'hist')
-    f = imageEncoding(binImage(img,B),filters,'hist',B);
-end
+m = imageEncoding(imgRGB,filters);
+h = imageEncoding(binImage(imgLab,B),filters,'hist',B);
 
 %% Compute decodings g and reconstruction errors at all points and scales
-reconstructionError = imageError(img,f,filters,errorType,colorWeights);
+reconstructionError = imageError(imgRGB,m,filters,'dssim');
+% maximalityError = imageError(imgLab,h,
 
 %% Greedy approximation of the weighted set cover problem associated with AMAT
 % Initializations

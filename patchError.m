@@ -69,9 +69,9 @@ switch errorType
         sx2 = mean(bsxfun(@minus,imgPatch,mx).^2);
         sy2 = 0;
         sxy = 0;
-        e = ((2 .* mx .* my) .* (2 .* sxy + c2)) ./ ... % ssim
+        e = ((2 .* mx .* my + c1) .* (2 .* sxy + c2)) ./ ... % ssim
             ((mx.^2 + my.^2 + c1).* (sx2 + sy2 + c2));
         e = (1-mean(e,2))/2; % mean across channels and dssim
-        e = max(-1, min(1,e));
+        e = max(0, min(1,e));
     otherwise, error('Error type not supported')
 end
