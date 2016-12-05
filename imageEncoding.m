@@ -35,6 +35,9 @@ switch method
         f = meanEncoding(img,filters); % HxWxCxR
     case 'hist'
         f = histogramEncoding(img,filters,B); % HxWxCxBxR
+    case 'hist-normalized'
+        f = histogramEncoding(img,filters,B); % HxWxCxBxR
+        f = bsxfun(@rdivide,f,reshape(cellfun(@nnz,filters),1,1,1,1,[]));
     otherwise, error('Method is not supported')
 end
 
@@ -64,21 +67,24 @@ for c=1:C
     for b=1:B
         imgcb = double(imgc == b);
         for s=1:R
-            D = double(filters{s})/nnz(filters{s});
-            f(:,:,c,b,s) = conv2(imgcb, D, 'same');
+            f(:,:,c,b,s) = conv2(imgcb, double(filters{s}), 'same');
         end
     end
 end
-% The histogram computations are not correct for neighgourhoods that cross
-% the image boundaries as they don't sum up to 1. We fix that:
-csum = sum(f(:,:,:,2:end,:),4);
-for s=1:R
-    f(1:s,:,:,1,s) = 1-csum(1:s,:,:,s);
-    f(:,1:s,:,1,s) = 1-csum(:,1:s,:,s);
-    f(end-s+1:end,:,:,1,s) = 1-csum(end-s+1:end,:,:,s);
-    f(:,end-s+1:end,:,1,s) = 1-csum(:,end-s+1:end,:,s);    
+% Histograms for neighgourhoods that cross the image boundaries do not add 
+% up to 1. We fix that by assigning the remaining counts (probability mass) 
+% to the first bin.
+areas = cellfun(@nnz,filters);
+areaminusbinsum = bsxfun(@minus,reshape(areas,1,1,1,1,[]),sum(f(:,:,:,2:end,:),4));
+for i=1:numel(filters)
+    % Compute the disk radius based on filter size (always odd)
+    r = (size(filters{i},1)-1)/2;
+    f(1:r,:,:,1,i)         = areaminusbinsum(1:r,:,:,1,i);
+    f(:,1:r,:,1,i)         = areaminusbinsum(:,1:r,:,1,i);
+    f(end-r+1:end,:,:,1,i) = areaminusbinsum(end-r+1:end,:,:,1,i);
+    f(:,end-r+1:end,:,1,i) = areaminusbinsum(:,end-r+1:end,:,1,i);
 end
-
+assert(allvec(bsxfun(@eq,sum(f,4),reshape(areas,1,1,1,1,[]))))
 
 
 

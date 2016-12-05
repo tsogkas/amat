@@ -31,7 +31,7 @@ dr = 1;  % default radius difference when comparing histograms
 B  = 32; % used for histogram encodings
 R  = 40; % default range of scales
 channelType   = {'luminance','color','texture'};
-distanceType  = {'chi2','chi2-gaussian','reconstruction','combined'};
+distanceType  = {'chi2','chi2-gaussian','reconstruction','sum','combined'};
 distanceIndex = find(strcmp(distanceType, 'chi2'));
 channelIndex  = find(strcmp(channelType, 'luminance'));
 
@@ -57,20 +57,16 @@ drawHistogramGradients(fh); % first draw
 
     function drawHistogramGradients(fh)
         % Compute distance
-        et = 'rmse';
-        dr = ceil(r/4);
+        et = 'dssim';
+%         dr = ceil(r/4);
         if channelIndex == 2, c = [2;3]; else c = channelIndex; end
         switch distanceType{distanceIndex}
-            case 'intersection'
-                d = sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'intersection'),3);
-%                 d = sum(abs(mlab(:,:,c,r+dr)-mlab(:,:,c,r)),3);
-                d = 1-min(1,d);
-            case 'chi2'
-                d = sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'chi2'),3);
-%                 d = sum(abs(mlab(:,:,c,r+dr)-mlab(:,:,c,r)),3);
-                d = 1-min(1,d);
-            case 'chi2-gaussian'
-                d = sum(histogramDistance(h(:,:,c,:,r+dr),h(:,:,c,:,r),'chi2-gaussian',0.2),3);
+            case {'intersection','chi2','chi2-gaussian'}
+                h1 = h(:,:,c,:,r);
+                h2 = h(:,:,c,:,r+dr)-h(:,:,c,:,r);
+                h1 = bsxfun(@rdivide,h1,sum(h1,4));
+                h2 = bsxfun(@rdivide,h2,sum(h2,4));
+                d = sum(histogramDistance(h2,h1,distanceType{distanceIndex},0.2),3);
                 d = 1-min(1,d);
             case 'reconstruction'
                 if strcmp(et,'dssim')
@@ -82,12 +78,20 @@ drawHistogramGradients(fh); % first draw
                     d = min(1,d); 
                 end
             case 'sum'
-                d = min(1, ...
-                    sum(histogramDistance(h(:,:,1:3,:,r+dr),h(:,:,1:3,:,r),'chi2-gaussian',.2),3)...
-                    + histogramDistance(h(:,:,4,:,r+dr),h(:,:,4,:,r),'chi2'));
+                h1 = h(:,:,:,:,r);
+                h2 = h(:,:,:,:,r+dr)-h(:,:,:,:,r);
+                h1 = bsxfun(@rdivide,h1,sum(h1,4));
+                h2 = bsxfun(@rdivide,h2,sum(h2,4));                
+                d = sum(histogramDistance(h2(:,:,1:3,:),h1(:,:,1:3,:),'chi2-gaussian',0.2),3)...
+                    + histogramDistance(h2(:,:,4,:),h1(:,:,4,:),'chi2');
+                d = 1-min(1,d);
             case 'combined'
-                dmaxim = sum(histogramDistance(h(:,:,1:3,:,r+dr),h(:,:,1:3,:,r),'chi2-gaussian',0.2),3)...
-                    + histogramDistance(h(:,:,4,:,r+dr),h(:,:,4,:,r),'chi2');
+                h1 = h(:,:,:,:,r);
+                h2 = h(:,:,:,:,r+dr)-h(:,:,:,:,r);
+                h1 = bsxfun(@rdivide,h1,sum(h1,4));
+                h2 = bsxfun(@rdivide,h2,sum(h2,4));                
+                dmaxim = sum(histogramDistance(h2(:,:,1:3,:),h1(:,:,1:3,:),'chi2-gaussian',0.2),3)...
+                    + histogramDistance(h2(:,:,4,:),h1(:,:,4,:),'chi2');
                 dmaxim = 1-min(1,dmaxim);
                 if strcmp(et,'dssim')
                     drecon = imageError(imgRGB,mrgb(:,:,:,r),filters(r),et);
