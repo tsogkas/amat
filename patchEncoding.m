@@ -37,13 +37,13 @@ end
 switch method
     case 'average'
         f = mean(patch); % scalar or 1x3 vector 
-    case 'hist'
+    case {'hist','hist-normalized'}
         [N,C] = size(patch);
         f = zeros(C,B);
-        binEdges = (0:B)/B;
+        binEdges = 1:B+1;
         for i=1:C
             f(i,:) = histcounts(patch(:,i),binEdges);
         end
-        f = f/N;
+        if strcmp(method,'hist-normalized'), f = f/N; end
     otherwise, error('Method is not supported')
 end

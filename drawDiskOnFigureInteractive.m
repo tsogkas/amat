@@ -57,14 +57,14 @@ imgLab  = rgb2labNormalized(imgRGB);
         if strcmp(errorType, 'dssim')
             imgPatch = imgRGB(D,:);
         else
-            imgPatch = imgLab(D,:);
+            imgPatch = imgLab(D,:);https://www.youtube.com/watch?v=XpZHUVjQydI
         end
         
         % Encode the patch and compute error
         if strcmp(encodingType,'average')
             encPatch = patchEncoding(imgPatch,'average');
         else
-            encPatch = patchEncoding(imgPatch,'hist',numBins);
+            encPatch = patchEncoding(binImage(imgPatch,numBins),'hist',numBins);
         end
         switch encodingType
             case 'average'
