@@ -1,6 +1,6 @@
 %% Setup global parameters and preprocess image
 R = 40; % #scales
-B = 64; % #bins
+B = 32; % #bins
 errorType = 'se';
 encodingType = 'hist';
 colorWeights = [];
@@ -11,6 +11,7 @@ imgRGB = im2double(imresize(imread('google.jpg'), [128 128], 'nearest'));
 [H,W,C] = size(imgRGB);
 imgLab = rgb2labNormalized(imgRGB);
 imgClustered = clusterImageValues(imgLab, 5); % simplify input
+figure(1); imshow(imgClustered)
 
 %% Construct filters, calculate perimeneters and disk areas
 filters = cell(R,1); for r=1:R, filters{r} = disk(r); end
@@ -38,7 +39,7 @@ subplot(211); bar(patchEncoding(diskPatch(imgRGB,p,r1),'hist',B)); title(['r=' n
 subplot(212); bar(patchEncoding(diskPatch(imgRGB,p,r1+dr),'hist',B)); title(['r=' num2str(r1+dr)])
 
 %% Test black and white patterns
-b = 32;
+B = 32;
 sz = [100,100];
 black = zeros(sz);
 white = ones(sz);
@@ -57,5 +58,18 @@ tchecker = textonMap(checker,B);
 htexhalf = patchEncoding(thalf(:),'hist-normalized',B);
 htexchecker = patchEncoding(tchecker(:),'hist-normalized',B);
 
+%%
+B = 16;
+tmap1 = textonMap(half,B,'image',6,1,1,sqrt(2),2);
+tmap2 = textonMap(checker,B,'image',6,1,2,sqrt(2),2);
+% tmap1 = computeTextons(fbRun(fbCreate(6,1,1,2),half),B);
+% tmap2 = computeTextons(fbRun(fbCreate(6,1,1,2),checker),B);
+h1 = patchEncoding(tmap1(:),'hist-normalized',B);
+h2 = patchEncoding(tmap2(:),'hist-normalized',B);
+figure(1); bar(h1); figure(2); bar(h2)
+figure(3); imagesc(tmap1); axis off image;
+figure(4); imagesc(tmap2); axis off image;
+% figure(3); imshow(imgRGB);
 
+% textons = unitex(fbCreate(6,1,1,3),32);
 

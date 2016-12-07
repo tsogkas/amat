@@ -30,7 +30,11 @@ r  = 1;  % default radius
 dr = 1;  % default radius difference when comparing histograms
 B  = 32; % used for histogram encodings
 R  = 40; % default range of scales
-channelType   = {'luminance','color','texture'};
+if ismatrix(imgRGB)
+    channelType   = {'luminance','texture'};
+else
+    channelType   = {'luminance','color','texture'};
+end
 distanceType  = {'chi2','chi2-gaussian','reconstruction','sum','combined'};
 distanceIndex = find(strcmp(distanceType, 'chi2'));
 channelIndex  = find(strcmp(channelType, 'luminance'));
@@ -57,9 +61,10 @@ drawHistogramGradients(fh); % first draw
 
     function drawHistogramGradients(fh)
         % Compute distance
-        et = 'dssim';
+        et = 'mse';
 %         dr = ceil(r/4);
-        if channelIndex == 2, c = [2;3]; else c = channelIndex; end
+        dr = ceil(r/(2+sqrt(6)));
+        if strcmp(channelType{channelIndex},'color'), c = [2;3]; else c = channelIndex; end
         switch distanceType{distanceIndex}
             case {'intersection','chi2','chi2-gaussian'}
                 h1 = h(:,:,c,:,r);
@@ -72,9 +77,13 @@ drawHistogramGradients(fh); % first draw
                 if strcmp(et,'dssim')
                     d = imageError(imgRGB, mrgb(:,:,:,r),filters(r),'dssim');
                 else
-                    d = (imageError(imgLab(:,:,1),mlab(:,:,1,r),filters(r),et) +...
-                         imageError(imgLab(:,:,2),mlab(:,:,2,r),filters(r),et) +...
-                         imageError(imgLab(:,:,3),mlab(:,:,3,r),filters(r),et))/2;
+                    if ismatrix(imgRGB)
+                        d = imageError(imgLab(:,:,1),mlab(:,:,1,r),filters(r),et);
+                    else
+                        d = (imageError(imgLab(:,:,1),mlab(:,:,1,r),filters(r),et) +...
+                             imageError(imgLab(:,:,2),mlab(:,:,2,r),filters(r),et) +...
+                             imageError(imgLab(:,:,3),mlab(:,:,3,r),filters(r),et))/2;
+                    end
                     d = min(1,d); 
                 end
             case 'sum'
@@ -82,23 +91,27 @@ drawHistogramGradients(fh); % first draw
                 h2 = h(:,:,:,:,r+dr)-h(:,:,:,:,r);
                 h1 = bsxfun(@rdivide,h1,sum(h1,4));
                 h2 = bsxfun(@rdivide,h2,sum(h2,4));                
-                d = sum(histogramDistance(h2(:,:,1:3,:),h1(:,:,1:3,:),'chi2-gaussian',0.2),3)...
-                    + histogramDistance(h2(:,:,4,:),h1(:,:,4,:),'chi2');
+                d = sum(histogramDistance(h2(:,:,1:end-1,:),h1(:,:,1:end-1,:),'chi2-gaussian',0.2),3)...
+                    + histogramDistance(h2(:,:,end,:),h1(:,:,end,:),'chi2');
                 d = 1-min(1,d);
             case 'combined'
                 h1 = h(:,:,:,:,r);
                 h2 = h(:,:,:,:,r+dr)-h(:,:,:,:,r);
                 h1 = bsxfun(@rdivide,h1,sum(h1,4));
                 h2 = bsxfun(@rdivide,h2,sum(h2,4));                
-                dmaxim = sum(histogramDistance(h2(:,:,1:3,:),h1(:,:,1:3,:),'chi2-gaussian',0.2),3)...
-                    + histogramDistance(h2(:,:,4,:),h1(:,:,4,:),'chi2');
+                dmaxim = sum(histogramDistance(h2(:,:,1:end-1,:),h1(:,:,1:end-1,:),'chi2-gaussian',0.2),3)...
+                    + histogramDistance(h2(:,:,end,:),h1(:,:,end,:),'chi2');
                 dmaxim = 1-min(1,dmaxim);
                 if strcmp(et,'dssim')
                     drecon = imageError(imgRGB,mrgb(:,:,:,r),filters(r),et);
                 else
-                    drecon = (imageError(imgLab(:,:,1),mlab(:,:,1,r),filters(r),et) +...
-                              imageError(imgLab(:,:,2),mlab(:,:,2,r),filters(r),et) +...
-                              imageError(imgLab(:,:,3),mlab(:,:,3,r),filters(r),et))/2;
+                    if ismatrix(imgRGB)
+                        drecon = imageError(imgLab(:,:,1),mlab(:,:,1,r),filters(r),et);
+                    else
+                        drecon = (imageError(imgLab(:,:,1),mlab(:,:,1,r),filters(r),et) +...
+                                  imageError(imgLab(:,:,2),mlab(:,:,2,r),filters(r),et) +...
+                                  imageError(imgLab(:,:,3),mlab(:,:,3,r),filters(r),et))/2;
+                    end
                 end
                 d = min(1,drecon + dmaxim);
             otherwise, error('Distance type is not supported')

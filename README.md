@@ -8,6 +8,7 @@ Created by Stavros Tsogkas at the University of Toronto.
 This code is released under the MIT License (refer to the LICENSE file for details).
 
 ### TODO:
+- Assign high cost to low-scale disks but handle them as special cases towards the end, to cover leftover pixels.
 
 ### QUESTIONS
 - Should I compare histogram representations for the reconstruction error as well, or just for the maximality error?

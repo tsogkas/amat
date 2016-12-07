@@ -3,8 +3,8 @@ R = 40; % #scales
 B = 32; % #bins
 errorType = 'se';
 
-imgRGB = im2double(imresize(imread('google.jpg'), [128 128], 'nearest')); 
-% imgRGB = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/66075.jpg'), [128 128], 'nearest')); 
+% imgRGB = rgb2gray(im2double(imresize(imread('google.jpg'), [128 128], 'nearest'))); 
+imgRGB = rgb2gray(im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/66075.jpg'), [128 128], 'nearest'))); 
 % imgRGB = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/35070.jpg'), [128 128], 'nearest')); 
 [H,W,C] = size(imgRGB);
 imgLab = rgb2labNormalized(imgRGB);
@@ -27,9 +27,15 @@ if strcmp(errorType,'dssim')
     reconstructionError = imageError(imgRGB,mrgb,filters,'dssim');
 else
     luminanceError = imageError(imgLab(:,:,1), mlab(:,:,1,:),filters, errorType);
-    colorError = imageError(imgLab(:,:,2), mlab(:,:,2,:), filters, errorType) + ...
-                 imageError(imgLab(:,:,3), mlab(:,:,3,:), filters, errorType);
-    reconstructionError = (luminanceError + colorError)/2;
+    if ~ismatrix(imgLab)
+        colorError = imageError(imgLab(:,:,2), mlab(:,:,2,:), filters, errorType) + ...
+                     imageError(imgLab(:,:,3), mlab(:,:,3,:), filters, errorType);
+    end
+    if ismatrix(imgLab)
+        reconstructionError = luminanceError;
+    else
+        reconstructionError = (luminanceError + colorError)/2;
+    end
 end
 %  The maximality error that encourages the selection of maximal disks
 maximalityError = zeros(H,W,R);
@@ -43,8 +49,8 @@ for r=1:R-1
     h1 = bsxfun(@rdivide,h1,sum(h1,4));
     h2 = bsxfun(@rdivide,h2,sum(h2,4));
     maximalityError(:,:,r) = sum(...
-        histogramDistance(h2(:,:,1:3,:), h1(:,:,1:3,:),'chi2-gaussian',0.2),3) + ...
-        histogramDistance(h2(:,:,4,:), h1(:,:,4,:),'chi2');        
+        histogramDistance(h2(:,:,1:end-1,:), h1(:,:,1:end-1,:),'chi2-gaussian',0.2),3) + ...
+        2*histogramDistance(h2(:,:,end,:), h1(:,:,end,:),'chi2');        
 end
 maximalityError = max(0,1-maximalityError);
 % Fix boundary conditions for both  terms (image boundaries crosses)
@@ -93,7 +99,7 @@ for r=1:R
     numNewPixelsCovered(:,:,r) = conv2(numNewPixelsCovered(:,:,r), ...
         double(filters{r}),'same');
 end
-T = 0.001;
+T = 0.0001;
 diskCostEffective = min(1,sqrt(reconstructionError ./ numNewPixelsCovered) + bsxfun(@plus,maximalityError,reshape(T./(1:R),1,1,[])));
 % diskCostEffective = min(1,reconstructionError ./ numNewPixelsCovered + maximalityError);
 % diskCostEffective = maximalityError;
@@ -121,7 +127,7 @@ while ~all(amat.covered(:))
     assert(~all(newPixelsCovered(:)))
     
     % Update AMAT
-    reconstructedDisk = repmat(reshape(f(yc,xc,:,rc),[1 3]), [nnz(newPixelsCovered),1]);
+    reconstructedDisk = repmat(reshape(f(yc,xc,:,rc),[1 C]), [nnz(newPixelsCovered),1]);
     amat.price(newPixelsCovered) = sum(( ...
         amat.reconstruction(newPixelsCovered,:) - reconstructedDisk ).^2,2)/2;
     amat.covered(D) = true;
