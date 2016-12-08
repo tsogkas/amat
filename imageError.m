@@ -68,8 +68,6 @@ switch method
             end
             % Combine channels with different weights
             E(:,:,r) = reshape(reshape(numer,[],C)*w', H,W);
-            % Assign large error to disks that cross the image boundaries
-            E(border(E(:,:,r),r)) = inf;
         end
         % Make positive and take square root if needed
         E = max(0,E);

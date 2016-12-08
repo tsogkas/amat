@@ -1,11 +1,12 @@
 %% Setup global parameters and preprocess image
-R = 40; % #scales
+R = 50; % #scales
 B = 32; % #bins
 errorType = 'se';
 
 % imgRGB = rgb2gray(im2double(imresize(imread('google.jpg'), [128 128], 'nearest'))); 
-imgRGB = rgb2gray(im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/66075.jpg'), [128 128], 'nearest'))); 
+% imgRGB = rgb2gray(im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/66075.jpg'), [128 128], 'nearest'))); 
 % imgRGB = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/35070.jpg'), [128 128], 'nearest')); 
+imgRGB = rgb2gray(im2double(imresize(imread('/home/tsogkas/datasets/AbstractScenes_v1.1/RenderedScenes/Scene0_9.png'),0.5)));
 [H,W,C] = size(imgRGB);
 imgLab = rgb2labNormalized(imgRGB);
 % imgClustered = clusterImageValues(imgLab, 5); % simplify input
@@ -14,10 +15,11 @@ imgLab = rgb2labNormalized(imgRGB);
 filters = cell(R,1); for r=1:R, filters{r} = disk(r); end
 
 %% Compute encodings f(D_I(x,y,r)) at every point.
-mrgb = imageEncoding(imgRGB,filters,'average'); % used for the reconstruction error
+% mrgb = imageEncoding(imgRGB,filters,'average'); % used for the reconstruction error
 mlab = imageEncoding(imgLab,filters,'average'); % used for the reconstruction error
 hlab = imageEncoding(binImage(imgLab,B),filters,'hist',B); % used for the maximality error;
-htex = imageEncoding(textonMap(imgRGB,B),filters,'hist',B);
+% htex = imageEncoding(textonMap(imgRGB,B),filters,'hist',B);
+htex = []; % NO TEXTURE FOR NOW
 
 %% Compute reconstruction and maximality errors at all points and scales
 %  Compute reconstruction error by using the dssim (structural
@@ -27,13 +29,11 @@ if strcmp(errorType,'dssim')
     reconstructionError = imageError(imgRGB,mrgb,filters,'dssim');
 else
     luminanceError = imageError(imgLab(:,:,1), mlab(:,:,1,:),filters, errorType);
-    if ~ismatrix(imgLab)
-        colorError = imageError(imgLab(:,:,2), mlab(:,:,2,:), filters, errorType) + ...
-                     imageError(imgLab(:,:,3), mlab(:,:,3,:), filters, errorType);
-    end
     if ismatrix(imgLab)
         reconstructionError = luminanceError;
     else
+        colorError = imageError(imgLab(:,:,2), mlab(:,:,2,:), filters, errorType) + ...
+                     imageError(imgLab(:,:,3), mlab(:,:,3,:), filters, errorType);
         reconstructionError = (luminanceError + colorError)/2;
     end
 end
@@ -79,7 +79,7 @@ amat.axis           = zeros(H,W,C);
 amat.radius         = zeros(H,W);
 amat.depth          = zeros(H,W); % #disks points(x,y) is covered by
 amat.covered        = false(H,W);
-amat.price          = inf(H,W);   % error contributed by each point
+amat.price          = zeros(H,W);   % error contributed by each point
 
 %% Error balancing and visualization of top (low-cost) disks
 % -------------------------------------------------------------------------
@@ -129,7 +129,7 @@ while ~all(amat.covered(:))
     % Update AMAT
     reconstructedDisk = repmat(reshape(f(yc,xc,:,rc),[1 C]), [nnz(newPixelsCovered),1]);
     amat.price(newPixelsCovered) = sum(( ...
-        amat.reconstruction(newPixelsCovered,:) - reconstructedDisk ).^2,2)/2;
+        amat.reconstruction(newPixelsCovered,:) - reconstructedDisk ).^2,2);
     amat.covered(D) = true;
     amat.depth(D) = amat.depth(D) + 1;
     amat.reconstruction(newPixelsCovered,:) = reconstructedDisk;
@@ -153,9 +153,9 @@ while ~all(amat.covered(:))
         numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) = ...
             numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) - ...
             conv2(newPixelsCovered(yymin:yymax,xxmin:xxmax),single(filters{r}),'same');
-%         reconstructionError(yymin:yymax,xxmin:xxmax, r) = ...
-%             reconstructionError(yymin:yymax,xxmin:xxmax, r) - ...
-%             conv2(priceMap(yymin:yymax,xxmin:xxmax),single(filters{r}),'same');
+        reconstructionError(yymin:yymax,xxmin:xxmax, r) = ...
+            reconstructionError(yymin:yymax,xxmin:xxmax, r) - ...
+            conv2(priceMap(yymin:yymax,xxmin:xxmax),single(filters{r}),'same');
     end
     
     % Update encodings and errors. NOTE: the diskCost for disks that have

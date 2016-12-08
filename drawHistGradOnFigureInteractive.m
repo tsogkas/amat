@@ -30,10 +30,11 @@ r  = 1;  % default radius
 dr = 1;  % default radius difference when comparing histograms
 B  = 32; % used for histogram encodings
 R  = 40; % default range of scales
-if ismatrix(imgRGB)
-    channelType   = {'luminance','texture'};
+% NO TEXTURE FOR NOW
+if ismatrix(imgRGB) 
+    channelType   = {'luminance'}; % {'luminance','texture'};
 else
-    channelType   = {'luminance','color','texture'};
+    channelType   = {'luminance','color'}; % {'luminance','color','texture'};
 end
 distanceType  = {'chi2','chi2-gaussian','reconstruction','sum','combined'};
 distanceIndex = find(strcmp(distanceType, 'chi2'));
@@ -47,10 +48,9 @@ end
 % Compute Lab color transformation and histograms with default parameters
 [H,W,~] = size(imgRGB);
 imgLab  = rgb2labNormalized(imgRGB);
-imgGauss= imgaussfilt(imgLab,1);
-imgAvg  = imfilter(imgLab,fspecial('disk',3));
-imgBinned = cat(3, binImage(imgLab,B),textonMap(imgRGB, B));
-h = imageEncoding(imgBinned,filters,'hist',B);
+% imgBinned = cat(3, binImage(imgLab,B),textonMap(imgRGB, B));
+imgBinned = binImage(imgLab,B);
+h = imageEncoding(imgBinned,filters,'hist',B); % This is correct! We want the un-normalized version here.
 mlab = imageEncoding(imgLab,filters,'average');
 mrgb = imageEncoding(imgRGB,filters,'average');
 
@@ -80,11 +80,11 @@ drawHistogramGradients(fh); % first draw
                     d = imageError(imgRGB, mrgb(:,:,:,r),filters(r),'dssim');
                 else
                     if ismatrix(imgRGB)
-                        d = imageError(imgAvg(:,:,1),mlab(:,:,1,r),filters(r),et);
+                        d = imageError(imgLab(:,:,1),mlab(:,:,1,r),filters(r),et);
                     else
-                        d = (imageError(imgAvg(:,:,1),mlab(:,:,1,r),filters(r),et) +...
-                             imageError(imgAvg(:,:,2),mlab(:,:,2,r),filters(r),et) +...
-                             imageError(imgAvg(:,:,3),mlab(:,:,3,r),filters(r),et))/2;
+                        d = (imageError(imgLab(:,:,1),mlab(:,:,1,r),filters(r),et) +...
+                             imageError(imgLab(:,:,2),mlab(:,:,2,r),filters(r),et) +...
+                             imageError(imgLab(:,:,3),mlab(:,:,3,r),filters(r),et))/2;
                     end
                     d = min(1,d); 
                 end
@@ -108,11 +108,11 @@ drawHistogramGradients(fh); % first draw
                     drecon = imageError(imgRGB,mrgb(:,:,:,r),filters(r),et);
                 else
                     if ismatrix(imgRGB)
-                        drecon = imageError(imgAvg(:,:,1),mlab(:,:,1,r),filters(r),et);
+                        drecon = imageError(imgLab(:,:,1),mlab(:,:,1,r),filters(r),et);
                     else
-                        drecon = (imageError(imgAvg(:,:,1),mlab(:,:,1,r),filters(r),et) +...
-                                  imageError(imgAvg(:,:,2),mlab(:,:,2,r),filters(r),et) +...
-                                  imageError(imgAvg(:,:,3),mlab(:,:,3,r),filters(r),et))/2;
+                        drecon = (imageError(imgLab(:,:,1),mlab(:,:,1,r),filters(r),et) +...
+                                  imageError(imgLab(:,:,2),mlab(:,:,2,r),filters(r),et) +...
+                                  imageError(imgLab(:,:,3),mlab(:,:,3,r),filters(r),et))/2;
                     end
                 end
                 d = min(1,drecon + dmaxim);
