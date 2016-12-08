@@ -63,13 +63,22 @@ for r=1:R
     maximalityError(:,1:r,r)             = 1;
     maximalityError(end-r+1:end,:,r)     = 1;
     maximalityError(:,end-r+1:end,r)     = 1;
-%     maximalityError(r+1,:,r) = 0;
-%     maximalityError(:,r+1,r) = 0;
-%     maximalityError(end-r,:,r) = 0;
-%     maximalityError(:,end-r,r) = 0;
 end
 maximalityError(:,:,1:2) = 1;
 
+%% Compute fully contained disks for a point in the image
+contains = false(H*W,R);
+xp = 10; yp = 10;
+for r=1:R
+    [xc,yc,rc] = findContainedDisks(r);
+    xc = xc + xp;
+    yc = yc + yp;
+    outOfLimits = xc < 1 | xc > W | yc < 1 | yc > H;
+    xc(outOfLimits) = [];
+    yc(outOfLimits) = [];
+    rc(outOfLimits) = [];
+    contains(sub2ind([H,W,R],yc,xc,rc)) = true;
+end
 
 %% Greedy approximation of the weighted set cover problem associated with AMAT
 % Initializations
@@ -99,7 +108,7 @@ for r=1:R
     numNewPixelsCovered(:,:,r) = conv2(numNewPixelsCovered(:,:,r), ...
         double(filters{r}),'same');
 end
-T = 0.0001;
+T = 0.01;
 diskCostEffective = min(1,sqrt(reconstructionError ./ numNewPixelsCovered) + bsxfun(@plus,maximalityError,reshape(T./(1:R),1,1,[])));
 % diskCostEffective = min(1,reconstructionError ./ numNewPixelsCovered + maximalityError);
 % diskCostEffective = maximalityError;
@@ -111,9 +120,11 @@ top = 1e2;
 % viscircles([xx,yy],rr,'Color','k','LineWidth',0.5);
 % viscircles([xx(1),yy(1)],rr(1),'Color','b','EnhanceVisibility',false); 
 % title(sprintf('W: Top-%d disks, B: Top-1 disk',top))
+errorBackup = reconstructionError;
 
 
 %% Run the greedy algorithm
+reconstructionError = errorBackup;
 [x,y] = meshgrid(1:W,1:H);
 f = mlab;
 while ~all(amat.covered(:))
@@ -145,31 +156,39 @@ while ~all(amat.covered(:))
     [yy,xx] = find(newPixelsCovered);
     xmin = min(xx); xmax = max(xx);
     ymin = min(yy); ymax = max(yy);
-    newPixelsCovered = single(newPixelsCovered);
+    newPixelsCovered = double(newPixelsCovered);
     priceMap = amat.price .* newPixelsCovered;
+    amat.reconstruction = reshape(amat.reconstruction,H,W,[]); % reshape for convolutions
     for r=1:R
         xxmin = max(xmin-r,1); yymin = max(ymin-r,1);
         xxmax = min(xmax+r,W); yymax = min(ymax+r,H);
         numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) = ...
             numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) - ...
-            conv2(newPixelsCovered(yymin:yymax,xxmin:xxmax),single(filters{r}),'same');
+            conv2(newPixelsCovered(yymin:yymax,xxmin:xxmax),double(filters{r}),'same');
         reconstructionError(yymin:yymax,xxmin:xxmax, r) = ...
             reconstructionError(yymin:yymax,xxmin:xxmax, r) - ...
-            conv2(priceMap(yymin:yymax,xxmin:xxmax),single(filters{r}),'same');
+            conv2(priceMap(yymin:yymax,xxmin:xxmax),double(filters{r}),'same');
+        % TODO: use conv2 with 'valid' parameter to contain and speed up?
+        % We must do this "manually" if we want to use imageEncoding() by
+        % using the larger window [xxmin,yymin,xxmax,yymax] to compute the
+        % convolutions and then crop the [xmin,ymin,xmax,ymax] part.
+        tmp = imageEncoding(amat.reconstruction(yymin:yymax,xxmin:xxmax,:),filters(r));
+        f(ymin:ymax,xmin:xmax, :, r) = ...
+            tmp((ymin-yymin+1):(ymax-yymin+1),(xmin-xxmin+1):(xmax-xxmin+1), :);
     end
+    amat.reconstruction = reshape(amat.reconstruction,H*W,[]); % reshape back
+    % We do this to correct precision errors introduced by subtracting the
+    % pixel prices from the reconstruction error (these would normally be
+    % zero but sometimes they take very small negative values).
+    reconstructionError = max(0,reconstructionError); 
     
-    % Update encodings and errors. NOTE: the diskCost for disks that have
+    % Update errors. NOTE: the diskCost for disks that have
     % been completely covered (e.g. the currently selected disk) will be
     % set to inf or nan, because of the division with numNewPixelsCovered
-    % which will equal zero for those disks. 
-    % TODO: Consider setting explicitly to inf.
-    % TODO: use conv2 with 'valid' parameter to contain and speed up
-%     f = imageEncoding(reshape(amat.reconstruction,H,W,[]),filters);
-%     diskCost = imageError(reshape(amat.reconstruction,H,W,[]),f,filters,errorType,colorWeights);
-    
-    % Update cost effectiveness score
+    % which will be zero (0) for those disks. 
     diskCostEffective = min(1,sqrt(reconstructionError ./ numNewPixelsCovered) ...
         + bsxfun(@plus,maximalityError,reshape(T./(1:R),1,1,[])));
+    diskCostEffective(isnan(diskCostEffective)) = inf;
     assert(allvec(numNewPixelsCovered(yc,xc, 1:rc)==0))
 
     
