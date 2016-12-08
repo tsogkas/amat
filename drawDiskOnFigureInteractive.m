@@ -34,6 +34,8 @@ set(fh, 'WindowButtonMotionFcn', @changePoint);
 set(fh, 'WindowButtonDownFcn',   @changeMethod);
 set(fh, 'WindowScrollWheelFcn',  @changeRadius);
 [H,W,C] = size(imgRGB);
+tmap    = textonMap(imgRGB, numBins); 
+tmap    = reshape(tmap,[],C);
 imgRGB  = reshape(imgRGB, [], C);
 imgLab  = rgb2labNormalized(imgRGB);
 [xx,yy] = meshgrid(1:W,1:H);
@@ -57,7 +59,7 @@ imgLab  = rgb2labNormalized(imgRGB);
         if strcmp(errorType, 'dssim')
             imgPatch = imgRGB(D,:);
         else
-            imgPatch = imgLab(D,:);https://www.youtube.com/watch?v=XpZHUVjQydI
+            imgPatch = imgLab(D,:);
         end
         
         % Encode the patch and compute error
@@ -73,14 +75,17 @@ imgLab  = rgb2labNormalized(imgRGB);
                 % for patch encoding using the hist method, we will try to
                 % decode the patch with the Smirnov transform.
                 hists = encPatch;
+                histt = patchEncoding(tmap(D,:),'hist',numBins);
                 encPatch = histinv(encPatch,size(imgPatch,1))';
                 err = patchError(imgPatch,encPatch,errorType);
             case 'hist-mode'
                 hists = encPatch;
+                histt = patchEncoding(tmap(D,:),'hist',numBins);
                 encPatch = reshape(compressHistogram(hists,'mode',2),1,[]);
                 err = patchError(imgPatch,encPatch,errorType);
             case 'hist-expectation'
                 hists = encPatch;
+                histt = patchEncoding(tmap(D,:),'hist',numBins);
                 encPatch = reshape(compressHistogram(hists,'expectation',2),1,[]);
                 err = patchError(imgPatch,encPatch,errorType);
             otherwise, error('Encoding type not supported')
@@ -92,7 +97,7 @@ imgLab  = rgb2labNormalized(imgRGB);
         if ~strcmp(errorType, 'dssim')
             encPatch = labNormalized2rgb(encPatch);
         end
-        if isvector(encPatch)
+        if isvector(encPatch) && size(encPatch,2) == 3
             imgRGB(D,:) = repmat(encPatch, [nnz(D), 1]);
         elseif ismatrix(encPatch)
             imgRGB(D,:) = encPatch;
@@ -112,9 +117,15 @@ imgLab  = rgb2labNormalized(imgRGB);
             title(sprintf('Point (%d,%d), r=%d, %s (%d bins), %s: %.4f',...
                 x,y,r,encodingType,numBins,errorType,err));
             figure(2);
-            subplot(131); bar(hists(1,:)); title('luminance');
-            subplot(132); bar(hists(2,:)); title('colora');
-            subplot(133); bar(hists(3,:)); title('colorb');
+            if C == 1 
+                subplot(121); bar(hists(1,:)); title('luminance');
+                subplot(122); bar(histt); title('texture')
+            else
+                subplot(221); bar(hists(1,:)); title('luminance');
+                subplot(222); bar(hists(2,:)); title('colora');
+                subplot(223); bar(hists(3,:)); title('colorb');
+                subplot(224); bar(histt); title('texture');
+            end
         end
         drawnow;
     end

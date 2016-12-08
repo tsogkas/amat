@@ -58,10 +58,10 @@ tchecker = textonMap(checker,B);
 htexhalf = patchEncoding(thalf(:),'hist-normalized',B);
 htexchecker = patchEncoding(tchecker(:),'hist-normalized',B);
 
-%%
-B = 16;
-tmap1 = textonMap(half,B,'image',6,1,1,sqrt(2),2);
-tmap2 = textonMap(checker,B,'image',6,1,2,sqrt(2),2);
+%% Test different parameters for extracting textons
+B = 32;
+tmap1 = textonMap(half,B,'global',6,1,1,sqrt(2),2);
+tmap2 = textonMap(checker,B,'global',6,1,2,sqrt(2),2);
 % tmap1 = computeTextons(fbRun(fbCreate(6,1,1,2),half),B);
 % tmap2 = computeTextons(fbRun(fbCreate(6,1,1,2),checker),B);
 h1 = patchEncoding(tmap1(:),'hist-normalized',B);
@@ -72,4 +72,20 @@ figure(4); imagesc(tmap2); axis off image;
 % figure(3); imshow(imgRGB);
 
 % textons = unitex(fbCreate(6,1,1,3),32);
+
+%% Test different pre-processing for input image.
+imggaussf = imgaussfilt(imgRGB,1);
+imgmedian = zeros(size(imgRGB)); 
+for c=1:size(imgRGB,3), imgmedian(:,:,c) = medfilt2(imgRGB(:,:,c),[5 5]); end
+imgavg = imfilter(imgRGB,fspecial('disk',3));
+figure;
+subplot(221); imshow(imgRGB); title('Original')
+subplot(222); imshow(imggaussf); title('Gaussian')
+subplot(223); imshow(imgmedian); title('Median')
+subplot(224); imshow(imgavg); title('Average (disk)')
+
+
+
+
+
 

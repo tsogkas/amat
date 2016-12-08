@@ -47,6 +47,8 @@ end
 % Compute Lab color transformation and histograms with default parameters
 [H,W,~] = size(imgRGB);
 imgLab  = rgb2labNormalized(imgRGB);
+imgGauss= imgaussfilt(imgLab,1);
+imgAvg  = imfilter(imgLab,fspecial('disk',3));
 imgBinned = cat(3, binImage(imgLab,B),textonMap(imgRGB, B));
 h = imageEncoding(imgBinned,filters,'hist',B);
 mlab = imageEncoding(imgLab,filters,'average');
@@ -61,7 +63,7 @@ drawHistogramGradients(fh); % first draw
 
     function drawHistogramGradients(fh)
         % Compute distance
-        et = 'mse';
+        et = 'rmse';
 %         dr = ceil(r/4);
         dr = ceil(r/(2+sqrt(6)));
         if strcmp(channelType{channelIndex},'color'), c = [2;3]; else c = channelIndex; end
@@ -78,11 +80,11 @@ drawHistogramGradients(fh); % first draw
                     d = imageError(imgRGB, mrgb(:,:,:,r),filters(r),'dssim');
                 else
                     if ismatrix(imgRGB)
-                        d = imageError(imgLab(:,:,1),mlab(:,:,1,r),filters(r),et);
+                        d = imageError(imgAvg(:,:,1),mlab(:,:,1,r),filters(r),et);
                     else
-                        d = (imageError(imgLab(:,:,1),mlab(:,:,1,r),filters(r),et) +...
-                             imageError(imgLab(:,:,2),mlab(:,:,2,r),filters(r),et) +...
-                             imageError(imgLab(:,:,3),mlab(:,:,3,r),filters(r),et))/2;
+                        d = (imageError(imgAvg(:,:,1),mlab(:,:,1,r),filters(r),et) +...
+                             imageError(imgAvg(:,:,2),mlab(:,:,2,r),filters(r),et) +...
+                             imageError(imgAvg(:,:,3),mlab(:,:,3,r),filters(r),et))/2;
                     end
                     d = min(1,d); 
                 end
@@ -106,11 +108,11 @@ drawHistogramGradients(fh); % first draw
                     drecon = imageError(imgRGB,mrgb(:,:,:,r),filters(r),et);
                 else
                     if ismatrix(imgRGB)
-                        drecon = imageError(imgLab(:,:,1),mlab(:,:,1,r),filters(r),et);
+                        drecon = imageError(imgAvg(:,:,1),mlab(:,:,1,r),filters(r),et);
                     else
-                        drecon = (imageError(imgLab(:,:,1),mlab(:,:,1,r),filters(r),et) +...
-                                  imageError(imgLab(:,:,2),mlab(:,:,2,r),filters(r),et) +...
-                                  imageError(imgLab(:,:,3),mlab(:,:,3,r),filters(r),et))/2;
+                        drecon = (imageError(imgAvg(:,:,1),mlab(:,:,1,r),filters(r),et) +...
+                                  imageError(imgAvg(:,:,2),mlab(:,:,2,r),filters(r),et) +...
+                                  imageError(imgAvg(:,:,3),mlab(:,:,3,r),filters(r),et))/2;
                     end
                 end
                 d = min(1,drecon + dmaxim);
