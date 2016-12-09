@@ -39,9 +39,7 @@ switch method
         numer = zeros(H,W,C);
         denom = zeros(H,W,C);
         onemask = ones(H,W);
-%         img0  = img;
         for r=1:R
-%             img = imgaussfilt(img0,(size(filters{r},1)-1)/4);
             numer(:) = 0; denom(:) = 0;
             D = double(filters{r});
 %             A = nnz(D);
@@ -57,7 +55,7 @@ switch method
                 I = img(:,:,c);
                 g = enc(:,:,c,r);
                 sumI2 = conv2(I.^2, D, 'same');
-                numer(:,:,c) = sumI2 - A * g.^2;                
+                numer(:,:,c) = sumI2 - A .* g.^2;                
                 if strcmp(method,'nrmse') || strcmp(method,'nmse')
                     denom(:,:,c) = sumI2;
                 end
@@ -87,9 +85,7 @@ switch method
             k1 = params(1); k2 = params(2); L  = params(3);
         end
         c1 = (k1*L)^2; c2 = (k2*L)^2;
-%         img0  = img;
         for r=1:R
-%             img = imgaussfilt(img0,(size(filters{r},1)-1)/4);
             D = double(filters{r});
             A = nnz(D);
             ssim = zeros(H,W);
