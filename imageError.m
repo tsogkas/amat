@@ -38,18 +38,20 @@ switch method
         end
         numer = zeros(H,W,C);
         denom = zeros(H,W,C);
+        onemask = ones(H,W);
 %         img0  = img;
         for r=1:R
 %             img = imgaussfilt(img0,(size(filters{r},1)-1)/4);
             numer(:) = 0; denom(:) = 0;
             D = double(filters{r});
-            A = nnz(D);
+%             A = nnz(D);
+            A = conv2(onemask,D,'same');
             % Compute the per-channel square error:
             % Sum ||g(x)-I(x)||^2 / Sum||I(x)||^2. We can be more efficient by
             % expanding the identity: abs(g-I)^2 = (g-I)^2 = g^2 + I^2 - 2*g*I
             % Also note that since we expand a single scalar value across the
             % disk area, Sum(g^2) = A*g^2, where A is the area of the disk.
-            % As a result, in the end we get Sum(g-I)^2 = Sum(I.^2) - A2*g.^2.
+            % As a result, in the end we get Sum(g-I)^2 = Sum(I.^2) - A*g.^2.
             % The following quantities are sums withing the disk region D.
             for c=1:C
                 I = img(:,:,c);
@@ -62,7 +64,7 @@ switch method
             end
             % Normalize across each channel
             if strcmp(method,'rmse') || strcmp(method,'mse')
-                numer = numer ./ A;                 
+                numer = bsxfun(@rdivide,numer,A);                 
             elseif strcmp(method,'nrmse') || strcmp(method,'nmse')
                 numer = numer ./ denom;
             end

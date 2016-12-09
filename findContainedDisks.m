@@ -11,5 +11,5 @@ for r=1:R
    dc = x2 + y2 <= (R-r).^2;
    xc = [xc; x(dc)];
    yc = [yc; y(dc)];
-   rc = [rc; r*ones(length(xc),1)];
+   rc = [rc; r*ones(nnz(dc),1)];
 end

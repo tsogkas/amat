@@ -67,18 +67,52 @@ end
 maximalityError(:,:,1:2) = 1;
 
 %% Compute fully contained disks for a point in the image
-contains = false(H*W,R);
-xp = 10; yp = 10;
+% [xc,yc,rc] = findContainedDisks(r);
+% This is the grid used for all scales from 1 to R. Centers for contained
+% disks at all scales can be deduced by using this grid and adding the
+% necessary offset depending on the position of the current point.
+[x,y] = meshgrid(-R:R,-R:R);
+% Centers of all contained disks of scales 1,...,R.
+dc = bsxfun(@le,x.^2 + y.^2,reshape((R-(1:R)).^2,1,1,[]));
+% We want to compute the sum of square differences of the mean of each
+% point in the image from the means of all the included disks. We use the
+% same formula used in imageError() for efficient computation:
+% sum((I-g).^2) = sum(I.^2) - A * g.^2, where sum(I.^2) is the sum of
+% squares of the mean values of all contained disks, g is the mean value at
+% the current disk center and A is the total area (total number of
+% contained disk centers.
+consensusScores = zeros(H,W,R);
+enc2 = mlab.^2;
+% Precompute areas
+onemask = ones(H,W);
+A = zeros(H,W,R);
 for r=1:R
-    [xc,yc,rc] = findContainedDisks(r);
-    xc = xc + xp;
-    yc = yc + yp;
-    outOfLimits = xc < 1 | xc > W | yc < 1 | yc > H;
-    xc(outOfLimits) = [];
-    yc(outOfLimits) = [];
-    rc(outOfLimits) = [];
-    contains(sub2ind([H,W,R],yc,xc,rc)) = true;
+    D = dc(:,:,r); D = cropImageBox(D,mask2bbox(D)); 
+    A(:,:,r) = conv2(onemask,double(D),'same');
 end
+A = cumsum(A,3,'reverse');
+for r=1:R % compute consensus for all scales
+    dcsubset = dc(:,:,end-r+1:end);
+    for i=1:size(dcsubset,3) % for a given disk at scale r, consider all radii of contained disks
+        D = dcsubset(:,:,i); D = cropImageBox(D,mask2bbox(D)); 
+        consensusScores(:,:,r) = consensusScores(:,:,r) + ...
+            conv2(enc2(:,:,1,i),double(D),'same');
+    end
+    consensusScores(:,:,r) = consensusScores(:,:,r) - A(:,:,end-r+1) .* enc2(:,:,1,r);
+end
+
+
+% We can obtain the centers of contained disks at all scales for a disk of
+% radius r, by using dc(:,:,end-r+1:end)
+% [yc,xc,rc] = ind2sub([2*R+1,2*R+1,R],find(dc));
+% contains = false(H,W,R); contains(sub2ind([H,W,R],yc,xc,rc)) = true;
+% Adjust indices (which are always positive) to local grid coordinates and
+% add offset to center at the current point.
+% [x,y] = meshgrid(1:W,1:H);
+% xp = 100; yp = 100;
+% yc = yc - R - 1 + yp; xc = xc - R - 1 + xp;
+% outOfLimits = xc < 1 | yc < 1 | xc > W | yc > H;
+% xc(outOfLimits) = []; yc(outOfLimits) = []; rc(outOfLimits) = [];
 
 %% Greedy approximation of the weighted set cover problem associated with AMAT
 % Initializations
@@ -88,7 +122,7 @@ amat.axis           = zeros(H,W,C);
 amat.radius         = zeros(H,W);
 amat.depth          = zeros(H,W); % #disks points(x,y) is covered by
 amat.covered        = false(H,W);
-amat.price          = zeros(H,W);   % error contributed by each point
+amat.price          = zeros(H,W); % error contributed by each point
 
 %% Error balancing and visualization of top (low-cost) disks
 % -------------------------------------------------------------------------
