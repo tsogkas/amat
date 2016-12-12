@@ -17,7 +17,7 @@ filters = cell(R,1); for r=1:R, filters{r} = disk(r); end
 %% Compute encodings f(D_I(x,y,r)) at every point.
 % mrgb = imageEncoding(imgRGB,filters,'average'); % used for the reconstruction error
 mlab = imageEncoding(imgLab,filters,'average'); % used for the reconstruction error
-hlab = imageEncoding(binImage(imgLab,B),filters,'hist',B); % used for the maximality error;
+% hlab = imageEncoding(binImage(imgLab,B),filters,'hist',B); % used for the maximality error;
 % htex = imageEncoding(textonMap(imgRGB,B),filters,'hist',B);
 htex = []; % NO TEXTURE FOR NOW
 
@@ -74,10 +74,10 @@ maximalityError(:,:,1:2) = 1;
 [x,y] = meshgrid(-R:R,-R:R);
 % Centers of all contained disks of scales 1,...,R.
 dc = bsxfun(@le,x.^2 + y.^2,reshape(((R-1):-1:0).^2, 1,1,[]));
-% We want to compute the sum of square differences of the mean of each
-% point in the image from the means of all the included disks. 
+% We want to compute the sum of square differences of the encoding (mean) 
+% of each point in the image from the encodings of all the included disks. 
 % EDIT: WE CANNOT USE THE EXACT SAME SIMPLIFIED FORMULA AS IN imageError() because
-% that derivation assumed that g = mean(I) in some patch, which is not the
+% that derivation assumed that g = mean(I) for some patch, which is not the
 % case here, as each of the I values is a mean value of the original image
 % itself. We can still use convolutions though.
 % Precompute areas. A(:,:,end-r+1) is the map with the pixels covered by a
@@ -93,6 +93,7 @@ enc  = mlab; enc2 = enc.^2;
 for r=1:R % compute consensus for all scales
     dcsubset = dc(:,:,end-r+1:end);
     % for a given disk at scale r, consider all radii of contained disks
+    % We can pre-compute all these convolutions to save time
     for i=1:size(dcsubset,3) 
         D = dcsubset(:,:,i); D = double(cropImageBox(D,mask2bbox(D))); 
         consensusScores(:,:,r) = ... 
@@ -105,6 +106,16 @@ for r=1:R % compute consensus for all scales
 end
 consensusScores = max(0,consensusScores);
 
+% Compute maximality scores using the mean value consensus
+% Create ring masks of circumference disks
+dc = zeros(size(x));
+for r=R-1:-1:1
+    dr = ceil(r/(2+sqrt(6))); % dA >= 0.5A(r)
+    dc(:,:,r) = x.^2 + y.^2 > r^2 & x.^2 + y.^2 <= (min(R,r+dr))^2;
+end
+A = cumsum(A,
+
+
 % We can obtain the centers of contained disks at all scales for a disk of
 % radius r, by using dc(:,:,end-r+1:end)
 % [yc,xc,rc] = ind2sub([2*R+1,2*R+1,R],find(dc));
@@ -116,6 +127,8 @@ consensusScores = max(0,consensusScores);
 % yc = yc - R - 1 + yp; xc = xc - R - 1 + xp;
 % outOfLimits = xc < 1 | yc < 1 | xc > W | yc > H;
 % xc(outOfLimits) = []; yc(outOfLimits) = []; rc(outOfLimits) = [];
+
+
 
 %% Greedy approximation of the weighted set cover problem associated with AMAT
 % Initializations
@@ -161,7 +174,7 @@ errorBackup = reconstructionError;
 
 
 %% Run the greedy algorithm
-reconstructionError = errorBackup;
+reconstructionError = consensusError;
 [x,y] = meshgrid(1:W,1:H);
 f = mlab;
 while ~all(amat.covered(:))
