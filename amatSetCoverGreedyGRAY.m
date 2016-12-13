@@ -11,55 +11,43 @@ filters = cell(R,1); for r=1:R, filters{r} = double(disk(r)); end
 % Compute encodings f(D_I(x,y,r)) at every point.
 mlab = imageEncoding(imgLab,filters,'average'); 
 
-% Compute reconstruction error
+% Compute squared reconstruction error for disks at all scales.
+se = imageError(imgRGB,mlab,filters,'se');
+
+% We now have to accumulate the squared errors for all contained disks
 [x,y] = meshgrid(-R:R,-R:R);
 dc = bsxfun(@le,x.^2 + y.^2,reshape(((R-1):-1:0).^2, 1,1,[]));
-% Precompute areas. A(:,:,end-r+1) is the map with the pixels covered by a
-% disk of radius r for the whole image domain.
-A = ones(H,W,R);
-for r=1:R
-    D = dc(:,:,r); D = cropImageBox(D,mask2bbox(D)); 
-    A(:,:,r) = conv2(A(:,:,r),double(D),'same');
-end
-A = cumsum(A,3,'reverse');
 reconstructionError = zeros(H,W,R);
-enc  = mlab; enc2 = enc.^2;
-for r=1:R % compute consensus for all scales
+numContainedDisks   = zeros(H,W,R);
+enc = mlab; enc2 = enc.^2;
+for r=1:R 
     dcsubset = dc(:,:,end-r+1:end);
     % for a given disk at scale r, consider all radii of contained disks
     for i=1:size(dcsubset,3) 
         D = dcsubset(:,:,i); D = double(cropImageBox(D,mask2bbox(D))); 
-        reconstructionError(:,:,r) = ... 
-            reconstructionError(:,:,r) + ...
-            conv2(enc2(:,:,1,i),D,'same') - ...
-            conv2(enc(:,:,1,i), D,'same') .* 2 .* enc(:,:,1,r);
+        reconstructionError(:,:,r) = reconstructionError(:,:,r) + conv2(se(:,:,i),D,'same');
+        numContainedDisks(:,:,r) = numContainedDisks(:,:,r) + nnz(D);
     end
-    reconstructionError(:,:,r) = reconstructionError(:,:,r) + A(:,:,end-r+1) .* enc2(:,:,1,r);
-end
-reconstructionError = max(0,reconstructionError);
-% Compute maximality scores using the mean value consensus
-% Create ring masks of outer rings
-maximalityError = zeros(H,W,R);
-for r=1:R
-%     dr = ceil(r/(2+sqrt(6))); % dA >= 0.5A(r)
-    dr = ceil(r/10);
-    mask = double(ring(r,r+dr));
-    maximalityError(:,:,r) = 1-(conv2(imgRGB.^2,mask,'same') + ...
-        nnz(mask)*enc2(:,:,1,r) - 2 .* enc(:,:,1,r) .* conv2(imgRGB,mask,'same'))/nnz(mask);
-end 
-maximalityError = max(0,maximalityError);
-
-% Fix boundary conditions for both  terms (image boundaries crosses)
-for r=1:R
-    reconstructionError(1:r,:,r)         = inf;
-    reconstructionError(:,1:r,r)         = inf;
-    reconstructionError(end-r+1:end,:,r) = inf;
-    reconstructionError(:,end-r+1:end,r) = inf;
+    % Fix boundary conditions
+    reconstructionError([1:r, end-r+1:end],:,r) = inf;
+    reconstructionError(:,[1:r, end-r+1:end],r) = inf;
 end
 
-% Combine the two types of error
-A = ones(H,W,R); for r=1:R, A(:,:,r) = conv2(A(:,:,r),filters{r},'same'); end
-combinedError = reconstructionError./A + maximalityError;
+% % Compute maximality scores using the mean value consensus
+% % Create ring masks of outer rings
+% maximalityError = zeros(H,W,R);
+% for r=1:R
+% %     dr = ceil(r/(2+sqrt(6))); % dA >= 0.5A(r)
+%     dr = ceil(r/10);
+%     mask = double(ring(r,r+dr));
+%     maximalityError(:,:,r) = 1-(conv2(imgRGB.^2,mask,'same') + ...
+%         nnz(mask)*enc2(:,:,1,r) - 2 .* enc(:,:,1,r) .* conv2(imgRGB,mask,'same'))/nnz(mask);
+% end 
+% maximalityError = max(0,maximalityError);
+% 
+% % Combine the two types of error
+% A = ones(H,W,R); for r=1:R, A(:,:,r) = conv2(A(:,:,r),filters{r},'same'); end
+% combinedError = reconstructionError./A + maximalityError;
 
 %% Greedy approximation of the weighted set cover problem associated with AMAT
 % Initializations
@@ -68,8 +56,11 @@ amat.reconstruction = reshape(amat.input, H*W, C);
 amat.axis           = zeros(H,W,C);
 amat.radius         = zeros(H,W);
 amat.depth          = zeros(H,W); % #disks points(x,y) is covered by
-amat.covered        = false(H,W);
 amat.price          = zeros(H,W); % error contributed by each point
+amat.covered        = false(H,W);
+% Flag corners that are not accessible by our filter set
+amat.covered([1,end],1) = true;
+amat.covered(1,[1,end]) = true;
 
 %% Error balancing and visualization of top (low-cost) disks
 % -------------------------------------------------------------------------
@@ -88,14 +79,14 @@ numNewPixelsCovered = ones(H,W,R);
 for r=1:R
     numNewPixelsCovered(:,:,r) = conv2(numNewPixelsCovered(:,:,r), filters{r},'same');
 end
-T = 0.001;
+T = 0.1;
 % diskCostEffective = min(1,sqrt(reconstructionError ./ numNewPixelsCovered) + bsxfun(@plus,maximalityError,reshape(T./(1:R),1,1,[])));
 diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R),1,1,[]));
 % diskCostEffective = reconstructionError ./ numNewPixelsCovered + maximalityError;
 % diskCostEffective = reconstructionError + maximalityError;
 % Sort costs in ascending order and visualize top disks.
 [sortedCosts, indSorted] = sort(diskCostEffective(:),'ascend');
-top = 2e2;
+top = 1e1;
 [yy,xx,rr] = ind2sub([H,W,R], indSorted(1:top));
 figure(1); imshow(reshape(amat.input,H,W,[])); 
 viscircles([xx,yy],rr,'Color','k','LineWidth',0.5);
@@ -119,6 +110,7 @@ while ~all(amat.covered(:))
     [yc,xc,rc] = ind2sub([H,W,R], indMin);
     distFromCenterSquared = (x-xc).^2 + (y-yc).^2;
     D = distFromCenterSquared <= rc^2;
+    % And newPixelsCovered are the NEW points that are covered
     newPixelsCovered = D & ~amat.covered;
     assert(~all(newPixelsCovered(:)))
     
@@ -139,32 +131,20 @@ while ~all(amat.covered(:))
     ymin = min(yy); ymax = max(yy);
     newPixelsCovered = double(newPixelsCovered);
     priceMap = amat.price .* newPixelsCovered;
-    amat.reconstruction = reshape(amat.reconstruction,H,W,[]); % reshape for convolutions
     for r=1:R
         xxmin = max(xmin-r,1); yymin = max(ymin-r,1);
         xxmax = min(xmax+r,W); yymax = min(ymax+r,H);
         numPixels = conv2(newPixelsCovered(yymin:yymax,xxmin:xxmax),filters{r},'same');
         numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) = ...
             numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) - numPixels;
-%         containedDisksInNewArea = numPixels == nnz(filters{r});
-%         reconstructionError(yymin:yymax,xxmin:xxmax, r) = ...
-%             reconstructionError(yymin:yymax,xxmin:xxmax, r) - ...
-%             conv2(priceMap(yymin:yymax,xxmin:xxmax),filters{r},'same');
-%         % TODO: use conv2 with 'valid' parameter to contain and speed up?
-%         % We must do this "manually" if we want to use imageEncoding() by
-%         % using the larger window [xxmin,yymin,xxmax,yymax] to compute the
-%         % convolutions and then crop the [xmin,ymin,xmax,ymax] part.
-%         tmp = imageEncoding(amat.reconstruction(yymin:yymax,xxmin:xxmax,:),filters(r));
-%         f(ymin:ymax,xmin:xmax, :, r) = ...
-%             tmp((ymin-yymin+1):(ymax-yymin+1),(xmin-xxmin+1):(xmax-xxmin+1), :);
+        containedDisksInNewArea = numPixels == nnz(filters{r});
+        % se(i,j,r) = squared error of disk of radius r, centered at (i,j)
+        % re(i,j,r) = sum or all se's of contained disks inside the disk of
+        % radius r, centered at (i,j)
+        reconstructionError(yymin:yymax,xxmin:xxmax, r) = ...
+            reconstructionError(yymin:yymax,xxmin:xxmax, r) - ...
+            conv2(se(yymin:yymax,xxmin:xxmax).*containedDisksInNewArea,filters{r},'same');
     end
-    amat.reconstruction = reshape(amat.reconstruction,H*W,[]); % reshape back
-
-    
-    % We do this to correct precision errors introduced by subtracting the
-    % pixel prices from the reconstruction error (these would normally be
-    % zero but sometimes they take very small negative values).
-    reconstructionError = max(0,reconstructionError); 
     
     % Update errors. NOTE: the diskCost for disks that have
     % been completely covered (e.g. the currently selected disk) will be
@@ -172,12 +152,12 @@ while ~all(amat.covered(:))
     % which will be zero (0) for those disks. 
 %     diskCostEffective = reconstructionError ./ numNewPixelsCovered + maximalityError;
     diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R),1,1,[]));
-    diskCostEffective(isnan(diskCostEffective)) = inf;
+    diskCostEffective(numNewPixelsCovered == 0) = inf;
     assert(allvec(numNewPixelsCovered(yc,xc, 1:rc)==0))
 
     
     % Visualize progress
-    if 0
+    if 1
         % Sort costs in ascending order to visualize updated top disks.
         [sortedCosts, indSorted] = sort(diskCostEffective(:),'ascend');
         [yy,xx,rr] = ind2sub([H,W,R], indSorted(1:top));
