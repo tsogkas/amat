@@ -1,85 +1,19 @@
 %% Setup global parameters and preprocess image
 R = 50; % #scales
 B = 32; % #bins
-errorType = 'se';
-
-% imgRGB = rgb2gray(im2double(imresize(imread('google.jpg'), [128 128], 'nearest'))); 
-% imgRGB = rgb2gray(im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/66075.jpg'), [128 128], 'nearest'))); 
-% imgRGB = im2double(imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/35070.jpg'), [128 128], 'nearest')); 
-imgRGB = rgb2gray(im2double(imresize(imread('/home/tsogkas/datasets/AbstractScenes_v1.1/RenderedScenes/Scene0_9.png'),0.5)));
+imgRGB  = rgb2gray(im2double(imresize(imread('/home/tsogkas/datasets/AbstractScenes_v1.1/RenderedScenes/Scene0_9.png'),0.5)));
+imgLab  = rgb2labNormalized(imgRGB);
 [H,W,C] = size(imgRGB);
-imgLab = rgb2labNormalized(imgRGB);
-% imgClustered = clusterImageValues(imgLab, 5); % simplify input
 
-%% Construct filters, calculate perimeneters and disk areas
-filters = cell(R,1); for r=1:R, filters{r} = disk(r); end
+% Construct filters, calculate perimeneters and disk areas
+filters = cell(R,1); for r=1:R, filters{r} = double(disk(r)); end
 
-%% Compute encodings f(D_I(x,y,r)) at every point.
-% mrgb = imageEncoding(imgRGB,filters,'average'); % used for the reconstruction error
-mlab = imageEncoding(imgLab,filters,'average'); % used for the reconstruction error
-% hlab = imageEncoding(binImage(imgLab,B),filters,'hist',B); % used for the maximality error;
-% htex = imageEncoding(textonMap(imgRGB,B),filters,'hist',B);
-htex = []; % NO TEXTURE FOR NOW
+% Compute encodings f(D_I(x,y,r)) at every point.
+mlab = imageEncoding(imgLab,filters,'average'); 
 
-%% Compute reconstruction and maximality errors at all points and scales
-%  Compute reconstruction error by using the dssim (structural
-%  dissimilarity metric in the RGB color space, or a (nm)se metric on the
-%  perceptually linear Lab color space. 
-if strcmp(errorType,'dssim')
-    reconstructionError = imageError(imgRGB,mrgb,filters,'dssim');
-else
-    luminanceError = imageError(imgLab(:,:,1), mlab(:,:,1,:),filters, errorType);
-    if ismatrix(imgLab)
-        reconstructionError = luminanceError;
-    else
-        colorError = imageError(imgLab(:,:,2), mlab(:,:,2,:), filters, errorType) + ...
-                     imageError(imgLab(:,:,3), mlab(:,:,3,:), filters, errorType);
-        reconstructionError = (luminanceError + colorError)/2;
-    end
-end
-%  The maximality error that encourages the selection of maximal disks
-maximalityError = zeros(H,W,R);
-h = cat(3,hlab,htex);
-for r=1:R-1
-    dr = ceil(r/(2+sqrt(6))); % dA >= 0.5A(r)
-%     dr = ceil(r/(1+sqrt(2))); % dA == A(r)
-%     dr = 1;
-    h1 = h(:,:,:,:,r);
-    h2 = h(:,:,:,:,min(r+dr,R))-h(:,:,:,:,r);
-    h1 = bsxfun(@rdivide,h1,sum(h1,4));
-    h2 = bsxfun(@rdivide,h2,sum(h2,4));
-    maximalityError(:,:,r) = sum(...
-        histogramDistance(h2(:,:,1:end-1,:), h1(:,:,1:end-1,:),'chi2-gaussian',0.2),3) + ...
-        2*histogramDistance(h2(:,:,end,:), h1(:,:,end,:),'chi2');        
-end
-maximalityError = max(0,1-maximalityError);
-% Fix boundary conditions for both  terms (image boundaries crosses)
-for r=1:R
-    reconstructionError(1:r,:,r)         = inf;
-    reconstructionError(:,1:r,r)         = inf;
-    reconstructionError(end-r+1:end,:,r) = inf;
-    reconstructionError(:,end-r+1:end,r) = inf;
-    maximalityError(1:r,:,r)             = 1;
-    maximalityError(:,1:r,r)             = 1;
-    maximalityError(end-r+1:end,:,r)     = 1;
-    maximalityError(:,end-r+1:end,r)     = 1;
-end
-maximalityError(:,:,1:2) = 1;
-
-%% Compute fully contained disks for a point in the image
-% [xc,yc,rc] = findContainedDisks(r);
-% This is the grid used for all scales from 1 to R. Centers for contained
-% disks at all scales can be deduced by using this grid and adding the
-% necessary offset depending on the position of the current point.
+% Compute reconstruction error
 [x,y] = meshgrid(-R:R,-R:R);
-% Centers of all contained disks of scales 1,...,R.
 dc = bsxfun(@le,x.^2 + y.^2,reshape(((R-1):-1:0).^2, 1,1,[]));
-% We want to compute the sum of square differences of the encoding (mean) 
-% of each point in the image from the encodings of all the included disks. 
-% EDIT: WE CANNOT USE THE EXACT SAME SIMPLIFIED FORMULA AS IN imageError() because
-% that derivation assumed that g = mean(I) for some patch, which is not the
-% case here, as each of the I values is a mean value of the original image
-% itself. We can still use convolutions though.
 % Precompute areas. A(:,:,end-r+1) is the map with the pixels covered by a
 % disk of radius r for the whole image domain.
 A = ones(H,W,R);
@@ -100,16 +34,15 @@ for r=1:R % compute consensus for all scales
             conv2(enc2(:,:,1,i),D,'same') - ...
             conv2(enc(:,:,1,i), D,'same') .* 2 .* enc(:,:,1,r);
     end
-%     consensusScores(:,:,r) = consensusScores(:,:,r) + A * enc2(:,:,1,r);
     reconstructionError(:,:,r) = reconstructionError(:,:,r) + A(:,:,end-r+1) .* enc2(:,:,1,r);
 end
 reconstructionError = max(0,reconstructionError);
-
 % Compute maximality scores using the mean value consensus
 % Create ring masks of outer rings
 maximalityError = zeros(H,W,R);
 for r=1:R
-    dr = ceil(r/(2+sqrt(6))); % dA >= 0.5A(r)
+%     dr = ceil(r/(2+sqrt(6))); % dA >= 0.5A(r)
+    dr = ceil(r/10);
     mask = double(ring(r,r+dr));
     maximalityError(:,:,r) = 1-(conv2(imgRGB.^2,mask,'same') + ...
         nnz(mask)*enc2(:,:,1,r) - 2 .* enc(:,:,1,r) .* conv2(imgRGB,mask,'same'))/nnz(mask);
@@ -122,26 +55,11 @@ for r=1:R
     reconstructionError(:,1:r,r)         = inf;
     reconstructionError(end-r+1:end,:,r) = inf;
     reconstructionError(:,end-r+1:end,r) = inf;
-    maximalityError(1:r,:,r)             = inf;
-    maximalityError(:,1:r,r)             = inf;
-    maximalityError(end-r+1:end,:,r)     = inf;
-    maximalityError(:,end-r+1:end,r)     = inf;
 end
 
-
-% We can obtain the centers of contained disks at all scales for a disk of
-% radius r, by using dc(:,:,end-r+1:end)
-% [yc,xc,rc] = ind2sub([2*R+1,2*R+1,R],find(dc));
-% contains = false(H,W,R); contains(sub2ind([H,W,R],yc,xc,rc)) = true;
-% Adjust indices (which are always positive) to local grid coordinates and
-% add offset to center at the current point.
-% [x,y] = meshgrid(1:W,1:H);
-% xp = 100; yp = 100;
-% yc = yc - R - 1 + yp; xc = xc - R - 1 + xp;
-% outOfLimits = xc < 1 | yc < 1 | xc > W | yc > H;
-% xc(outOfLimits) = []; yc(outOfLimits) = []; rc(outOfLimits) = [];
-
-
+% Combine the two types of error
+A = ones(H,W,R); for r=1:R, A(:,:,r) = conv2(A(:,:,r),filters{r},'same'); end
+combinedError = reconstructionError./A + maximalityError;
 
 %% Greedy approximation of the weighted set cover problem associated with AMAT
 % Initializations
@@ -168,15 +86,16 @@ amat.price          = zeros(H,W); % error contributed by each point
 % -------------------------------------------------------------------------
 numNewPixelsCovered = ones(H,W,R);
 for r=1:R
-    numNewPixelsCovered(:,:,r) = conv2(numNewPixelsCovered(:,:,r), ...
-        double(filters{r}),'same');
+    numNewPixelsCovered(:,:,r) = conv2(numNewPixelsCovered(:,:,r), filters{r},'same');
 end
+T = 0.001;
 % diskCostEffective = min(1,sqrt(reconstructionError ./ numNewPixelsCovered) + bsxfun(@plus,maximalityError,reshape(T./(1:R),1,1,[])));
-diskCostEffective = reconstructionError ./ numNewPixelsCovered + maximalityError;
+diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R),1,1,[]));
+% diskCostEffective = reconstructionError ./ numNewPixelsCovered + maximalityError;
 % diskCostEffective = reconstructionError + maximalityError;
 % Sort costs in ascending order and visualize top disks.
 [sortedCosts, indSorted] = sort(diskCostEffective(:),'ascend');
-top = 1e2;
+top = 2e2;
 [yy,xx,rr] = ind2sub([H,W,R], indSorted(1:top));
 figure(1); imshow(reshape(amat.input,H,W,[])); 
 viscircles([xx,yy],rr,'Color','k','LineWidth',0.5);
@@ -224,19 +143,20 @@ while ~all(amat.covered(:))
     for r=1:R
         xxmin = max(xmin-r,1); yymin = max(ymin-r,1);
         xxmax = min(xmax+r,W); yymax = min(ymax+r,H);
+        numPixels = conv2(newPixelsCovered(yymin:yymax,xxmin:xxmax),filters{r},'same');
         numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) = ...
-            numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) - ...
-            conv2(newPixelsCovered(yymin:yymax,xxmin:xxmax),double(filters{r}),'same');
-        reconstructionError(yymin:yymax,xxmin:xxmax, r) = ...
-            reconstructionError(yymin:yymax,xxmin:xxmax, r) - ...
-            conv2(priceMap(yymin:yymax,xxmin:xxmax),double(filters{r}),'same');
-        % TODO: use conv2 with 'valid' parameter to contain and speed up?
-        % We must do this "manually" if we want to use imageEncoding() by
-        % using the larger window [xxmin,yymin,xxmax,yymax] to compute the
-        % convolutions and then crop the [xmin,ymin,xmax,ymax] part.
-        tmp = imageEncoding(amat.reconstruction(yymin:yymax,xxmin:xxmax,:),filters(r));
-        f(ymin:ymax,xmin:xmax, :, r) = ...
-            tmp((ymin-yymin+1):(ymax-yymin+1),(xmin-xxmin+1):(xmax-xxmin+1), :);
+            numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) - numPixels;
+%         containedDisksInNewArea = numPixels == nnz(filters{r});
+%         reconstructionError(yymin:yymax,xxmin:xxmax, r) = ...
+%             reconstructionError(yymin:yymax,xxmin:xxmax, r) - ...
+%             conv2(priceMap(yymin:yymax,xxmin:xxmax),filters{r},'same');
+%         % TODO: use conv2 with 'valid' parameter to contain and speed up?
+%         % We must do this "manually" if we want to use imageEncoding() by
+%         % using the larger window [xxmin,yymin,xxmax,yymax] to compute the
+%         % convolutions and then crop the [xmin,ymin,xmax,ymax] part.
+%         tmp = imageEncoding(amat.reconstruction(yymin:yymax,xxmin:xxmax,:),filters(r));
+%         f(ymin:ymax,xmin:xmax, :, r) = ...
+%             tmp((ymin-yymin+1):(ymax-yymin+1),(xmin-xxmin+1):(xmax-xxmin+1), :);
     end
     amat.reconstruction = reshape(amat.reconstruction,H*W,[]); % reshape back
 
@@ -250,13 +170,14 @@ while ~all(amat.covered(:))
     % been completely covered (e.g. the currently selected disk) will be
     % set to inf or nan, because of the division with numNewPixelsCovered
     % which will be zero (0) for those disks. 
-    diskCostEffective = reconstructionError ./ numNewPixelsCovered + maximalityError;
+%     diskCostEffective = reconstructionError ./ numNewPixelsCovered + maximalityError;
+    diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R),1,1,[]));
     diskCostEffective(isnan(diskCostEffective)) = inf;
     assert(allvec(numNewPixelsCovered(yc,xc, 1:rc)==0))
 
     
     % Visualize progress
-    if 1
+    if 0
         % Sort costs in ascending order to visualize updated top disks.
         [sortedCosts, indSorted] = sort(diskCostEffective(:),'ascend');
         [yy,xx,rr] = ind2sub([H,W,R], indSorted(1:top));
