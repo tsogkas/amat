@@ -88,32 +88,45 @@ for r=1:R
     A(:,:,r) = conv2(A(:,:,r),double(D),'same');
 end
 A = cumsum(A,3,'reverse');
-consensusScores = zeros(H,W,R);
+reconstructionError = zeros(H,W,R);
 enc  = mlab; enc2 = enc.^2;
 for r=1:R % compute consensus for all scales
     dcsubset = dc(:,:,end-r+1:end);
     % for a given disk at scale r, consider all radii of contained disks
-    % We can pre-compute all these convolutions to save time
     for i=1:size(dcsubset,3) 
         D = dcsubset(:,:,i); D = double(cropImageBox(D,mask2bbox(D))); 
-        consensusScores(:,:,r) = ... 
-            consensusScores(:,:,r) + ...
+        reconstructionError(:,:,r) = ... 
+            reconstructionError(:,:,r) + ...
             conv2(enc2(:,:,1,i),D,'same') - ...
             conv2(enc(:,:,1,i), D,'same') .* 2 .* enc(:,:,1,r);
     end
 %     consensusScores(:,:,r) = consensusScores(:,:,r) + A * enc2(:,:,1,r);
-    consensusScores(:,:,r) = consensusScores(:,:,r) + A(:,:,end-r+1) .* enc2(:,:,1,r);
+    reconstructionError(:,:,r) = reconstructionError(:,:,r) + A(:,:,end-r+1) .* enc2(:,:,1,r);
 end
-consensusScores = max(0,consensusScores);
+reconstructionError = max(0,reconstructionError);
 
 % Compute maximality scores using the mean value consensus
-% Create ring masks of circumference disks
-dc = zeros(size(x));
-for r=R-1:-1:1
+% Create ring masks of outer rings
+maximalityError = zeros(H,W,R);
+for r=1:R
     dr = ceil(r/(2+sqrt(6))); % dA >= 0.5A(r)
-    dc(:,:,r) = x.^2 + y.^2 > r^2 & x.^2 + y.^2 <= (min(R,r+dr))^2;
+    mask = double(ring(r,r+dr));
+    maximalityError(:,:,r) = 1-(conv2(imgRGB.^2,mask,'same') + ...
+        nnz(mask)*enc2(:,:,1,r) - 2 .* enc(:,:,1,r) .* conv2(imgRGB,mask,'same'))/nnz(mask);
+end 
+maximalityError = max(0,maximalityError);
+
+% Fix boundary conditions for both  terms (image boundaries crosses)
+for r=1:R
+    reconstructionError(1:r,:,r)         = inf;
+    reconstructionError(:,1:r,r)         = inf;
+    reconstructionError(end-r+1:end,:,r) = inf;
+    reconstructionError(:,end-r+1:end,r) = inf;
+    maximalityError(1:r,:,r)             = inf;
+    maximalityError(:,1:r,r)             = inf;
+    maximalityError(end-r+1:end,:,r)     = inf;
+    maximalityError(:,end-r+1:end,r)     = inf;
 end
-A = cumsum(A,
 
 
 % We can obtain the centers of contained disks at all scales for a disk of
@@ -158,24 +171,27 @@ for r=1:R
     numNewPixelsCovered(:,:,r) = conv2(numNewPixelsCovered(:,:,r), ...
         double(filters{r}),'same');
 end
-T = 0.01;
-diskCostEffective = min(1,sqrt(reconstructionError ./ numNewPixelsCovered) + bsxfun(@plus,maximalityError,reshape(T./(1:R),1,1,[])));
-% diskCostEffective = min(1,reconstructionError ./ numNewPixelsCovered + maximalityError);
-% diskCostEffective = maximalityError;
+% diskCostEffective = min(1,sqrt(reconstructionError ./ numNewPixelsCovered) + bsxfun(@plus,maximalityError,reshape(T./(1:R),1,1,[])));
+diskCostEffective = reconstructionError ./ numNewPixelsCovered + maximalityError;
+% diskCostEffective = reconstructionError + maximalityError;
 % Sort costs in ascending order and visualize top disks.
 [sortedCosts, indSorted] = sort(diskCostEffective(:),'ascend');
 top = 1e2;
-% [yy,xx,rr] = ind2sub([H,W,R], indSorted(1:top));
-% figure(1); imshow(reshape(amat.input,H,W,[])); 
-% viscircles([xx,yy],rr,'Color','k','LineWidth',0.5);
-% viscircles([xx(1),yy(1)],rr(1),'Color','b','EnhanceVisibility',false); 
-% title(sprintf('W: Top-%d disks, B: Top-1 disk',top))
+[yy,xx,rr] = ind2sub([H,W,R], indSorted(1:top));
+figure(1); imshow(reshape(amat.input,H,W,[])); 
+viscircles([xx,yy],rr,'Color','k','LineWidth',0.5);
+viscircles([xx(1),yy(1)],rr(1),'Color','b','EnhanceVisibility',false); 
+title(sprintf('W: Top-%d disks, B: Top-1 disk',top))
 errorBackup = reconstructionError;
 
 
 %% Run the greedy algorithm
 reconstructionError = consensusError;
-[x,y] = meshgrid(1:W,1:H);
+[x,y]   = meshgrid(1:W,1:H);
+[xr,yr] = meshgrid(1:R,1:R);
+containedDisks = bsxfun(@le,xr.^2 + yr.^2,reshape(((R-1):-1:0).^2, 1,1,[]));
+coveringDisks  = bsxfun(@le,xr.^2 + yr.^2,reshape((1:R).^2, 1,1,[]));
+[ycov,xcov,rcov] = ind2sub([2*R+1,2*R+1,R],find(dc));
 f = mlab;
 while ~all(amat.covered(:))
     % Find the most cost-effective set at the current iteration
@@ -204,29 +220,15 @@ while ~all(amat.covered(:))
     % further speed up, before conv2 gets unnecessarily slow when
     % nnz(newPixelsCovered) is low.
     [yy,xx] = find(newPixelsCovered);
-    xmin = min(xx); xmax = max(xx);
-    ymin = min(yy); ymax = max(yy);
-    newPixelsCovered = double(newPixelsCovered);
     priceMap = amat.price .* newPixelsCovered;
-    amat.reconstruction = reshape(amat.reconstruction,H,W,[]); % reshape for convolutions
-    for r=1:R
-        xxmin = max(xmin-r,1); yymin = max(ymin-r,1);
-        xxmax = min(xmax+r,W); yymax = min(ymax+r,H);
-        numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) = ...
-            numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) - ...
-            conv2(newPixelsCovered(yymin:yymax,xxmin:xxmax),double(filters{r}),'same');
-        reconstructionError(yymin:yymax,xxmin:xxmax, r) = ...
-            reconstructionError(yymin:yymax,xxmin:xxmax, r) - ...
-            conv2(priceMap(yymin:yymax,xxmin:xxmax),double(filters{r}),'same');
-        % TODO: use conv2 with 'valid' parameter to contain and speed up?
-        % We must do this "manually" if we want to use imageEncoding() by
-        % using the larger window [xxmin,yymin,xxmax,yymax] to compute the
-        % convolutions and then crop the [xmin,ymin,xmax,ymax] part.
-        tmp = imageEncoding(amat.reconstruction(yymin:yymax,xxmin:xxmax,:),filters(r));
-        f(ymin:ymax,xmin:xmax, :, r) = ...
-            tmp((ymin-yymin+1):(ymax-yymin+1),(xmin-xxmin+1):(xmax-xxmin+1), :);
+    for i=1:numel(yy)
+        ycv = ycov - R - 1 + yc; xcv = xcov - R - 1 + xc; rcv = rcov;
+        outOfLimits = xcv < 1 | ycv < 1 | xcv > W | ycv > H;
+        xcv(outOfLimits) = []; ycv(outOfLimits) = []; rcv(outOfLimits) = [];
+        indsCov = sub2ind([H,W,R],ycv,xcv,rcv);
+        numNewPixelsCovered(indsCov) = numNewPixelsCovered(indsCov) - 1;
     end
-    amat.reconstruction = reshape(amat.reconstruction,H*W,[]); % reshape back
+    
     % We do this to correct precision errors introduced by subtracting the
     % pixel prices from the reconstruction error (these would normally be
     % zero but sometimes they take very small negative values).

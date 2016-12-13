@@ -1,4 +1,4 @@
-function imshow2(im1,im2)
+function imshow2(im1,im2,imscale)
 % IMSHOW2 Displays two images side by side, using the IMSHOW() function.
 % 
 %   IMSHOW2(im1,im2) acts as a shortcut of IMSHOW ans SUBPLOT combinations
@@ -10,6 +10,7 @@ function imshow2(im1,im2)
 % Stavros Tsogkas <tsogkas@cs.toronto.edu>
 % Last update: October 2016
 
+if nargin<3, imscale = false; end
 title1 = [];
 title2 = [];
 if iscell(im1)
@@ -21,5 +22,7 @@ if iscell(im2)
     im2 = im2{1};
 end
 
-subplot(121); imshow(im1); title(title1);
-subplot(122); imshow(im2); title(title2);
+if imscale, f = @imagesc; else f = @imshow; end
+
+subplot(121); f(im1); title(title1); axis off image; 
+subplot(122); f(im2); title(title2); axis off image; 
