@@ -1,5 +1,5 @@
 %% Setup global parameters and preprocess image
-R = 50; % #scales
+R = 30; % #scales
 B = 32; % #bins
 imgRGB  = rgb2gray(im2double(imresize(imread('/home/tsogkas/datasets/AbstractScenes_v1.1/RenderedScenes/Scene0_9.png'),0.5)));
 imgLab  = rgb2labNormalized(imgRGB);
@@ -8,30 +8,48 @@ imgLab  = rgb2labNormalized(imgRGB);
 % Construct filters, calculate perimeneters and disk areas
 filters = cell(R,1); for r=1:R, filters{r} = double(disk(r)); end
 
-% Compute encodings f(D_I(x,y,r)) at every point.
+% Compute encodings f(D_I(x,y,r)) at every point (mean values in this case)
 mlab = imageEncoding(imgLab,filters,'average'); 
 
-% Compute squared reconstruction error for disks at all scales.
-se = imageError(imgRGB,mlab,filters,'se');
+% Compute sums of I.^2 and I within r-disks for all r.
+img = imgRGB; img2 = img.^2; 
+sumI = zeros(H,W,R); sumI2 = zeros(H,W,R);
+for r=1:R
+    sumI(:,:,r)  = conv2(img, filters{r},'same');
+    sumI2(:,:,r) = conv2(img2,filters{r},'same');
+end
 
-% We now have to accumulate the squared errors for all contained disks
+% A(i,j,r) is the #pixels covered by an r-disk centered at (i,j)
+A = ones(H,W,R); for r=1:R, A(:,:,r) = conv2(A(:,:,r),filters{r},'same'); end
+
+% We now have to accumulate the squared errors between all r-disks and all
+% possible contained disks.
 [x,y] = meshgrid(-R:R,-R:R);
 dc = bsxfun(@le,x.^2 + y.^2,reshape(((R-1):-1:0).^2, 1,1,[]));
 reconstructionError = zeros(H,W,R);
 numNewDisksCovered  = zeros(H,W,R);
-enc = mlab; enc2 = enc.^2;
 for r=1:R 
+    m = mlab(:,:,1,r);
+    N = zeros(H,W);
+    s = zeros(H,W);
+    s2= zeros(H,W);    
     dcsubset = dc(:,:,end-r+1:end);
-    % for a given disk at scale r, consider all radii of contained disks
+    % for a given r-disk, consider all radii of contained disks and
+    % accumulate necesasry quantities
     for i=1:size(dcsubset,3) 
+%         reconstructionError(:,:,r) = reconstructionError(:,:,r) + conv2(se(:,:,i),D,'same');
         D = dcsubset(:,:,i); D = double(cropImageBox(D,mask2bbox(D))); 
-        reconstructionError(:,:,r) = reconstructionError(:,:,r) + conv2(se(:,:,i),D,'same');
+        s2= s2 + conv2(sumI2(:,:,i),D,'same');
+        s = s  + conv2(sumI(:,:,i), D,'same');
+        N = N  + conv2(A(:,:,i),    D,'same');
         numNewDisksCovered(:,:,r) = numNewDisksCovered(:,:,r) + nnz(D);
     end
+    reconstructionError(:,:,r) = s2 + N .* m.^2 - 2*m.*s; % add them up    
     % Fix boundary conditions
     reconstructionError([1:r, end-r+1:end],:,r) = inf;
     reconstructionError(:,[1:r, end-r+1:end],r) = inf;
 end
+reconstructionError = max(0,reconstructionError);
 errorBackup = reconstructionError;
 
 % Compute maximality scores using the mean value consensus. Must define
@@ -43,12 +61,14 @@ for r=1:R
     A(:,:,r) = conv2(A(:,:,r),double(ring(r,r+dr)),'same'); 
 end
 maximalityError = zeros(H,W,R);
+mlab2 = mlab.^2;
 for r=1:R
 %     dr = ceil(r/(2+sqrt(6))); % dA >= 0.5A(r)
     dr = ceil(r/10);
     mask = double(ring(r,r+dr));  % Create masks of outer rings
-    maximalityError(:,:,r) = 1-(conv2(imgRGB.^2,mask,'same') + ...
-        A(:,:,r).*enc2(:,:,1,r) - 2 .* enc(:,:,1,r) .* conv2(imgRGB,mask,'same'))./A(:,:,r);
+    maximalityError(:,:,r) = 1-abs(conv2(img,mask,'same') - A(:,:,r).* mlab(:,:,1,r))./A(:,:,r);
+%     maximalityError(:,:,r) = 1-(conv2(img2,mask,'same') + ...
+%         A(:,:,r).*mlab2(:,:,1,r) - 2 .* mlab(:,:,1,r) .* conv2(img,mask,'same'))./A(:,:,r);
 %     maximalityError(:,:,r) = (conv2(imgRGB.^2,mask,'same') + ...
 %         nnz(mask)*enc2(:,:,1,r) - 2 .* enc(:,:,1,r) .* conv2(imgRGB,mask,'same'))/nnz(mask);
 end 
@@ -90,7 +110,7 @@ numNewPixelsCovered = ones(H,W,R);
 for r=1:R
     numNewPixelsCovered(:,:,r) = conv2(numNewPixelsCovered(:,:,r), filters{r},'same');
 end
-T = 10;
+T = 0.01;
 % diskCostEffective = sqrt(reconstructionError ./ numNewPixelsCovered) + bsxfun(@plus,maximalityError,reshape(T./(1:R),1,1,[]));
 diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R).^2,1,1,[]));
 % diskCostEffective = bsxfun(@plus,reconstructionError,reshape(T./(1:R),1,1,[]))./numNewPixelsCovered;
@@ -107,13 +127,12 @@ title(sprintf('W: Top-%d disks, B: Top-1 disk',top))
 
 
 %% Run the greedy algorithm
-[x,y]   = meshgrid(1:W,1:H);
 % [xr,yr] = meshgrid(1:R,1:R);
 % containedDisks = bsxfun(@le,xr.^2 + yr.^2,reshape(((R-1):-1:0).^2, 1,1,[]));
 % coveringDisks  = bsxfun(@le,xr.^2 + yr.^2,reshape((1:R).^2, 1,1,[]));
 % [ycov,xcov,rcov] = ind2sub([2*R+1,2*R+1,R],find(dc));
 % ycov = ycov-R-1; xcov = xcov-R-1;
-f = mlab;
+[x,y] = meshgrid(1:W,1:H); f = mlab;
 while ~all(amat.covered(:))
     % Find the most cost-effective set at the current iteration
     [minCost, indMin] = min(diskCostEffective(:));
@@ -194,8 +213,8 @@ while ~all(amat.covered(:))
     % been completely covered (e.g. the currently selected disk) will be
     % set to inf or nan, because of the division with numNewPixelsCovered
     % which will be zero (0) for those disks. 
-    diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R).^2,1,1,[]));
-%     diskCostEffective = reconstructionError ./ numNewPixelsCovered + T*maximalityError;
+%     diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R).^2,1,1,[]));
+    diskCostEffective = reconstructionError ./ numNewPixelsCovered + T*maximalityError;
     diskCostEffective(numNewPixelsCovered == 0) = inf;
     assert(allvec(numNewPixelsCovered(yc,xc, 1:rc)==0))
 
