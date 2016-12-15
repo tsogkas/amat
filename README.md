@@ -21,6 +21,10 @@ This code is released under the MIT License (refer to the LICENSE file for detai
     MAXIMAL disk, should have very similar encodings. This maximum distance 
     of some contained disk's encoding from the maximal disk's encoding could
     be used as an maximality or reconstruction error term.
+    NOTE: rescoring does not solve this problem because it reduces score for 
+    all contained disks in the selected disk, so smaller disks that are close 
+    to the boundary are favored. We must explicitly avor the selection of disks
+    whose centers are neighbord to the currently selected center.
 - Assign high cost to low-scale disks but handle them as special cases towards the end, to cover leftover pixels.
 - Use max(binDistance) when comparing two histograms for maximality error (and perhaps reconstruction error?).
 - Use a non-linear transformation on the chi2-distance.
