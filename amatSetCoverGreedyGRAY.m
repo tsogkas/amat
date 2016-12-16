@@ -18,8 +18,7 @@ for r=1:R
     sumI2(:,:,r) = conv2(img2,filters{r}/nnz(filters{r}),'same');
 end
 
-% We now have to accumulate the squared errors between all r-disks and all
-% possible contained disks.
+% We now have to accumulate the mean squared errors of all contained r-disks 
 [x,y] = meshgrid(-R:R,-R:R);
 dc = bsxfun(@le,x.^2 + y.^2,reshape(((R-1):-1:0).^2, 1,1,[]));
 reconstructionError = zeros(H,W,R);
@@ -27,12 +26,12 @@ numNewDisksCovered  = zeros(H,W,R);
 for r=1:R 
     dcsubset = dc(:,:,end-r+1:end);
     % for a given r-disk, consider all radii of contained disks and
-    % accumulate necesasry quantities
+    % accumulate necessary quantities
     for i=1:size(dcsubset,3) 
         D = dcsubset(:,:,i); D = double(cropImageBox(D,mask2bbox(D))); 
         reconstructionError(:,:,r) = reconstructionError(:,:,r) + ...
-            conv2(sumI2(:,:,i),D,'same') + mlab2 *nnz(D) - ...
-            conv2(mlab(:,:,i), D,'same') .* mlab .* 2;
+            conv2(sumI2(:,:,i),  D,'same') + mlab2(:,:,1,r) *nnz(D) - ...
+            conv2(mlab(:,:,1,i), D,'same') .* mlab(:,:,1,r) .* 2;
         numNewDisksCovered(:,:,r) = numNewDisksCovered(:,:,r) + nnz(D);
     end
     % Fix boundary conditions
@@ -45,22 +44,17 @@ errorBackup = reconstructionError;
 % Compute maximality scores using the mean value consensus. Must define
 % maximality scores for the disks whose internal part is inside the image
 % but the outside ring crosses the image boundary.
-A = ones(H,W,R); 
-for r=1:R
-    dr = ceil(r/10);
-    A(:,:,r) = conv2(A(:,:,r),double(ring(r,r+dr)),'same'); 
-end
 maximalityError = zeros(H,W,R);
-mlab2 = mlab.^2;
 for r=1:R
 %     dr = ceil(r/(2+sqrt(6))); % dA >= 0.5A(r)
     dr = ceil(r/10);
     mask = double(ring(r,r+dr));  % Create masks of outer rings
-    maximalityError(:,:,r) = 1-abs(conv2(img,mask,'same') - A(:,:,r).* mlab(:,:,1,r))./A(:,:,r);
+    A  = nnz(mask);
+    maximalityError(:,:,r) = 1-abs(conv2(img,mask,'same') - A* mlab(:,:,1,r))./A;
 %     maximalityError(:,:,r) = 1-(conv2(img2,mask,'same') + ...
-%         A(:,:,r).*mlab2(:,:,1,r) - 2 .* mlab(:,:,1,r) .* conv2(img,mask,'same'))./A(:,:,r);
+%         A.*mlab2(:,:,1,r) - 2 .* mlab(:,:,1,r) .* conv2(img,mask,'same'))./A;
 %     maximalityError(:,:,r) = (conv2(imgRGB.^2,mask,'same') + ...
-%         nnz(mask)*enc2(:,:,1,r) - 2 .* enc(:,:,1,r) .* conv2(imgRGB,mask,'same'))/nnz(mask);
+%         A*enc2(:,:,1,r) - 2 .* enc(:,:,1,r) .* conv2(imgRGB,mask,'same'))/A;
 end 
 maximalityError = min(1,max(0,maximalityError));
 

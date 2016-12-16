@@ -8,6 +8,9 @@ Created by Stavros Tsogkas at the University of Toronto.
 This code is released under the MIT License (refer to the LICENSE file for details).
 
 ### TODO:
+- Maybe change rescoring scheme, or remove it entirely. Pay close attention 
+  to the quantity that is substracted: subtract the cost for the pixels that 
+  are covered from each disk.
 - Add an additional pre-processing step that accumulates consensus from neighboring 
     disks with similar histograms at similar radii and incorporate it in the total score 
     (perhaps in the hopes of avoiding rescoring in the main while loop?).
