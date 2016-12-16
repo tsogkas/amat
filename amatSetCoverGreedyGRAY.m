@@ -1,5 +1,5 @@
 %% Setup global parameters and preprocess image
-R = 30; % #scales
+R = 40; % #scales
 B = 32; % #bins
 imgRGB  = rgb2gray(im2double(imresize(imread('/home/tsogkas/datasets/AbstractScenes_v1.1/RenderedScenes/Scene0_9.png'),0.5)));
 imgLab  = rgb2labNormalized(imgRGB);
@@ -12,15 +12,11 @@ filters = cell(R,1); for r=1:R, filters{r} = double(disk(r)); end
 mlab = imageEncoding(imgLab,filters,'average'); 
 
 % Compute sums of I.^2 and I within r-disks for all r.
-img = imgRGB; img2 = img.^2; 
-sumI = zeros(H,W,R); sumI2 = zeros(H,W,R);
+img = imgRGB; img2 = img.^2; mlab2 = mlab.^2;
+sumI2 = zeros(H,W,R);
 for r=1:R
-    sumI(:,:,r)  = conv2(img, filters{r},'same');
-    sumI2(:,:,r) = conv2(img2,filters{r},'same');
+    sumI2(:,:,r) = conv2(img2,filters{r}/nnz(filters{r}),'same');
 end
-
-% A(i,j,r) is the #pixels covered by an r-disk centered at (i,j)
-A = ones(H,W,R); for r=1:R, A(:,:,r) = conv2(A(:,:,r),filters{r},'same'); end
 
 % We now have to accumulate the squared errors between all r-disks and all
 % possible contained disks.
@@ -29,22 +25,16 @@ dc = bsxfun(@le,x.^2 + y.^2,reshape(((R-1):-1:0).^2, 1,1,[]));
 reconstructionError = zeros(H,W,R);
 numNewDisksCovered  = zeros(H,W,R);
 for r=1:R 
-    m = mlab(:,:,1,r);
-    N = zeros(H,W);
-    s = zeros(H,W);
-    s2= zeros(H,W);    
     dcsubset = dc(:,:,end-r+1:end);
     % for a given r-disk, consider all radii of contained disks and
     % accumulate necesasry quantities
     for i=1:size(dcsubset,3) 
-%         reconstructionError(:,:,r) = reconstructionError(:,:,r) + conv2(se(:,:,i),D,'same');
         D = dcsubset(:,:,i); D = double(cropImageBox(D,mask2bbox(D))); 
-        s2= s2 + conv2(sumI2(:,:,i),D,'same');
-        s = s  + conv2(sumI(:,:,i), D,'same');
-        N = N  + conv2(A(:,:,i),    D,'same');
+        reconstructionError(:,:,r) = reconstructionError(:,:,r) + ...
+            conv2(sumI2(:,:,i),D,'same') + mlab2 *nnz(D) - ...
+            conv2(mlab(:,:,i), D,'same') .* mlab .* 2;
         numNewDisksCovered(:,:,r) = numNewDisksCovered(:,:,r) + nnz(D);
     end
-    reconstructionError(:,:,r) = s2 + N .* m.^2 - 2*m.*s; % add them up    
     % Fix boundary conditions
     reconstructionError([1:r, end-r+1:end],:,r) = inf;
     reconstructionError(:,[1:r, end-r+1:end],r) = inf;

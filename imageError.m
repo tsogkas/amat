@@ -38,12 +38,10 @@ switch method
         end
         numer = zeros(H,W,C);
         denom = zeros(H,W,C);
-        onemask = ones(H,W);
         for r=1:R
             numer(:) = 0; denom(:) = 0;
             D = double(filters{r});
-%             A = nnz(D);
-            A = conv2(onemask,D,'same');
+            A = nnz(D);
             % Compute the per-channel square error:
             % Sum ||g(x)-I(x)||^2 / Sum||I(x)||^2. We can be more efficient by
             % expanding the identity: abs(g-I)^2 = (g-I)^2 = g^2 + I^2 - 2*g*I
@@ -62,7 +60,7 @@ switch method
             end
             % Normalize across each channel
             if strcmp(method,'rmse') || strcmp(method,'mse')
-                numer = bsxfun(@rdivide,numer,A);                 
+                numer = numer ./ A;                 
             elseif strcmp(method,'nrmse') || strcmp(method,'nmse')
                 numer = numer ./ denom;
             end
