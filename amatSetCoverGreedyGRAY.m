@@ -60,6 +60,7 @@ maximalityError = min(1,max(0,maximalityError));
 
 % Combine the two types of error
 A = ones(H,W,R); for r=1:R, A(:,:,r) = conv2(A(:,:,r),filters{r},'same'); end
+diskCostEffective = reconstructionError ./ A;
 combinedError = reconstructionError./A + maximalityError;
 
 %% Greedy approximation of the weighted set cover problem associated with AMAT
@@ -71,7 +72,7 @@ amat.radius         = zeros(H,W);
 amat.depth          = zeros(H,W); % #disks points(x,y) is covered by
 amat.price          = zeros(H,W); % error contributed by each point
 amat.se             = zeros(H,W); % squared error at each point
-amat.covered        = false(H,W);
+amat.covered        = false(H,W); 
 % Flag corners that are not accessible by our filter set
 amat.covered([1,end],1)   = true;
 amat.covered(end,[1,end]) = true;
@@ -94,7 +95,7 @@ numNewPixelsCovered = ones(H,W,R);
 for r=1:R
     numNewPixelsCovered(:,:,r) = conv2(numNewPixelsCovered(:,:,r), filters{r},'same');
 end
-T = 0.01;
+T = 0.0001;
 % diskCostEffective = sqrt(reconstructionError ./ numNewPixelsCovered) + bsxfun(@plus,maximalityError,reshape(T./(1:R),1,1,[]));
 diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R).^2,1,1,[]));
 % diskCostEffective = bsxfun(@plus,reconstructionError,reshape(T./(1:R),1,1,[]))./numNewPixelsCovered;
@@ -146,59 +147,25 @@ while ~all(amat.covered(:))
     ymin = min(yy); ymax = max(yy);
     priceMap = amat.price .* newPixelsCovered;
     newPixelsCovered = double(newPixelsCovered);
+    costPerPixel = reconstructionError ./ numNewPixelsCovered;
     for r=1:R
         xxmin = max(xmin-r,1); yymin = max(ymin-r,1);
         xxmax = min(xmax+r,W); yymax = min(ymax+r,H);
+        numPixelsSubtracted = conv2(newPixelsCovered(yymin:yymax,xxmin:xxmax),filters{r},'same');
         numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) = ...
-            numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) - ...
-            conv2(newPixelsCovered(yymin:yymax,xxmin:xxmax),filters{r},'same');
+            numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) - numPixelsSubtracted;
         reconstructionError(yymin:yymax,xxmin:xxmax, r) = ...
             reconstructionError(yymin:yymax,xxmin:xxmax, r) - ...
-            conv2(priceMap(yymin:yymax,xxmin:xxmax),filters{r},'same');
+            numPixelsSubtracted .* costPerPixel(yymin:yymax,xxmin:xxmax, r);
     end
     reconstructionError = max(0,reconstructionError);
-
-    
-    % precompute #new pixels covered by each disk in the subdomain and mark
-    % the centers of disks that are fully contained in newPixelsCovered
-%     numPixels = zeros(H,W,R);
-%     seMap     = zeros(H,W,R);
-%     for r=1:R
-%         xxmin = max(xmin-r,1); yymin = max(ymin-r,1);
-%         xxmax = min(xmax+r,W); yymax = min(ymax+r,H);
-%         numPixels(yymin:yymax,xxmin:xxmax,r) = ...
-%             conv2(newPixelsCovered(yymin:yymax,xxmin:xxmax),filters{r},'same');
-%         numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) = ...
-%             numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) - ...
-%             numPixels(yymin:yymax,xxmin:xxmax,r);
-%         seMap(:,:,r) = (numPixels(:,:,r) == nnz(filters{r})) .* se(:,:,r);
-%     end
-%     for r=1:R
-% %         xxmin = max(xmin-r,1); yymin = max(ymin-r,1);
-% %         xxmax = min(xmax+r,W); yymax = min(ymax+r,H);
-% %         numPixels = conv2(newPixelsCovered(yymin:yymax,xxmin:xxmax),filters{r},'same');
-% %         numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) = ...
-% %             numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) - numPixels;
-% %         containedDisksInNewArea = numPixels == nnz(filters{r});
-%         % se(i,j,r) = squared error of disk of radius r, centered at (i,j)
-%         % re(i,j,r) = sum or all se's of contained disks inside the disk of
-%         % radius r, centered at (i,j)
-%         dcsubset = dc(:,:,end-r+1:end);
-%         for i=1:size(dcsubset,3)
-%             D = dcsubset(:,:,i); D = double(cropImageBox(D,mask2bbox(D)));
-%             reconstructionError(yymin:yymax,xxmin:xxmax, r) = ...
-%                 reconstructionError(yymin:yymax,xxmin:xxmax, r) - ...
-%                 conv2(seMap(yymin:yymax,xxmin:xxmax,i),D,'same');
-%         end
-%     end
-%     assert(~any(reconstructionError(:) < 0))
     
     % Update errors. NOTE: the diskCost for disks that have
     % been completely covered (e.g. the currently selected disk) will be
     % set to inf or nan, because of the division with numNewPixelsCovered
     % which will be zero (0) for those disks. 
-%     diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R).^2,1,1,[]));
-    diskCostEffective = reconstructionError ./ numNewPixelsCovered + T*maximalityError;
+    diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R).^2,1,1,[]));
+%     diskCostEffective = reconstructionError ./ numNewPixelsCovered + T*maximalityError;
     diskCostEffective(numNewPixelsCovered == 0) = inf;
     assert(allvec(numNewPixelsCovered(yc,xc, 1:rc)==0))
 
