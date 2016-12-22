@@ -95,9 +95,9 @@ numNewPixelsCovered = ones(H,W,R);
 for r=1:R
     numNewPixelsCovered(:,:,r) = conv2(numNewPixelsCovered(:,:,r), filters{r},'same');
 end
-T = 0.0001;
+T = 0.01;
 % diskCostEffective = sqrt(reconstructionError ./ numNewPixelsCovered) + bsxfun(@plus,maximalityError,reshape(T./(1:R),1,1,[]));
-diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R).^2,1,1,[]));
+diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R),1,1,[]));
 % diskCostEffective = bsxfun(@plus,reconstructionError,reshape(T./(1:R),1,1,[]))./numNewPixelsCovered;
 % diskCostEffective = reconstructionError ./ numNewPixelsCovered + T*maximalityError;
 % diskCostEffective = reconstructionError + maximalityError;
@@ -158,13 +158,17 @@ while ~all(amat.covered(:))
             reconstructionError(yymin:yymax,xxmin:xxmax, r) - ...
             numPixelsSubtracted .* costPerPixel(yymin:yymax,xxmin:xxmax, r);
     end
-    reconstructionError = max(0,reconstructionError);
+    % Some pixels are assigned NaN values because of the inf-inf
+    % subtraction and since max(0,NaN) = 0, we have to reset them
+    % explicitly to inf.
+    reconstructionError(isnan(reconstructionError)) = inf;
+%     reconstructionError = max(0,reconstructionError);
     
     % Update errors. NOTE: the diskCost for disks that have
     % been completely covered (e.g. the currently selected disk) will be
     % set to inf or nan, because of the division with numNewPixelsCovered
     % which will be zero (0) for those disks. 
-    diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R).^2,1,1,[]));
+    diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R),1,1,[]));
 %     diskCostEffective = reconstructionError ./ numNewPixelsCovered + T*maximalityError;
     diskCostEffective(numNewPixelsCovered == 0) = inf;
     assert(allvec(numNewPixelsCovered(yc,xc, 1:rc)==0))
@@ -187,7 +191,7 @@ while ~all(amat.covered(:))
         subplot(224); imshow(amat.radius,[]); title('A-MAT radii')
         drawnow;
     end
-    disp(nnz(~amat.covered))
+    fprintf('%d new pixels covered, %d pixels remaining\n',nnz(newPixelsCovered),nnz(~amat.covered))
 end
 amat.reconstruction = reshape(amat.reconstruction,H,W,C);
 amat.input = reshape(amat.input,H,W,C);
