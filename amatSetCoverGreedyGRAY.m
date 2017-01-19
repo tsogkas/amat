@@ -41,9 +41,9 @@ end
 reconstructionError = max(0,reconstructionError);
 errorBackup = reconstructionError;
 
-% Compute maximality scores using the mean value consensus. Must define
-% maximality scores for the disks whose internal part is inside the image
-% but the outside ring crosses the image boundary.
+% Compute maximality scores using the mean value consensus. 
+% WARNING!!: Must define maximality scores for the disks whose internal 
+% part is inside the image but the outside ring crosses the image boundary.
 maximalityError = zeros(H,W,R);
 for r=1:R
 %     dr = ceil(r/(2+sqrt(6))); % dA >= 0.5A(r)
@@ -59,6 +59,8 @@ end
 maximalityError = min(1,max(0,maximalityError));
 
 % Combine the two types of error
+% WARNING!!: perhaps it makes more sense to add all errors before
+% normalizing?
 A = ones(H,W,R); for r=1:R, A(:,:,r) = conv2(A(:,:,r),filters{r},'same'); end
 diskCostEffective = reconstructionError ./ A;
 combinedError = reconstructionError./A + maximalityError;
@@ -95,9 +97,9 @@ numNewPixelsCovered = ones(H,W,R);
 for r=1:R
     numNewPixelsCovered(:,:,r) = conv2(numNewPixelsCovered(:,:,r), filters{r},'same');
 end
-T = 0.01;
+T = 0.0001;
 % diskCostEffective = sqrt(reconstructionError ./ numNewPixelsCovered) + bsxfun(@plus,maximalityError,reshape(T./(1:R),1,1,[]));
-diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R),1,1,[]));
+diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R).^2,1,1,[]));
 % diskCostEffective = bsxfun(@plus,reconstructionError,reshape(T./(1:R),1,1,[]))./numNewPixelsCovered;
 % diskCostEffective = reconstructionError ./ numNewPixelsCovered + T*maximalityError;
 % diskCostEffective = reconstructionError + maximalityError;
@@ -168,7 +170,7 @@ while ~all(amat.covered(:))
     % been completely covered (e.g. the currently selected disk) will be
     % set to inf or nan, because of the division with numNewPixelsCovered
     % which will be zero (0) for those disks. 
-    diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R),1,1,[]));
+    diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R).^2,1,1,[]));
 %     diskCostEffective = reconstructionError ./ numNewPixelsCovered + T*maximalityError;
     diskCostEffective(numNewPixelsCovered == 0) = inf;
     assert(allvec(numNewPixelsCovered(yc,xc, 1:rc)==0))
