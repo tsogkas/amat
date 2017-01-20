@@ -21,7 +21,7 @@ end
 % We now have to accumulate the mean squared errors of all contained r-disks 
 [x,y] = meshgrid(-R:R,-R:R);
 dc = bsxfun(@le,x.^2 + y.^2,reshape(((R-1):-1:0).^2, 1,1,[]));
-reconstructionError = zeros(H,W,R);
+reconstructionCost = zeros(H,W,R);
 numNewDisksCovered  = zeros(H,W,R);
 for r=1:R 
     dcsubset = dc(:,:,end-r+1:end);
@@ -29,41 +29,45 @@ for r=1:R
     % accumulate necessary quantities
     for i=1:size(dcsubset,3) 
         D = dcsubset(:,:,i); D = double(cropImageBox(D,mask2bbox(D))); 
-        reconstructionError(:,:,r) = reconstructionError(:,:,r) + ...
+        reconstructionCost(:,:,r) = reconstructionCost(:,:,r) + ...
             conv2(sumI2(:,:,i),  D,'same') + mlab2(:,:,1,r) *nnz(D) - ...
             conv2(mlab(:,:,1,i), D,'same') .* mlab(:,:,1,r) .* 2;
         numNewDisksCovered(:,:,r) = numNewDisksCovered(:,:,r) + nnz(D);
     end
     % Fix boundary conditions
-    reconstructionError([1:r, end-r+1:end],:,r) = inf;
-    reconstructionError(:,[1:r, end-r+1:end],r) = inf;
+    reconstructionCost([1:r, end-r+1:end],:,r) = inf;
+    reconstructionCost(:,[1:r, end-r+1:end],r) = inf;
 end
-reconstructionError = max(0,reconstructionError);
-errorBackup = reconstructionError;
+reconstructionCost = max(0,reconstructionCost);
+costBackup = reconstructionCost;
 
 % Compute maximality scores using the mean value consensus. 
 % WARNING!!: Must define maximality scores for the disks whose internal 
 % part is inside the image but the outside ring crosses the image boundary.
-maximalityError = zeros(H,W,R);
+maximalityCost = zeros(H,W,R);
 for r=1:R
 %     dr = ceil(r/(2+sqrt(6))); % dA >= 0.5A(r)
     dr = ceil(r/10);
     mask = double(ring(r,r+dr));  % Create masks of outer rings
     A  = nnz(mask);
-    maximalityError(:,:,r) = 1-abs(conv2(img,mask,'same') - A* mlab(:,:,1,r))./A;
-%     maximalityError(:,:,r) = 1-(conv2(img2,mask,'same') + ...
-%         A.*mlab2(:,:,1,r) - 2 .* mlab(:,:,1,r) .* conv2(img,mask,'same'))./A;
-%     maximalityError(:,:,r) = (conv2(imgRGB.^2,mask,'same') + ...
-%         A*enc2(:,:,1,r) - 2 .* enc(:,:,1,r) .* conv2(imgRGB,mask,'same'))/A;
+    if 1
+        maximalityCost(:,:,r) = 1-abs(conv2(img,mask,'same') - A* mlab(:,:,1,r))./A;
+    elseif 1
+        maximalityError(:,:,r) = 1-(conv2(img2,mask,'same') + ...
+            A.*mlab2(:,:,1,r) - 2 .* mlab(:,:,1,r) .* conv2(img,mask,'same'))./A;
+    else
+        maximalityError(:,:,r) = (conv2(imgRGB.^2,mask,'same') + ...
+            A*enc2(:,:,1,r) - 2 .* enc(:,:,1,r) .* conv2(imgRGB,mask,'same'))/A;
+    end
 end 
-maximalityError = min(1,max(0,maximalityError));
+maximalityCost = min(1,max(0,maximalityCost));
 
 % Combine the two types of error
 % WARNING!!: perhaps it makes more sense to add all errors before
 % normalizing?
 A = ones(H,W,R); for r=1:R, A(:,:,r) = conv2(A(:,:,r),filters{r},'same'); end
-diskCostEffective = reconstructionError ./ A;
-combinedError = reconstructionError./A + maximalityError;
+diskCostEffective = reconstructionCost ./ A;
+combinedError = reconstructionCost./A + maximalityCost;
 
 %% Greedy approximation of the weighted set cover problem associated with AMAT
 % Initializations
@@ -92,18 +96,24 @@ amat.covered(end,[1,end]) = true;
 % computed using convolutions, while taking into account the fact that 
 % some disks exceed image boundaries.
 % -------------------------------------------------------------------------
-reconstructionError = errorBackup;
+reconstructionCost = costBackup;
 numNewPixelsCovered = ones(H,W,R);
 for r=1:R
     numNewPixelsCovered(:,:,r) = conv2(numNewPixelsCovered(:,:,r), filters{r},'same');
 end
-T = 0.0001;
+% T = 0.0001;
 % diskCostEffective = sqrt(reconstructionError ./ numNewPixelsCovered) + bsxfun(@plus,maximalityError,reshape(T./(1:R),1,1,[]));
-diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R).^2,1,1,[]));
+% diskCostEffective = bsxfun(@plus,reconstructionCost./numNewPixelsCovered,reshape(T./(1:R).^2,1,1,[]));
 % diskCostEffective = bsxfun(@plus,reconstructionError,reshape(T./(1:R),1,1,[]))./numNewPixelsCovered;
 % diskCostEffective = reconstructionError ./ numNewPixelsCovered + T*maximalityError;
 % diskCostEffective = reconstructionError + maximalityError;
 % Sort costs in ascending order and visualize top disks.
+
+% Weights for convex combination of cost types
+wr = 0.9;
+wm = 1-wr;
+ws = 1e-5;
+diskCostEffective = (wr*reconstructionCost + ws*maximalityCost + ws./()
 [sortedCosts, indSorted] = sort(diskCostEffective(:),'ascend');
 top = 1e2;
 [yy,xx,rr] = ind2sub([H,W,R], indSorted(1:top));
@@ -149,28 +159,28 @@ while ~all(amat.covered(:))
     ymin = min(yy); ymax = max(yy);
     priceMap = amat.price .* newPixelsCovered;
     newPixelsCovered = double(newPixelsCovered);
-    costPerPixel = reconstructionError ./ numNewPixelsCovered;
+    costPerPixel = reconstructionCost ./ numNewPixelsCovered;
     for r=1:R
         xxmin = max(xmin-r,1); yymin = max(ymin-r,1);
         xxmax = min(xmax+r,W); yymax = min(ymax+r,H);
         numPixelsSubtracted = conv2(newPixelsCovered(yymin:yymax,xxmin:xxmax),filters{r},'same');
         numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) = ...
             numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) - numPixelsSubtracted;
-        reconstructionError(yymin:yymax,xxmin:xxmax, r) = ...
-            reconstructionError(yymin:yymax,xxmin:xxmax, r) - ...
+        reconstructionCost(yymin:yymax,xxmin:xxmax, r) = ...
+            reconstructionCost(yymin:yymax,xxmin:xxmax, r) - ...
             numPixelsSubtracted .* costPerPixel(yymin:yymax,xxmin:xxmax, r);
     end
     % Some pixels are assigned NaN values because of the inf-inf
     % subtraction and since max(0,NaN) = 0, we have to reset them
     % explicitly to inf.
-    reconstructionError(isnan(reconstructionError)) = inf;
+    reconstructionCost(isnan(reconstructionCost)) = inf;
 %     reconstructionError = max(0,reconstructionError);
     
     % Update errors. NOTE: the diskCost for disks that have
     % been completely covered (e.g. the currently selected disk) will be
     % set to inf or nan, because of the division with numNewPixelsCovered
     % which will be zero (0) for those disks. 
-    diskCostEffective = bsxfun(@plus,reconstructionError./numNewPixelsCovered,reshape(T./(1:R).^2,1,1,[]));
+    diskCostEffective = bsxfun(@plus,reconstructionCost./numNewPixelsCovered,reshape(T./(1:R).^2,1,1,[]));
 %     diskCostEffective = reconstructionError ./ numNewPixelsCovered + T*maximalityError;
     diskCostEffective(numNewPixelsCovered == 0) = inf;
     assert(allvec(numNewPixelsCovered(yc,xc, 1:rc)==0))
