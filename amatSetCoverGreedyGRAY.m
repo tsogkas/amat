@@ -53,7 +53,7 @@ for r=1:R
     if 1
         maximalityCost(:,:,r) = 1-abs(conv2(img,mask,'same') - A* mlab(:,:,1,r))./A;
     elseif 1
-        maximalityError(:,:,r) = 1-(conv2(img2,mask,'same') + ...
+        maximalityCost(:,:,r) = 1-(conv2(img2,mask,'same') + ...
             A.*mlab2(:,:,1,r) - 2 .* mlab(:,:,1,r) .* conv2(img,mask,'same'))./A;
     else
         maximalityError(:,:,r) = (conv2(imgRGB.^2,mask,'same') + ...
@@ -110,10 +110,14 @@ end
 % Sort costs in ascending order and visualize top disks.
 
 % Weights for convex combination of cost types
-wr = 0.9;
-wm = 1-wr;
-ws = 1e-5;
-diskCostEffective = (wr*reconstructionCost + ws*maximalityCost + ws./()
+wm = 1e-7; % maximality coefficient
+wr = 1-wm; % reconstruction coefficient
+ws = 1e-5;  % scale fixed cost coefficient 
+% Define the cost function used to combine the different cost terms
+% reconstructionCost = bsxfun(@plus, reconstructionCost , reshape(ws./(1:R),1,1,[])); cf = @() reconstructionCost ./ numNewPixelsCovered; 
+cf = @() bsxfun(@plus, reconstructionCost ./ numNewPixelsCovered, reshape(ws./(1:R),1,1,[])); 
+% cf = @() bsxfun(@plus, (wr*reconstructionCost + wm*maximalityCost)./ numNewPixelsCovered, reshape(ws./(1:R), 1,1,[])) ;
+diskCostEffective = cf();
 [sortedCosts, indSorted] = sort(diskCostEffective(:),'ascend');
 top = 1e2;
 [yy,xx,rr] = ind2sub([H,W,R], indSorted(1:top));
@@ -121,7 +125,6 @@ figure(1); imshow(reshape(amat.input,H,W,[]));
 viscircles([xx,yy],rr,'Color','k','LineWidth',0.5);
 viscircles([xx(1),yy(1)],rr(1),'Color','b','EnhanceVisibility',false); 
 title(sprintf('W: Top-%d disks, B: Top-1 disk',top))
-
 
 %% Run the greedy algorithm
 % [xr,yr] = meshgrid(1:R,1:R);
@@ -133,13 +136,22 @@ title(sprintf('W: Top-%d disks, B: Top-1 disk',top))
 while ~all(amat.covered(:))
     % Find the most cost-effective set at the current iteration
     [minCost, indMin] = min(diskCostEffective(:));
+    if isinf(minCost)
+        disp('Minimum cost is inf. Stopping execution...')
+        break
+    end
+        
     % D is the set of points covered by the selected disk
     [yc,xc,rc] = ind2sub([H,W,R], indMin);
     distFromCenterSquared = (x-xc).^2 + (y-yc).^2;
     D = distFromCenterSquared <= rc^2;
     % And newPixelsCovered are the NEW points that are covered
     newPixelsCovered = D & ~amat.covered;
-    assert(~all(newPixelsCovered(:)))
+    if ~any(newPixelsCovered(:))
+        disp('All points in the selected disk have been covered.')
+        disp('Stopping execution...')
+        break
+    end
     
     % Update AMAT
     reconstructedDisk = repmat(reshape(f(yc,xc,:,rc),[1 C]), [nnz(newPixelsCovered),1]);
@@ -180,14 +192,13 @@ while ~all(amat.covered(:))
     % been completely covered (e.g. the currently selected disk) will be
     % set to inf or nan, because of the division with numNewPixelsCovered
     % which will be zero (0) for those disks. 
-    diskCostEffective = bsxfun(@plus,reconstructionCost./numNewPixelsCovered,reshape(T./(1:R).^2,1,1,[]));
-%     diskCostEffective = reconstructionError ./ numNewPixelsCovered + T*maximalityError;
+    diskCostEffective = cf();
     diskCostEffective(numNewPixelsCovered == 0) = inf;
     assert(allvec(numNewPixelsCovered(yc,xc, 1:rc)==0))
 
     
     % Visualize progress
-    if 1
+    if 0
         % Sort costs in ascending order to visualize updated top disks.
         [sortedCosts, indSorted] = sort(diskCostEffective(:),'ascend');
         [yy,xx,rr] = ind2sub([H,W,R], indSorted(1:top));
@@ -205,11 +216,11 @@ while ~all(amat.covered(:))
     end
     fprintf('%d new pixels covered, %d pixels remaining\n',nnz(newPixelsCovered),nnz(~amat.covered))
 end
-amat.reconstruction = reshape(amat.reconstruction,H,W,C);
-amat.input = reshape(amat.input,H,W,C);
 
 %% Visualize results
-figure(3); clf;
+amat.reconstruction = reshape(amat.reconstruction,H,W,C);
+amat.input = reshape(amat.input,H,W,C);
+figure; clf;
 subplot(221); imshow(amat.axis); title('Medial axes');
 subplot(222); imshow(amat.radius,[]); title('Radii');
 subplot(223); imshow(amat.input); title('Original image');
