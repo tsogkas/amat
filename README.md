@@ -25,6 +25,12 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 - Assign high cost to low-scale disks but handle them as special cases towards the end, to cover leftover pixels.
 - Use max(binDistance) when comparing two histograms for maximality error (and perhaps reconstruction error?).
 - Use a non-linear transformation on the chi2-distance.
+- Add constraint so the new disks cover more than a single pixel to speed up the greedy algo.
+- The uniformity/reconstruction error we are using right now is not an additive function of the total 
+	reconstruction (squared) error Sum(I-I')^2, so we cannot convincingly make the argument that 
+	we are optimizing wrt the reconstruction quality. We should analytically derive a relationship 
+	betweem the SE and the measure we are using right now (perhaps in the form of some upper bound?)
+	to sell our story better.
 
 
 
@@ -40,6 +46,14 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 = If the disk cost is updated when some of its pixels are covered, then the division should happen BEFORE
     adding the maximality cost. Otherwise, if we manage to assign a fixed cost to each disk once in the beginning
     and then just apply the greedy algorithm, the division could go after adding the maximality cost.
+
+### Experiments/Applications
+- For natural images use first a method that sketchifies the image and apply the algorithm on the result. See:
+	[1] Image Smoothing via L_0 Gradient Minimization, Xu,Lu,Xu,Jia
+	[2] Structure Extraction from Texture via Relative Total Variation, Xu,Yan,Xia,Jia
+- Boundary extraction from the medial axis representation. Strenght of the boundary may depend on its "depth",
+	where depth is the number of disks the point is covered by.
+- Test performance by examining recall of skeleton points extracted from segments on the BSDS500 dataset.
 
 
 ### Low priority

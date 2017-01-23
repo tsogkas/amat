@@ -1,7 +1,7 @@
 %% Setup global parameters and preprocess image
 R = 40; % #scales
 B = 32; % #bins
-imgRGB  = rgb2gray(im2double(imresize(imread('/home/tsogkas/datasets/AbstractScenes_v1.1/RenderedScenes/Scene0_9.png'),0.5)));
+imgRGB  = im2double(imresize(imread('/home/tsogkas/datasets/AbstractScenes_v1.1/RenderedScenes/Scene0_9.png'),0.5));
 imgLab  = rgb2labNormalized(imgRGB);
 [H,W,C] = size(imgRGB);
 
@@ -12,62 +12,44 @@ filters = cell(R,1); for r=1:R, filters{r} = double(disk(r)); end
 mlab = imageEncoding(imgLab,filters,'average'); 
 
 % Compute sums of I.^2 and I within r-disks for all r.
-img = imgRGB; img2 = img.^2; mlab2 = mlab.^2;
-sumI2 = zeros(H,W,R);
-for r=1:R
-    sumI2(:,:,r) = conv2(img2,filters{r}/nnz(filters{r}),'same');
+img = imgLab; img2 = img.^2; mlab2 = mlab.^2;
+sumI2 = zeros(H,W,C,R);
+for c=1:C
+    for r=1:R
+        sumI2(:,:,c,r) = conv2(img2(:,:,c),filters{r}/nnz(filters{r}),'same');
+    end
 end
 
-% We now have to accumulate the mean squared errors of all contained r-disks 
+% We now have to accumulate the mean squared errors of all contained r-disks
 [x,y] = meshgrid(-R:R,-R:R);
 dc = bsxfun(@le,x.^2 + y.^2,reshape(((R-1):-1:0).^2, 1,1,[]));
-reconstructionCost = zeros(H,W,R);
+reconstructionCost = zeros(H,W,C,R);
 numNewDisksCovered  = zeros(H,W,R);
-for r=1:R 
+for r=1:R
     dcsubset = dc(:,:,end-r+1:end);
     % for a given r-disk, consider all radii of contained disks and
     % accumulate necessary quantities
-    for i=1:size(dcsubset,3) 
-        D = dcsubset(:,:,i); D = double(cropImageBox(D,mask2bbox(D))); 
-        reconstructionCost(:,:,r) = reconstructionCost(:,:,r) + ...
-            conv2(sumI2(:,:,i),  D,'same') + mlab2(:,:,1,r) *nnz(D) - ...
-            conv2(mlab(:,:,1,i), D,'same') .* mlab(:,:,1,r) .* 2;
+    for i=1:size(dcsubset,3)
+        D = dcsubset(:,:,i); D = double(cropImageBox(D,mask2bbox(D)));
+        for c=1:C
+            reconstructionCost(:,:,c,r) = reconstructionCost(:,:,c,r) + ...
+                conv2(sumI2(:,:,c,i),  D,'same') + mlab2(:,:,c,r) *nnz(D) - ...
+                conv2(mlab(:,:,c,i), D,'same') .* mlab(:,:,c,r) .* 2;
+        end
         numNewDisksCovered(:,:,r) = numNewDisksCovered(:,:,r) + nnz(D);
     end
     % Fix boundary conditions
-    reconstructionCost([1:r, end-r+1:end],:,r) = inf;
-    reconstructionCost(:,[1:r, end-r+1:end],r) = inf;
+    reconstructionCost([1:r, end-r+1:end],:,:,r) = inf;
+    reconstructionCost(:,[1:r, end-r+1:end],:,r) = inf;
 end
-reconstructionCost = max(0,reconstructionCost);
+reconstructionCost = max(0,reconstructionCost); % account for numerical errors (costs should always be positive)
+% Combine costs from different channels
+wc = [0.5,0.25,0.25]; % weights for luminance and color channels
+reconstructionCost = reconstructionCost(:,:,1,:)*wc(1) + ...
+                     reconstructionCost(:,:,2,:)*wc(2) + ...
+                     reconstructionCost(:,:,3,:)*wc(3);
+reconstructionCost = squeeze(reconstructionCost);                 
 costBackup = reconstructionCost;
-
-% Compute maximality scores using the mean value consensus. 
-% WARNING!!: Must define maximality scores for the disks whose internal 
-% part is inside the image but the outside ring crosses the image boundary.
-maximalityCost = zeros(H,W,R);
-for r=1:R
-%     dr = ceil(r/(2+sqrt(6))); % dA >= 0.5A(r)
-    dr = ceil(r/10);
-    mask = double(ring(r,r+dr));  % Create masks of outer rings
-    A  = nnz(mask);
-    if 1
-        maximalityCost(:,:,r) = 1-abs(conv2(img,mask,'same') - A* mlab(:,:,1,r))./A;
-    elseif 1
-        maximalityCost(:,:,r) = 1-(conv2(img2,mask,'same') + ...
-            A.*mlab2(:,:,1,r) - 2 .* mlab(:,:,1,r) .* conv2(img,mask,'same'))./A;
-    else
-        maximalityError(:,:,r) = (conv2(imgRGB.^2,mask,'same') + ...
-            A*enc2(:,:,1,r) - 2 .* enc(:,:,1,r) .* conv2(imgRGB,mask,'same'))/A;
-    end
-end 
-maximalityCost = min(1,max(0,maximalityCost));
-
-% Combine the two types of error
-% WARNING!!: perhaps it makes more sense to add all errors before
-% normalizing?
-A = ones(H,W,R); for r=1:R, A(:,:,r) = conv2(A(:,:,r),filters{r},'same'); end
-diskCostEffective = reconstructionCost ./ A;
-combinedError = reconstructionCost./A + maximalityCost;
 
 %% Greedy approximation of the weighted set cover problem associated with AMAT
 % Initializations
@@ -112,7 +94,7 @@ end
 % Weights for convex combination of cost types
 wm = 1e-7; % maximality coefficient
 wr = 1-wm; % reconstruction coefficient
-ws = 1e-7;  % scale fixed cost coefficient 
+ws = 1e-1;  % scale fixed cost coefficient 
 % Define the cost function used to combine the different cost terms
 % reconstructionCost = bsxfun(@plus, reconstructionCost , reshape(ws./(1:R),1,1,[])); cf = @() reconstructionCost ./ numNewPixelsCovered; 
 cf = @() bsxfun(@plus, reconstructionCost ./ numNewPixelsCovered, reshape(ws./(1:R),1,1,[])); 
