@@ -51,9 +51,12 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 - For natural images use first a method that sketchifies the image and apply the algorithm on the result. See:
 	[1] Image Smoothing via L_0 Gradient Minimization, Xu,Lu,Xu,Jia
 	[2] Structure Extraction from Texture via Relative Total Variation, Xu,Yan,Xia,Jia
-- Boundary extraction from the medial axis representation. Strenght of the boundary may depend on its "depth",
+- Boundary extraction from the medial axis representation. Strength of the boundary may depend on its "depth",
 	where depth is the number of disks the point is covered by.
-- Test performance by examining recall of skeleton points extracted from segments on the BSDS500 dataset.
+- Test performance by examining _recall_ of skeleton points extracted from segments on the BSDS500 and MSCOCO datasets.
+- Foreground/background separation (one simple thing is to consider as background structures that 'touch' the image border).
+- Salient region/object proposal based on symmetry responses (grouped or ungrouped).
+- Image summarization and application in image retrieval, or image co-segmentation.
 
 
 ### Low priority
