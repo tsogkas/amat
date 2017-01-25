@@ -33,6 +33,8 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 	to sell our story better.
 - Compute histograms/mean-value disk features close to the image border by padding the image
     with the color/brightness value that is "opposite" to the one exactly on the image border.
+- Maybe change the distribution used to draw negative samples, from uniform to one that favors 
+	disks of small and medium radii (because these appear more often?).    
 
 
 

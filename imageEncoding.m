@@ -31,6 +31,8 @@ if nargin < 3, method  = 'average'; end
 if nargin < 4, B = 32; end
 
 switch method
+    case 'sum'
+        f = sumEncoding(img,filters);  % HxWxCxR
     case 'average'
         f = meanEncoding(img,filters); % HxWxCxR
     case 'hist'
@@ -41,6 +43,21 @@ switch method
     otherwise, error('Method is not supported')
 end
 
+
+
+% -------------------------------------------------------------------------
+function f = sumEncoding(img,filters)
+% -------------------------------------------------------------------------
+[H,W,C] = size(img);
+R = numel(filters);
+f = zeros(H,W,C,R);
+for c=1:C
+    imgc = img(:,:,c);
+    for s=1:R
+        D = double(filters{s});
+        f(:,:,c,s) = conv2(imgc, D, 'same');
+    end
+end
 
 % -------------------------------------------------------------------------
 function f = meanEncoding(img,filters)
