@@ -7,9 +7,19 @@ gtFiles = dir(fullfile(gtDir,'*.mat'));
 % Plot obtained maximal circles as proof of concept
 img = imread(fullfile(imageDir,imageFiles(1).name));
 gt  = load(fullfile(gtDir, gtFiles(1).name)); gt = gt.groundTruth;
-[H,W,C] = size(img);
-T = 35; % use a higher threshold to make sure we get good disks
+
+% Parameters
+T = 50; % skeleton confidence threshold
+minimumSegmentArea = 20;
+resizeFactor = 0.5;
+B = 32; % #bins
+R = 40; % #scales
 visualize = 0;
+
+% Construct disk and ring filters
+diskf = cell(R,1); for r=1:R, diskf{r} = disk(r); end
+ringf = cell(R,1); for r=1:R, dr = ceil(r/10); ringf{r} = ring(r,r+dr); end
+
 
 %% Compute binary MAT for all images
 nImages = numel(imageFiles);
@@ -17,25 +27,28 @@ MAT(1:nImages) = struct('points',[],'radii',[],'img',[]);
 
 % For all images
 ticStart = tic;
-parfor i=1:nImages
+for i=1:1
     img = imread(fullfile(imageDir,imageFiles(i).name));
     gt  = load(fullfile(gtDir, gtFiles(i).name)); gt = gt.groundTruth;
+    img = imresize(img,resizeFactor, 'bilinear');
+    [H,W,~] = size(img);
     nSegmentations = numel(gt);
     MAT(i).points = zeros(H,W,nSegmentations);
     MAT(i).radii  = zeros(H,W,nSegmentations);
     % For all segmentations
     for s=1:numel(gt)
-        seg = gt{s}.Segmentation;
+        seg = imresize(gt{s}.Segmentation, resizeFactor, 'nearest');
         nSegments = numel(unique(seg));
         pmap = zeros(H,W);
         rmap = zeros(H,W);
         % For all segments in segmentation
         for j=1:nSegments
             segment = seg == j;
-            [skel,r] = skeleton(segment);
-            p = bwmorph(skel > T,'skel','inf');
-            pmap(p) = skel(p);
-            rmap(p) = sqrt(r(p)); % skeleton() returns the squared distance for some reason
+            if nnz(segment) >=  minimumSegmentArea
+                [skel,r] = skeleton(segment);
+                pmap = max(pmap,skel);
+                rmap = max(rmap,sqrt(r)); % skeleton() returns squared distance for some reason
+            end
         end
         MAT(i).points(:,:,s) = pmap;
         MAT(i).radii(:,:,s)  = rmap;
@@ -53,4 +66,32 @@ parfor i=1:nImages
     progress('Extracting MAT for training images...',i,nImages,ticStart,-1);
 end
 
-%% Extract training examples
+
+%% Collect training examples
+rng(0);
+for i=1:nImages
+    % First threshold the skeleton confidence to keep only medial points
+    MAT(i).points = MAT(i).points > T;
+    MAT(i).radii(~MAT(i).points) = 0;
+    
+    % Compute image features at all possible locations
+    imrgb = MAT(i).img;
+    imlab = rgb2labNormalized(imrgb);
+    hdisk = imageEncoding(binImage(imlab,B),diskf, 'hist-normalized',B); 
+    hring = imageEncoding(binImage(imlab,B),ringf, 'hist-normalized',B); 
+    tdisk = imageEncoding(textonMap(imrgb,B),diskf,'hist-normalized',B);
+    tring = imageEncoding(textonMap(imrgb,B),ringf,'hist-normalized',B);
+    
+    % Get positive samples (true maximal disks). Not-thinning the skeleton
+    % maps allows for some slack in the positive samples considered.
+    
+    % Get negative samples, centered at the same points as positive
+    % samples, but at different scales, and create ordering.
+    
+    % Get random negative samples from other points in the image.
+    
+end
+
+
+
+

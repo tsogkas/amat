@@ -31,6 +31,8 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 	we are optimizing wrt the reconstruction quality. We should analytically derive a relationship 
 	betweem the SE and the measure we are using right now (perhaps in the form of some upper bound?)
 	to sell our story better.
+- Compute histograms/mean-value disk features close to the image border by padding the image
+    with the color/brightness value that is "opposite" to the one exactly on the image border.
 
 
 
