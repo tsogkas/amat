@@ -75,6 +75,8 @@ end
 
 %% Collect training examples
 rng(0); % reset rng for reproducibility 
+fposall = []; % features for positives from all images will be stored here
+fnegall = []; % features for negatives from all images will be stored here
 for i=1:1
     % First threshold the skeleton confidence to keep only medial points
     p = MAT(i).pts;
@@ -144,19 +146,46 @@ for i=1:1
     end
     
     % Build feature vectors for positive and negative samples
-    % Concatenate color and texture histograms.
+    % Merge color and texture histograms.
     hdisk = cat(3,hdisk,tdisk); % HxWxCxBxR (C = 4)
     hring = cat(3,hring,tring); % HxWxCxBxR (C = 4)
-    [H,W,C,B,R] = size(hdisk);
     hdisk = reshape(permute(hdisk,[1,2,5,3,4]), H*W*R, []);
     hring = reshape(permute(hring,[1,2,5,3,4]), H*W*R, []);
-    f = [hdisk; hring];
-    fpos = f(used == 1,:);
-    fneg = f(used == -1,:);
+    clear tdisk tring
     
+    % Concatenate all features: 
+    % 1) Histograms corresponding to disks
+    % 2) Histograms corresponding to the outer rings
+    % 3) Chi-squared distance terms (h1-h2).^2 ./ (h1+h2+eps)
+    % 4) Fixed term 1/r used as "scale feature"
+    fr = repmat(reshape(1./(1:R),1,1,[]), [H,W,1]); % scale feature    
+    fall = [hdisk, hring, (hdisk-hring).^2 ./ (hdisk+hring+eps), fr(:)];
+    clear hdisk hring fr;
+    fpos = fall(used == +1,:); % nPos x 2*B 
+    fneg = fall(used == -1,:); 
+    clear fall;
     
-    
+    % Add to the feature matrix
+    fposall = [fposall; fpos];
+    fnegall = [fnegall; fneg];
 end
+
+%% Train RankSVM
+
+% Create pairs that are used as training examples in the RankSVM
+global X
+X = fposall - fnegall;
+fnegall = fnegall(randperm(size(fnegall,1)),:);
+Y = ones(size(X,1),1);
+X = [X; fnegall - fposall];
+Y = [Y; -Y];
+
+% Set training options and train RankSVM
+linear = 1;
+lambda = 0.1;
+[w,b,obj] = primal_svm(linear,Y,lambda);
+
+
 
 
 
