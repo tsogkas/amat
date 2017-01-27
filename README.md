@@ -35,6 +35,8 @@ This code is released under the MIT License (refer to the LICENSE file for detai
     with the color/brightness value that is "opposite" to the one exactly on the image border.
 - Maybe change the distribution used to draw negative samples, from uniform to one that favors 
 	disks of small and medium radii (because these appear more often?).    
+- In the case where you use the sketchification with L0 gradient smoothing, find a way to invert
+	the smoothed image to the original one (to compare reconstruction quality).	
 
 
 
@@ -49,12 +51,15 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 - Should I distribute the cost of a disk over the number of its pixels before adding the maximality cost or after?
 = If the disk cost is updated when some of its pixels are covered, then the division should happen BEFORE
     adding the maximality cost. Otherwise, if we manage to assign a fixed cost to each disk once in the beginning
-    and then just apply the greedy algorithm, the division could go after adding the maximality cost.
+    and then just apply the greedy algorithm, the division could go after adding the maximality cost.    
 
 ### Experiments/Applications
 - For natural images use first a method that sketchifies the image and apply the algorithm on the result. See:
 	[1] Image Smoothing via L_0 Gradient Minimization, Xu,Lu,Xu,Jia
 	[2] Structure Extraction from Texture via Relative Total Variation, Xu,Yan,Xia,Jia
+- Then use a learning method to learn from BSDS500 extracted "groundtruth" skeletons which how to combine
+	histogram features for scoring "medialness" of disks. For this part however we have to also consider 
+	how to locally reconstruct the image.
 - Boundary extraction from the medial axis representation. Strength of the boundary may depend on its "depth",
 	where depth is the number of disks the point is covered by.
 - Test performance by examining _recall_ of skeleton points extracted from segments on the BSDS500 and MSCOCO datasets.

@@ -1,7 +1,8 @@
 %% Setup global parameters and preprocess image
 R = 40; % #scales
 B = 32; % #bins
-imgRGB  = im2double(imresize(imread('/home/tsogkas/datasets/AbstractScenes_v1.1/RenderedScenes/Scene0_9.png'),0.5));
+% imgRGB  = im2double(imresize(imread('/home/tsogkas/datasets/AbstractScenes_v1.1/RenderedScenes/Scene0_9.png'),0.5));
+imgRGB  = L0Smoothing(im2double(imresize(imread('/home/tsogkas/code/amat/data/BSDS500/images/train/41004.jpg'),0.5)),3e-2);
 imgLab  = rgb2labNormalized(imgRGB);
 [H,W,C] = size(imgRGB);
 
@@ -94,7 +95,7 @@ end
 % Weights for convex combination of cost types
 wm = 1e-7; % maximality coefficient
 wr = 1-wm; % reconstruction coefficient
-ws = 1e-1;  % scale fixed cost coefficient 
+ws = 1e-2;  % scale fixed cost coefficient 
 % Define the cost function used to combine the different cost terms
 % reconstructionCost = bsxfun(@plus, reconstructionCost , reshape(ws./(1:R),1,1,[])); cf = @() reconstructionCost ./ numNewPixelsCovered; 
 cf = @() bsxfun(@plus, reconstructionCost ./ numNewPixelsCovered, reshape(ws./(1:R),1,1,[])); 

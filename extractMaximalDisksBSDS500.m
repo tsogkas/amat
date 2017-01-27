@@ -21,7 +21,8 @@ gtDir = paths.bsds500gtTrain; gtFiles = dir(fullfile(gtDir,'*.mat'));
 assert(numel(imFiles) == numel(gtFiles), '#img ~= #seg')
 
 savePath = fullfile(paths.output, 'MATBSDS500TRAIN.mat');
-nImages = numel(imFiles);
+% nImages = numel(imFiles);
+nImages = 1;
 MAT(1:nImages) = struct('pts',[],'rad',[],'img',[],'seg',[],'bnd',[]);
 
 try
@@ -31,7 +32,7 @@ catch
     disp('File was not found. Computing MAT for BSDS500 train images...')
     % For all images
     ticStart = tic;
-    parfor i=1:nImages
+    for i=1:nImages
         img = imread(fullfile(imDir,imFiles(i).name));
         gt  = load(fullfile(gtDir, gtFiles(i).name)); gt = gt.groundTruth;
         img = imresize(img,resizeFactor, 'bilinear');
@@ -99,7 +100,6 @@ catch
         % Compute image features at all possible locations
         imrgb = MAT(i).img;
         imlab = rgb2labNormalized(imrgb);
-        nbpts = imageEncoding(double(MAT(i).bnd), diskf, 'sum'); 
         hdisk = imageEncoding(binImage(imlab,B),diskf, 'hist-normalized',B); 
         hring = imageEncoding(binImage(imlab,B),ringf, 'hist-normalized',B); 
         tdisk = imageEncoding(textonMap(imrgb,B),diskf,'hist-normalized',B);
@@ -118,8 +118,8 @@ catch
         ypos(rinvalid) = []; % throw away samples with radius > R or radius <=0
         xpos(rinvalid) = [];
         rpos(rinvalid) = [];
-        pos = [ypos,xpos,rpos];
-        pos = unique(pos,'rows'); % throw away duplicate samples
+        pos = unique([xpos,ypos,rpos],'rows'); % throw away duplicate samples
+        xpos = pos(:,1); ypos = pos(:,2); rpos = pos(:,3);
         ind = sub2ind([H,W,R], ypos,xpos,rpos);
         used(ind) = 1; % +1 for positive samples
 
@@ -143,18 +143,16 @@ catch
         yneg(rinvalid) = []; % throw away samples with radius > R or radius <=0
         xneg(rinvalid) = [];
         rneg(rinvalid) = [];
-        neg = [yneg,xneg,rneg];
-        neg = unique(neg,'rows'); % throw away duplicate samples
+        neg = unique([xneg,yneg,rneg],'rows'); % throw away duplicate samples
+        xneg = neg(:,1); yneg = neg(:,2); rneg = neg(:,3);
         ind = sub2ind([H,W,R], yneg,xneg,rneg);
         used(ind) = -1; % -1 for negative samples
 
         if visualize
             figure(1);
             imshow(imrgb); step = 20;
-            viscircles([xpos(1:step:end),ypos(1:step:end)],rpos(1:step:end),...
-                'Color','g','EnhanceVisibility',true,'Linewidth',0.5);
-            viscircles([xneg(1:step:end),yneg(1:step:end)],rneg(1:step:end),...
-                'Color','r','EnhanceVisibility',true,'Linewidth',0.5);
+            viscircles([xpos(1:step:end),ypos(1:step:end)],rpos(1:step:end),'Color','g','Linewidth',0.5);
+            viscircles([xneg(1:step:end),yneg(1:step:end)],rneg(1:step:end),'Color','r','Linewidth',0.5);
         end
 
         % Build feature vectors for positive and negative samples
@@ -170,8 +168,9 @@ catch
         % 2) HisSome tools below are only available to our subscribers or users with an online account.tograms corresponding to the outer rings
         % 3) Chi-squared distance terms (h1-h2).^2 ./ (h1+h2+eps)
         % 4) Fixed term 1/r used as "scale feature"
-        fr = repmat(reshape(1./(1:R),1,1,[]), [H,W,1]); % scale feature    
-        fall = [hdisk, hring, (hdisk-hring).^2 ./ (hdisk+hring+eps), fr(:)];
+        fr = repmat(reshape((1:R)./R,1,1,[]), [H,W,1]); % scale feature    
+%         fall = [hdisk, hring, (hdisk-hring).^2 ./ (hdisk+hring+eps), fr(:)];
+        fall = [hdisk, hring, (hdisk-hring).^2];
         clear hdisk hring fr;
         fpos = fall(used == +1,:); % nPos x 2*B 
         fneg = fall(used == -1,:); 
@@ -194,11 +193,13 @@ Y = [ones(size(fposall,1),1); -ones(size(fnegall,1),1)];
 
 % Set training options and train RankSVM
 linear = 1;
-lambda = 1e-2;
+lambda = 1e-3;
 [w,b,obj] = primal_svm(linear,Y,lambda);
 
 scores = X*w + b; 
-
+% nnz(scores(Y==1)>0) / nnz(Y==1)
+% nnz(scores(Y==-1)>0)/nnz(Y==-1)
+nnz(scores(Y==-1)>min(scores(Y==1)))
 
 
 
@@ -215,13 +216,13 @@ Y = [Y; -Y];
 
 % Set training options and train RankSVM
 linear = 1;
-lambda = 0.1;
+lambda = 1e-9;
 [w,b,obj] = primal_svm(linear,Y,lambda);
 
 pscores = fposall*w + b; 
 nscores = fnegall*w + b; 
 
-
+nnz(nscores>min(pscores))
 
 
 
