@@ -54,24 +54,65 @@ First line of institution2 address\\
 % ==========================================================
 \section{Introduction}\label{sec:introduction}
 % ==========================================================
+Add MAT-, perceptual grouping-, and symmetry-related works here.
+Also, application in which MAT has been used (shape matching, shape retrieval etc)
 
 % ==========================================================
 \section{Related Work}\label{sec:related}
 % ==========================================================
-\subsubsection{Binary MAT}
-\subsubsection{MAT in natural images}
+\subsubsection*{MAT for binary shapes}
+\begin{itemize}
+\item Blum's Medial axis transform
+\item Other works on extracting skeletons for 2D and 3D shapes (shock graphs,bone graphs,scale axis transform,check out other graphics works)
+\end{itemize}
+\subsubsection*{MAT for natural images}
+\begin{itemize}
+\item Levinstein's work
+\item MIL-based symmetry detection
+\item Random-forest variant by Alloimonos' student
+\item CNN-variant 
+\end{itemize}
+
+% ==========================================================
+\section{Background}\label{sec:background}
+% ==========================================================
+\subsubsection*{Medial Axis Transform}
+\subsubsection*{Geometric Set Cover}
 
 % ==========================================================
 \section{Method}\label{sec:method}
 % ==========================================================
-\subsection{Medial Axis Transform}
-\subsection{Geometric Set Cover}
-\subsection{Appearance-MAT}
+\subsection{Appearance-MAT definition}\label{sec:amat}
+\subsection{AMAT as a Geometric Set Cover Problem}
+\subsection{Extending AMAT to Textured Images}
+\begin{itemize}
+\item $L_0$ Smoothing
+\item GANs (if that works)
+\end{itemize}
 
 % ==========================================================
 \section{Experiments}\label{sec:experiments}
 % ==========================================================
-\subsection{Experiments on reconstructing }
+\subsection{Image Reconstruction}
+Experiments on image reconstruction using standard metrics (MSE, PSNR, and metrics using CNN feature similarity.
+
+\subsubsection*{Abstract Scenes}
+\subsubsection*{BSDS500}
+This can only be done if we can make the GAN work and generate texture.
+\subsubsection*{MSCOCO/Imagenet}
+This can only be done if we can make the GAN work and generate texture.
+
+\subsection{Medial Axis extraction (BSDS500)}
+Recover all medial axes of the BSDS500. Compare with other skeletonization algorithms, such
+as the CNN based method, and my previous MIL-based method
+
+\subsection{Boundary detection (BSDS500)}
+Medial axes to boundaries. 
+MIL: compute an approximate scale based on the scale with maximum probability and try to recover boundaries.
+CNN: same as above, this was already done in that paper for estimating segmentation masks using scale information.
+We can compare the boundary recovery results as well.
+EDGE DETECTORS: Standard edge detection algorithms (Dollar, HED, Canny, gPB etc: compare with algorithms specifically
+tailored for this task. WE ARE NOT EXPECTING SOTA PERFORMANCE.
 
 % ==========================================================
 \section{Discussion}\label{sec:discussion}
