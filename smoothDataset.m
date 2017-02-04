@@ -17,7 +17,7 @@ function smoothBSDS500(overwrite,lambda,kappa)
 paths = setPaths();
 sets = dir(fullfile(paths.bsds500,'images'));
 sets(1:2) = []; % remove '.' and '..' dirs['Saving smoothed images for BSDS500 (', sets(s).name, ')...']
-for s=1:numel(sets)luarocks install https://raw.githubusercontent.com/szym/display/master/display-scm-0.rockspec
+for s=1:numel(sets)
     pathOriginal = fullfile(paths.bsds500,'images',sets(s).name);
     pathSmoothed = fullfile(paths.bsds500,...
         sprintf('imagesSmoothed,l=%.2g,k=%.2g',lambda,kappa),sets(s).name);

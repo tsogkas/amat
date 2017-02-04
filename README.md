@@ -8,6 +8,14 @@ Created by Stavros Tsogkas at the University of Toronto.
 This code is released under the MIT License (refer to the LICENSE file for details).
 
 ### TODO:
+### HIGH PRIORITY ---------------------------------------------------------
+- Polish code for MIL spb and upload it on github
+- download and prepare code for deepskeleton
+- wrap amat into a function
+- fill in evaluation scripts so that I can start running experiments
+
+
+### low priority ----------------------------------------------------------
 - Maybe change rescoring scheme, or remove it entirely. Pay close attention 
   to the quantity that is substracted: subtract the cost for the pixels that 
   are covered from each disk.
