@@ -28,7 +28,8 @@ catch
         gtFiles = dir(fullfile(gtDir,'*.mat'));
         assert(numel(imFiles) == numel(gtFiles), '#img ~= #seg')
         nImages = numel(imFiles);
-        matgt = repmat(struct('pts',[],'rad',[],'img',[],'seg',[],'bnd',[]), [1,nImages]);
+        matgt = repmat(struct(...
+            'pts',[],'rad',[],'img',[],'seg',[],'bnd',[],'iid',[]), [1,nImages]);
         % For all images
         ticStart = tic;
         parfor (i=1:nImages, opts.parpoolSize)
@@ -39,6 +40,9 @@ catch
             end
             [H,W,~] = size(img);
             nSegmentations = numel(gt);
+            [~,iid] = fileparts(imFiles(i).name);
+            matgt(i).iid = iid;   
+            matgt(i).img = img;   
             matgt(i).pts = zeros(H,W,nSegmentations,'uint8');
             matgt(i).rad = zeros(H,W,nSegmentations,'uint8');
             matgt(i).seg = zeros(H,W,nSegmentations,'uint8');
@@ -64,8 +68,7 @@ catch
                 matgt(i).pts(:,:,s) = pmap;
                 matgt(i).rad(:,:,s) = rmap;
                 matgt(i).bnd(:,:,s) = bmap;
-                matgt(i).seg(:,:,s) = seg;
-                matgt(i).img = img;                
+                matgt(i).seg(:,:,s) = seg;             
             end
             progress(['Computing MAT (' set{1} ')...'],i,nImages,ticStart,-1);
         end
@@ -75,14 +78,15 @@ catch
 end
 
 % Refine dataset 
+disp('Refining dataset')
 for set = {'train','val','test'}
     if ~isfield(BMAX500, set{1}), continue; end
     matgt = BMAX500.(set{1});
     for i=1:numel(BMAX500.(set{1}))
         % Prune points with low confidence
-        matgt(i).pts(matgt(i).pts < opts.skelThresh) = 0;
+        matgt(i).pts = matgt(i).pts >= opts.skelThresh;
         % Prune points with very small radius
-        matgt(i).pts(matgt(i).rad < opts.minRadius) = 0;
+        matgt(i).pts(matgt(i).rad < opts.minRadius) = false;
     end
     BMAX500.(set{1}) = matgt;
 end
