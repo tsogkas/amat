@@ -1,14 +1,18 @@
 function BMAX500 = constructBMAX500(varargin)
 % Build medial axis transform dataset based on the BSDS500
 
-opts = {'minSegmentPixels',   50,...
-        'resizeFactor',       1,...
-        'visualize',          false
+opts = {'resize',             1,... % this can be a HxW vector
+        'skelThresh',         50,...% high --> aggressive skeleton pruning
+        'minRadius',          3,... % we ignore points with radius < minRadius
+        'parpoolSize',        inf   % set to 0 to run serially 
        };
-opts = parseVarargin(opts, varargin, 'struct');   
+opts = parseVarargin(opts, varargin, 'struct');
 
+
+% Compute skeletons for all available segmentations and segments in BSDS500
 paths = setPaths();
-savePath = fullfile(paths.output, 'BMAX500.mat');
+savePath = fullfile(paths.amat.output, ['BMAX500-resize' num2str(opts.resize) '.mat']);
+
 try
     disp('Loading BMAX500 from disk...')
     BMAX500 = load(savePath); BMAX500 = BMAX500.BMAX500;
@@ -17,69 +21,72 @@ catch
     BMAX500 = struct('train',[],'val',[],'test',[],'opts',opts);
     % For all subsets of BSDS500
     for set = {'train','val','test'}
-        disp(['Extracting BMAX500, ''' set{1} ''' set...'])
         % Setup image and groundtruth paths
-        imDir = fullfile(paths.bsds500im, set{1}); 
-        gtDir = fullfile(paths.bsds500gt, set{1}); 
+        imDir = fullfile(paths.bsds500im, set{1});
+        gtDir = fullfile(paths.bsds500gt, set{1});
         imFiles = dir(fullfile(imDir,'*.jpg'));
         gtFiles = dir(fullfile(gtDir,'*.mat'));
         assert(numel(imFiles) == numel(gtFiles), '#img ~= #seg')
         nImages = numel(imFiles);
-        matgt(1:nImages) = struct('pts',[],'rad',[],'img',[],'seg',[],'bnd',[]);
+        matgt = repmat(struct('pts',[],'rad',[],'img',[],'seg',[],'bnd',[]), [1,nImages]);
         % For all images
         ticStart = tic;
-        for i=1:nImages
+        parfor (i=1:nImages, opts.parpoolSize)
             img = imread(fullfile(imDir,imFiles(i).name));
             gt  = load(fullfile(gtDir, gtFiles(i).name)); gt = gt.groundTruth;
-            if numel(opts.resizeFactor) == 2 || opts.resizeFactor ~= 1
+            if numel(opts.resize) == 2 || opts.resize ~= 1
                 img = imresize(img,opts.resizeFactor, 'bilinear');
             end
             [H,W,~] = size(img);
             nSegmentations = numel(gt);
-            matgt(i).pts = zeros(H,W,nSegmentations);
-            matgt(i).rad = zeros(H,W,nSegmentations);
+            matgt(i).pts = zeros(H,W,nSegmentations,'uint8');
+            matgt(i).rad = zeros(H,W,nSegmentations,'uint8');
+            matgt(i).seg = zeros(H,W,nSegmentations,'uint8');
             matgt(i).bnd = false(H,W,nSegmentations);
             % For all segmentations
             for s=1:nSegmentations
                 seg = gt{s}.Segmentation;
-                if numel(opts.resizeFactor) == 2 || opts.resizeFactor ~= 1
-                    seg = imresize(seg, opts.resizeFactor, 'nearest');
+                if numel(opts.resize) == 2 || opts.resize ~= 1
+                    seg = imresize(seg, opts.resize, 'nearest');
                 end
                 nSegments = numel(unique(seg));
                 pmap = zeros(H,W);
                 rmap = zeros(H,W);
                 bmap = false(H,W);
-                % For all segments in segmentation
+                % Compute skeletons of all segments
                 for j=1:nSegments
                     segment = seg == j;
-                    if nnz(segment) >= opts.minSegmentPixels
-                        [skel,r] = skeleton(segment);
-                        bmap = bmap | bwperim(segment);
-                        pmap = max(pmap,skel);
-                        rmap = max(rmap,sqrt(r)); % skeleton() returns squared distance for some reason
-                    end
+                    [skel,r] = skeleton(segment);
+                    bmap = bmap | bwperim(segment);
+                    pmap = max(pmap,skel);
+                    rmap = max(rmap,sqrt(r)); % skeleton() returns squared distance for some reason
                 end
                 matgt(i).pts(:,:,s) = pmap;
                 matgt(i).rad(:,:,s) = rmap;
                 matgt(i).bnd(:,:,s) = bmap;
                 matgt(i).seg(:,:,s) = seg;
-                matgt(i).img = img;
-                
-                % Visualize
-                if opts.visualize
-                    figure(s); imagesc(seg); axis image off;
-                    [yy,xx] = find(pmap > 0);
-                    rr = rmap(pmap > 0);
-                    assert(numel(xx) == numel(yy) && numel(xx) == numel(rr))
-                    viscircles([xx,yy],rr,'Color','r','EnhanceVisibility',true,'Linewidth',0.5);
-                end
+                matgt(i).img = img;                
             end
-            progress('Computing MAT...',i,nImages,ticStart,-1);
+            progress(['Computing MAT (' set{1} ')...'],i,nImages,ticStart,-1);
         end
         BMAX500.(set{1}) = matgt;
     end
     save(savePath, 'BMAX500');
 end
+
+% Refine dataset 
+for set = {'train','val','test'}
+    if ~isfield(BMAX500, set{1}), continue; end
+    matgt = BMAX500.(set{1});
+    for i=1:numel(BMAX500.(set{1}))
+        % Prune points with low confidence
+        matgt(i).pts(matgt(i).pts < opts.skelThresh) = 0;
+        % Prune points with very small radius
+        matgt(i).pts(matgt(i).rad < opts.minRadius) = 0;
+    end
+    BMAX500.(set{1}) = matgt;
+end
+
 
 
 
