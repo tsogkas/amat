@@ -1,7 +1,8 @@
 function [net, info] = cnnDeepSkeleton(varargin)
 
 % Network options
-opts.dataDir = [];
+opts.mode = 'train';
+opts.dataDir = constructBMAX500('resize',0.5);
 opts.modelType = 'vgg-vd-16' ;
 opts.network = [] ;
 opts.networkType = 'dagnn' ;
@@ -14,7 +15,7 @@ paths = setPaths();
 sfx = opts.modelType ;
 if opts.batchNormalization, sfx = [sfx '-bnorm'] ; end
 sfx = [sfx '-' opts.networkType] ;
-opts.expDir = fullfile(paths.deepskel.output, ['deepskel-' sfx]) ;
+opts.expDir = fullfile(paths.amat.output, ['deepskel-' sfx]) ;
 [opts, varargin] = vl_argparse(opts, varargin) ;
 
 % GPU options
@@ -24,7 +25,7 @@ opts = vl_argparse(opts, varargin) ;
 if ~isfield(opts.train, 'gpus'), opts.train.gpus = []; end;
 
 % Prepare training data
-imdb = getBMAX500Imdb('dataDir', opts.dataDir);
+imdb = getBMAX500Imdb('dataDir', opts.dataDir, 'mode',opts.mode);
 
 % Initialize model
 net = cnnInit('model', opts.modelType, ...
@@ -49,7 +50,7 @@ trainFn = @cnn_train_dag ;
 % -------------------------------------------------------------------------
 
 net = cnn_imagenet_deploy(net) ;
-modelPath = fullfile(opts.expDir, 'net-deployed.mat')
+modelPath = fullfile(opts.expDir, 'net-deployed.mat');
 
 switch opts.networkType
   case 'simplenn'
@@ -112,6 +113,7 @@ end
 % -------------------------------------------------------------------------
 function imdb = getBMAX500Imdb(varargin)
 % -------------------------------------------------------------------------
+opts.mode = 'train';
 opts.dataDir = [] ;
 opts.lite = false ;
 opts = vl_argparse(opts, varargin) ;
@@ -127,17 +129,23 @@ end
 scales = [0.8 1 1.2];    % remember to scale the radii accordingly!
 thetas = [0,90,180,270];  % angles in degrees
 
-% Images in BSDS500 (hence in BMAX500 too) have dimensions that are either 
-% 321x481 or 481x321. Accounting for the scales and orientations used in
-% data augmentation, the maximum dimensions for the input data are
-% ceil(481*1.2) = 578. For simplicity and speed while getting batches, we
-% use a fixed size for the input images and label maps, by centering the
-% (possibly smaller) image in this 578x578 space.
-maxH = ceil(max(scales)*481); maxW = maxH;
+% For simplicity and speed while getting batches, we use a fixed size for 
+% the input images and label maps, by centering the (possibly smaller) 
+% image in a D x D space. D is computed based on the maximum image
+% dimensions in the dataset and the maximum scaling used.
+% NOTE: Checking one image is enough because all images are either DxK or
+% KxD.
+Dmax = max(size(bmax500.train(1).img)); 
+Hmax = ceil(max(scales)*Dmax); Wmax = Hmax;
+
+% Load only the necessary subsets to save RAM
+if strcmp(opts.mode, 'test')
+    sets = {'test'};
+else
+    sets = {'train','val'}; 
+end
 
 % Load images/groundtruth and augment scales
-% For each set
-sets = {'train','val','test'};
 for s=1:numel(sets)
     set = bmax500.(sets{s});
     % First count the total number of groundtruth maps for preallocation
@@ -146,9 +154,9 @@ for s=1:numel(sets)
         nImages = nImages + size(set(i).pts,3);
     end
     % Preallocate
-    imgs = zeros(maxH,maxW,3,nImages*(1+numel(scales)),'uint8');
-    radi = zeros(maxH,maxW,1,nImages*(1+numel(scales)),'uint8');
-    lbls = false(maxH,maxW,1,nImages*(1+numel(scales)));
+    imgs = zeros(Hmax,Wmax,3,nImages*(1+numel(scales)),'uint8');
+    radi = zeros(Hmax,Wmax,1,nImages*(1+numel(scales)),'uint8');
+    lbls = false(Hmax,Wmax,1,nImages*(1+numel(scales)));
     % Now assemble all examples
     ind = 1;
     for i=1:numel(set)
@@ -157,14 +165,14 @@ for s=1:numel(sets)
             img = set(i).img;
             pts = set(i).pts;
             rad = set(i).rad;
-            if scale ~= 1
+            if scale ~= 1 && (strcmp(sets{s},'train') || strcmp(sets{s},'trainval'))
                 img = imresize(img,scale,'bilinear');
                 rad = imresize(rad,scale,'bilinear')*scale;
                 pts = imresizeCrisp(pts,scale);
             end
             % Center data in the maxH x maxW array
             [H,W,~] = size(img);
-            hs = ceil((maxH-H)/2); ws = ceil((maxW-W)/2);
+            hs = ceil((Hmax-H+1)/2); ws = ceil((Wmax-W+1)/2);
             imgs(hs:hs+H-1, ws:ws+W-1,:, ind:ind+ngt-1) = repmat(img,[1,1,1,ngt]);
             radi(hs:hs+H-1, ws:ws+W-1,:, ind:ind+ngt-1) = reshape(rad,H,W,1,[]);
             lbls(hs:hs+H-1, ws:ws+W-1,:, ind:ind+ngt-1) = reshape(pts,H,W,1,[]);
@@ -176,43 +184,250 @@ for s=1:numel(sets)
     imdb.(sets{s}).radius = radi;
 end
 
+% Tidy imdb
+switch opts.mode
+    case 'test'
+        imdb.images.data   = imdb.test.images;  imdb.test.images = [];
+        imdb.images.labels = imdb.test.labels;  imdb.test.labels = [];
+        imdb.images.radius = imdb.test.radius;  imdb.test.radius = [];
+        imdb = rmfield(imdb, 'test');
+    case 'train'
+        imdb.images.data   = imdb.train.images; imdb.train.images = [];
+        imdb.images.labels = imdb.train.labels; imdb.train.labels = []; 
+        imdb.images.radius = imdb.train.radius; imdb.train.radius = []; 
+        imdb = rmfield(imdb, 'train');
+    case 'trainval'
+        imdb.images.data = cat(4, imdb.train.images, imdb.val.images);
+        imdb.train.images = []; imdb.val.images = [];
+        imdb.images.labels = cat(4, imdb.train.labels, imdb.val.labels);
+        imdb.train.labels = []; imdb.val.labels = [];
+        imdb.images.radius = cat(4, imdb.train.radius, imdb.val.radius);
+        imdb.train.radius = []; imdb.val.radius = [];
+        imdb = rmfield(imdb, {'train','val'});
+    otherwise, error('opts.mode can be ''train'',''trainval'', or''test''')
+end
+
 % Augment orientations
-for s=1:numel(sets)
-    imgs = imdb.(sets{s}).images;
-    lbls = imdb.(sets{s}).labels;
-    radi = imdb.(sets{s}).radius;
-    for theta = thetas
-        if theta ~= 0
-            imdb.(sets{s}).images = cat(4,imdb.(sets{s}).images,imrotate(imgs,theta));
-            imdb.(sets{s}).labels = cat(4,imdb.(sets{s}).labels,imrotate(lbls,theta));
-            imdb.(sets{s}).radius = cat(4,imdb.(sets{s}).radius,imrotate(radi,theta));
-        end
+imgs = imdb.images.data;
+lbls = imdb.images.labels;
+radi = imdb.images.radius;
+for theta = thetas
+    if theta ~= 0
+        imdb.images.data   = cat(4, imdb.images.data,   imrotate(imgs,theta));
+        imdb.images.labels = cat(4, imdb.images.labels, imrotate(lbls,theta));
+        imdb.images.radius = cat(4, imdb.images.radius, imrotate(radi,theta));
     end
 end
-clear imgs lbls radi
+clear imgs lbls radi img pts rad
 
-% Tidy imdb
-nTrain = size(imdb.train.images,4);
-nVal   = size(imdb.val.images,4);
-nTest  = size(imdb.tesst.images,4);
-imdb.images.data = cat(4, imdb.train.images, imdb.val.images, imdb.test.images);
-imdb.train.images = []; imdb.val.images = []; imdb.test.images = [];
-imdb.images.labels = cat(4, imdb.train.labels, imdb.val.labels, imdb.test.labels);
-imdb.train.labels = []; imdb.val.labels = []; imdb.test.labels = [];
-imdb.images.radius = cat(4, imdb.train.radius, imdb.val.radius, imdb.test.radius);
-imdb.train.radius = []; imdb.val.radius = []; imdb.test.radius = [];
-imdb = rmfield(imdb, {'train','val','test'});
-imdb.images.set = [ones(1,nTrain) 2*ones(1,nVal) 3*ones(1,nTest)];
+% Augment flipping
+imdb.images.data = cat(4, imdb.images.data,...
+    fliplr(imdb.images.data), flipud(imdb.images.data));
+imdb.images.labels = cat(4, imdb.images.labels,...
+    fliplr(imdb.images.labels), flipud(imdb.images.labels));
+imdb.images.radius = cat(4, imdb.images.radius,...
+    fliplr(imdb.images.radius), flipud(imdb.images.radius));
+
+% Assign set indexes
+if strcmp(opts.mode, 'train')
+    nTrain = size(imdb.images.data,4);
+    nVal = size(imdb.val.images,4);
+    imdb.images.data = cat(4, imdb.images.data, imdb.val.images);
+    imdb.val.images = []; imdb = rmfield(imdb,'val');
+    imdb.images.set = [ones(1,nTrain) 2*ones(1,nVal)];
+elseif strcmp(opts.mode, 'trainval') % what to do for validation here??
+    nTrain = size(imdb.images.data,4);
+    imdb.images.set = [ones(1,nTrain) 2*ones(1,nVal)];
+else error('Invalid opts.mode')
+end
 imdb.meta.sets = sets;
 
 % Subtract mean image
 imdb.images.data = bsxfun(@minus, imdb.images.data, []);
 
+% -------------------------------------------------------------------------
+function net = cnnInit(varargin)
+% -------------------------------------------------------------------------
+opts.scale = 1 ;
+opts.initBias = 0 ;
+opts.weightDecay = 1 ;
+opts.weightInitMethod = 'gaussian' ;
+opts.model = 'alexnet' ;
+opts.batchNormalization = false ;
+opts.networkType = 'simplenn' ;
+opts.cudnnWorkspaceLimit = 1024*1024*1204 ; % 1GB
+opts.classNames = {} ;
+opts.classDescriptions = {} ;
+opts.averageImage = zeros(3,1) ;
+opts.colorDeviation = zeros(3) ;
+opts = vl_argparse(opts, varargin) ;
 
+net.meta.normalization.imageSize = [224, 224, 3] ;
+net = vgg_vd(net, opts) ;
+bs = 32 ;
 
+% final touches
+switch lower(opts.weightInitMethod)
+  case {'xavier', 'xavierimproved'}
+    net.layers{end}.weights{1} = net.layers{end}.weights{1} / 10 ;
+end
+net.layers{end+1} = struct('type', 'softmaxloss', 'name', 'loss') ;
 
+% Meta parameters
+net.meta.inputSize = [net.meta.normalization.imageSize, 32] ;
+net.meta.normalization.cropSize = net.meta.normalization.imageSize(1) / 256 ;
+net.meta.normalization.averageImage = opts.averageImage ;
+net.meta.classes.name = opts.classNames ;
+net.meta.classes.description = opts.classDescriptions;
+net.meta.augmentation.jitterLocation = true ;
+net.meta.augmentation.jitterFlip = true ;
+net.meta.augmentation.jitterBrightness = double(0.1 * opts.colorDeviation) ;
+net.meta.augmentation.jitterAspect = [2/3, 3/2] ;
 
+if ~opts.batchNormalization
+  lr = logspace(-2, -4, 60) ;
+else
+  lr = logspace(-1, -4, 20) ;
+end
 
+net.meta.trainOpts.learningRate = lr ;
+net.meta.trainOpts.numEpochs = numel(lr) ;
+net.meta.trainOpts.batchSize = bs ;
+net.meta.trainOpts.weightDecay = 0.0005 ;
 
+% Fill in default values
+net = vl_simplenn_tidy(net) ;
 
+% Switch to DagNN if requested
+switch lower(opts.networkType)
+  case 'simplenn'
+    % done
+  case 'dagnn'
+    net = dagnn.DagNN.fromSimpleNN(net, 'canonicalNames', true) ;
+    net.addLayer('top1err', dagnn.Loss('loss', 'classerror'), ...
+                 {'prediction','label'}, 'top1err') ;
+    net.addLayer('top5err', dagnn.Loss('loss', 'topkerror', ...
+                                       'opts', {'topK',5}), ...
+                 {'prediction','label'}, 'top5err') ;
+  otherwise
+    assert(false) ;
+end
 
+% --------------------------------------------------------------------
+function net = add_block(net, opts, id, h, w, in, out, stride, pad)
+% --------------------------------------------------------------------
+info = vl_simplenn_display(net) ;
+fc = (h == info.dataSize(1,end) && w == info.dataSize(2,end)) ;
+if fc
+  name = 'fc' ;
+else
+  name = 'conv' ;
+end
+convOpts = {'CudnnWorkspaceLimit', opts.cudnnWorkspaceLimit} ;
+net.layers{end+1} = struct('type', 'conv', 'name', sprintf('%s%s', name, id), ...
+                           'weights', {{init_weight(opts, h, w, in, out, 'single'), ...
+                             ones(out, 1, 'single')*opts.initBias}}, ...
+                           'stride', stride, ...
+                           'pad', pad, ...
+                           'dilate', 1, ...
+                           'learningRate', [1 2], ...
+                           'weightDecay', [opts.weightDecay 0], ...
+                           'opts', {convOpts}) ;
+if opts.batchNormalization
+  net.layers{end+1} = struct('type', 'bnorm', 'name', sprintf('bn%s',id), ...
+                             'weights', {{ones(out, 1, 'single'), zeros(out, 1, 'single'), ...
+                               zeros(out, 2, 'single')}}, ...
+                             'epsilon', 1e-4, ...
+                             'learningRate', [2 1 0.1], ...
+                             'weightDecay', [0 0]) ;
+end
+net.layers{end+1} = struct('type', 'relu', 'name', sprintf('relu%s',id)) ;
+
+% -------------------------------------------------------------------------
+function weights = init_weight(opts, h, w, in, out, type)
+% -------------------------------------------------------------------------
+% See K. He, X. Zhang, S. Ren, and J. Sun. Delving deep into
+% rectifiers: Surpassing human-level performance on imagenet
+% classification. CoRR, (arXiv:1502.01852v1), 2015.
+
+switch lower(opts.weightInitMethod)
+  case 'gaussian'
+    sc = 0.01/opts.scale ;
+    weights = randn(h, w, in, out, type)*sc;
+  case 'xavier'
+    sc = sqrt(3/(h*w*in)) ;
+    weights = (rand(h, w, in, out, type)*2 - 1)*sc ;
+  case 'xavierimproved'
+    sc = sqrt(2/(h*w*out)) ;
+    weights = randn(h, w, in, out, type)*sc ;
+  otherwise
+    error('Unknown weight initialization method''%s''', opts.weightInitMethod) ;
+end
+
+% --------------------------------------------------------------------
+function net = add_dropout(net, opts, id)
+% --------------------------------------------------------------------
+if ~opts.batchNormalization
+  net.layers{end+1} = struct('type', 'dropout', ...
+                             'name', sprintf('dropout%s', id), ...
+                             'rate', 0.5) ;
+end
+
+% --------------------------------------------------------------------
+function net = vgg_vd(net, opts)
+% --------------------------------------------------------------------
+
+net = 
+net.layers = {} ;
+net = add_block(net, opts, '1_1', 3, 3, 3, 64, 1, 1) ;
+net = add_block(net, opts, '1_2', 3, 3, 64, 64, 1, 1) ;
+net.layers{end+1} = struct('type', 'pool', 'name', 'pool1', ...
+                           'method', 'max', ...
+                           'pool', [2 2], ...
+                           'stride', 2, ...
+                           'pad', 0) ;
+
+net = add_block(net, opts, '2_1', 3, 3, 64, 128, 1, 1) ;
+net = add_block(net, opts, '2_2', 3, 3, 128, 128, 1, 1) ;
+net.layers{end+1} = struct('type', 'pool', 'name', 'pool2', ...
+                           'method', 'max', ...
+                           'pool', [2 2], ...
+                           'stride', 2, ...
+                           'pad', 0) ;
+
+net = add_block(net, opts, '3_1', 3, 3, 128, 256, 1, 1) ;
+net = add_block(net, opts, '3_2', 3, 3, 256, 256, 1, 1) ;
+net = add_block(net, opts, '3_3', 3, 3, 256, 256, 1, 1) ;
+net.layers{end+1} = struct('type', 'pool', 'name', 'pool3', ...
+                           'method', 'max', ...
+                           'pool', [2 2], ...
+                           'stride', 2, ...
+                           'pad', 0) ;
+
+net = add_block(net, opts, '4_1', 3, 3, 256, 512, 1, 1) ;
+net = add_block(net, opts, '4_2', 3, 3, 512, 512, 1, 1) ;
+net = add_block(net, opts, '4_3', 3, 3, 512, 512, 1, 1) ;
+net.layers{end+1} = struct('type', 'pool', 'name', 'pool4', ...
+                           'method', 'max', ...
+                           'pool', [2 2], ...
+                           'stride', 2, ...
+                           'pad', 0) ;
+
+net = add_block(net, opts, '5_1', 3, 3, 512, 512, 1, 1) ;
+net = add_block(net, opts, '5_2', 3, 3, 512, 512, 1, 1) ;
+net = add_block(net, opts, '5_3', 3, 3, 512, 512, 1, 1) ;
+net.layers{end+1} = struct('type', 'pool', 'name', 'pool5', ...
+                           'method', 'max', ...
+                           'pool', [2 2], ...
+                           'stride', 2, ...
+                           'pad', 0) ;
+
+net = add_block(net, opts, '6', 7, 7, 512, 4096, 1, 0) ;
+net = add_dropout(net, opts, '6') ;
+
+net = add_block(net, opts, '7', 1, 1, 4096, 4096, 1, 0) ;
+net = add_dropout(net, opts, '7') ;
+
+net = add_block(net, opts, '8', 1, 1, 4096, 1000, 1, 0) ;
+net.layers(end) = [] ;
+if opts.batchNormalization, net.layers(end) = [] ; end
