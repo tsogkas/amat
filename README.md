@@ -9,7 +9,7 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 
 ### TODO:
 ### HIGH PRIORITY ---------------------------------------------------------
-- Polish code for MIL spb and upload it on github
+- Write code that computes dataset statistics and coverage by medial axes
 - download and prepare code for deepskeleton
 - wrap amat into a function
 - fill in evaluation scripts so that I can start running experiments

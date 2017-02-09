@@ -36,7 +36,7 @@ catch
             img = imread(fullfile(imDir,imFiles(i).name));
             gt  = load(fullfile(gtDir, gtFiles(i).name)); gt = gt.groundTruth;
             if numel(opts.resize) == 2 || opts.resize ~= 1
-                img = imresize(img,opts.resizeFactor, 'bilinear');
+                img = imresize(img,opts.resize, 'bilinear');
             end
             [H,W,~] = size(img);
             nSegmentations = numel(gt);
@@ -56,7 +56,7 @@ catch
                 nSegments = numel(unique(seg));
                 pmap = zeros(H,W);
                 rmap = zeros(H,W);
-                bmap = false(H,W);
+                bmap = false(H,W);% Check dataset coverage by medial axes
                 % Compute skeletons of all segments
                 for j=1:nSegments
                     segment = seg == j;
@@ -90,6 +90,10 @@ for set = {'train','val','test'}
     end
     BMAX500.(set{1}) = matgt;
 end
+
+% Check dataset coverage by medial axes
+
+
 
 
 
