@@ -8,6 +8,7 @@ opts.network = [] ;
 opts.networkType = 'dagnn' ;
 opts.batchNormalization = true ;
 opts.weightInitMethod = 'gaussian' ;
+opts.averageImage = [116.66877; 122.67892; 104.00699];  
 [opts, varargin] = vl_argparse(opts, varargin) ;
 
 % Suffix and results directory setup
@@ -24,19 +25,11 @@ opts.train = struct() ;
 opts = vl_argparse(opts, varargin) ;
 if ~isfield(opts.train, 'gpus'), opts.train.gpus = []; end;
 
+% Initialize model
+net = cnnInit('initNetPath', paths.vgg16, 'averageImage', opts.averageImage);
+
 % Prepare training data
 imdb = getBMAX500Imdb('dataDir', opts.dataDir, 'mode',opts.mode);
-
-% Initialize model
-net = cnnInit('model', opts.modelType, ...
-              'batchNormalization', opts.batchNormalization, ...
-              'weightInitMethod', opts.weightInitMethod, ...
-              'networkType', opts.networkType, ...
-              'averageImage', rgbMean, ...
-              'colorDeviation', rgbDeviation, ...
-              'classNames', imdb.classes.name, ...
-              'classDescriptions', imdb.classes.description) ;
-
 
 % Train          
 trainFn = @cnn_train_dag ;
@@ -45,10 +38,7 @@ trainFn = @cnn_train_dag ;
                       net.meta.trainOpts, ...
                       opts.train) ;
 
-% -------------------------------------------------------------------------
-%                                                                    Deploy
-% -------------------------------------------------------------------------
-
+% Deploy
 net = cnn_imagenet_deploy(net) ;
 modelPath = fullfile(opts.expDir, 'net-deployed.mat');
 
@@ -248,165 +238,194 @@ imdb.images.data = bsxfun(@minus, imdb.images.data, []);
 % -------------------------------------------------------------------------
 function net = cnnInit(varargin)
 % -------------------------------------------------------------------------
-opts.scale = 1 ;
-opts.initBias = 0 ;
-opts.weightDecay = 1 ;
-opts.weightInitMethod = 'gaussian' ;
-opts.model = 'alexnet' ;
-opts.batchNormalization = false ;
-opts.networkType = 'simplenn' ;
+% TODO: We want to fine-tune, starting from the vgg-16 initialization so we
+% have to:
+% 1) Load the weights of that network (download it from the matconvet website)
+% 2) Set the values for the learning parameters to the same values as the
+% ones used in the DeepSkeleton paper
+% (https://github.com/zeakey/DeepSkeleton/blob/master/examples/DeepSkeleton/train_val.prototxt)
+
+opts.initNetPath = [];
+opts.averageImage = zeros(3,1);
 opts.cudnnWorkspaceLimit = 1024*1024*1204 ; % 1GB
-opts.classNames = {} ;
-opts.classDescriptions = {} ;
-opts.averageImage = zeros(3,1) ;
-opts.colorDeviation = zeros(3) ;
 opts = vl_argparse(opts, varargin) ;
 
-net.meta.normalization.imageSize = [224, 224, 3] ;
-net = vgg16skel(net, opts) ;
-bs = 32 ;
+% Define network architecture and initialize parameters with random values
+net = vgg16deepskel();
+net.initParams(); % is this really necessary?
 
-% final touches
-switch lower(opts.weightInitMethod)
-  case {'xavier', 'xavierimproved'}
-    net.layers{end}.weights{1} = net.layers{end}.weights{1} / 10 ;
+% Initialize weights from the vgg-16 network trained for classification and
+% set learning parameters according to the deep skeleton network.
+vgg = load(opts.initNetPath); 
+for l=1:numel(vgg.layers)
+    layer = vgg.layers{l};
+    if strcmp(layer.type, 'conv')
+        indw = net.getParamIndex([layer.name '_w']);
+        indb = net.getParamIndex([layer.name '_b']);
+        if isnan(indw) || isnan(indb)
+            warning(['Skipping non-existent layer ' layer.name '...'])
+        else
+            net.params(indw).value = layer.weights{1};
+            net.params(indb).value = layer.weights{2};
+            net.params(indw).learningRate = 1;
+            net.params(indw).weightDecay  = 1;
+            net.params(indb).learningRate = 2;
+            net.params(indb).weightDecay  = 0;
+        end
+    end
 end
-net.layers{end+1} = struct('type', 'softmaxloss', 'name', 'loss') ;
 
-% Meta parameters
-net.meta.inputSize = [net.meta.normalization.imageSize, 32] ;
-net.meta.normalization.cropSize = net.meta.normalization.imageSize(1) / 256 ;
+% Set the remaining learning parameters according to the deep skeleton work
+% Still not sure if the default values should be used.
+for l={'deconv2','deconv3','deconv4','deconv5'}
+    indw = net.getParamIndex([l{1} '_w']);
+    indb = net.getParamIndex([l{1} '_b']);
+    net.params(indw).learningRate = 0;
+    net.params(indw).weightDecay  = 1;
+    net.params(indb).learningRate = 0;
+    net.params(indb).weightDecay  = 0;
+end
+
+for l={'score_dsn2','score_dsn3','score_dsn4','score_dsn5'}
+    indw = net.getParamIndex([l{1} '_w']);
+    indb = net.getParamIndex([l{1} '_b']);
+    net.params(indw).learningRate = 0.01;
+    net.params(indw).weightDecay  = 1;
+    net.params(indb).learningRate = 0.02;
+    net.params(indb).weightDecay  = 0;
+end
+
+for l={'cat0_score','cat1_score','cat2_score','cat3_score','cat4_score'}
+    indw = net.getParamIndex([l{1} '_w']);
+    indb = net.getParamIndex([l{1} '_b']);
+    net.params(indw).learningRate = 0.05;
+    net.params(indw).weightDecay  = 1;
+    net.params(indb).learningRate = 0.002;
+    net.params(indb).weightDecay  = 0;
+    % Initialize score fusion to equally weighing all scales
+    switch l{1}
+        case {'cat0_score','cat1_score'}
+            val = 0.25;
+        case 'cat2_score'
+            val = 1/3;
+        case 'cat3_score'
+            val = 0.5;
+        case 'cat4_score'
+            val = 1;
+    end
+    net.params(indw).value = val * ones(size(net.params(indw).value));
+end
+
+
+% Meta parameters 
+net.meta.normalization.imageSize = [224 224 3] ;
 net.meta.normalization.averageImage = opts.averageImage ;
-net.meta.classes.name = opts.classNames ;
-net.meta.classes.description = opts.classDescriptions;
-net.meta.augmentation.jitterLocation = true ;
-net.meta.augmentation.jitterFlip = true ;
-net.meta.augmentation.jitterBrightness = double(0.1 * opts.colorDeviation) ;
-net.meta.augmentation.jitterAspect = [2/3, 3/2] ;
 
-if ~opts.batchNormalization
-  lr = logspace(-2, -4, 60) ;
-else
-  lr = logspace(-1, -4, 20) ;
-end
-
+%lr = logspace(-1, -3, 60) ;
+lr = [0.1 * ones(1,30), 0.01*ones(1,30), 0.001*ones(1,30)] ;
 net.meta.trainOpts.learningRate = lr ;
 net.meta.trainOpts.numEpochs = numel(lr) ;
-net.meta.trainOpts.batchSize = bs ;
-net.meta.trainOpts.weightDecay = 0.0005 ;
-
-% Fill in default values
-net = vl_simplenn_tidy(net) ;
-
-% Switch to DagNN if requested
-switch lower(opts.networkType)
-  case 'simplenn'
-    % done
-  case 'dagnn'
-    net = dagnn.DagNN.fromSimpleNN(net, 'canonicalNames', true) ;
-    net.addLayer('top1err', dagnn.Loss('loss', 'classerror'), ...
-                 {'prediction','label'}, 'top1err') ;
-    net.addLayer('top5err', dagnn.Loss('loss', 'topkerror', ...
-                                       'opts', {'topK',5}), ...
-                 {'prediction','label'}, 'top5err') ;
-  otherwise
-    assert(false) ;
-end
+net.meta.trainOpts.momentum = 0.9 ;
+net.meta.trainOpts.batchSize = 256 ;
+net.meta.trainOpts.numSubBatches = 4 ;
+net.meta.trainOpts.weightDecay = 0.0002 ;
 
 % --------------------------------------------------------------------
-function net = vgg16skel()
+function net = vgg16deepskel()
 % --------------------------------------------------------------------
-% TODO: Make sure all the initializations, learning rates and other
-% parameters are the same as in deepskeleton code
+% Original HED architecture (https://arxiv.org/abs/1504.06375), extended
+% with deep side, loss, and fusion layers for combining skeleton responses
+% at different scales.
 
 net = dagnn.DagNN();
+
 % Conv Layers -------------------------------------------------------------
 % Conv 1 
-net.addLayer('conv1_1', dagnn.Conv('size',[3,3,3,64]),'stride',1,'pad',1,...
+net.addLayer('conv1_1', dagnn.Conv('size',[3,3,3,64],'stride',1,'pad',1),...
             {'input'}, {'conv1_1'}, {'conv1_1_w', 'conv1_1_b'});
-net.addLayer('relu1_1', dagnn.Relu(), {'conv1_1'}, {'relu1_1'});
-net.addLayer('conv1_2', dagnn.Conv('size',[3,3,64,64]),'stride',1,'pad',1,...
-            {'relu1_1'}, {name}, {'conv1_2_w', 'conv1_2_b'});
-net.addLayer('relu1_2', dagnn.Relu(), {'conv1_2'}, {'relu1_2'});
-net.addLayer('pool1', dagnn.Pooling('poolsize',[2 2]),'stride',2,'pad',0,...
-             'method','max',{'relu1_2'}, {'pool1'});
+net.addLayer('relu1_1', dagnn.ReLU(), {'conv1_1'}, {'relu1_1'});
+net.addLayer('conv1_2', dagnn.Conv('size',[3,3,64,64],'stride',1,'pad',1),...
+            {'relu1_1'}, {'conv1_2'}, {'conv1_2_w', 'conv1_2_b'});
+net.addLayer('relu1_2', dagnn.ReLU(), {'conv1_2'}, {'relu1_2'});
+net.addLayer('pool1', dagnn.Pooling('poolSize',[2 2],'stride',2,'pad',0,...
+             'method','max'), {'relu1_2'}, {'pool1'});
 % Conv 2 
-net.addLayer('conv2_1', dagnn.Conv('size',[3,3,64,128]),'stride',1,'pad',1,...
+net.addLayer('conv2_1', dagnn.Conv('size',[3,3,64,128],'stride',1,'pad',1),...
             {'pool1'}, {'conv2_1'},{'conv2_1_w', 'conv2_1_b'});
-net.addLayer('relu2_1', dagnn.Relu(), {'conv2_1'}, {'relu2_1'});        
-net.addLayer('conv2_2', dagnn.Conv('size',[3,3,128,128]),'stride',1,'pad',1,...
+net.addLayer('relu2_1', dagnn.ReLU(), {'conv2_1'}, {'relu2_1'});        
+net.addLayer('conv2_2', dagnn.Conv('size',[3,3,128,128],'stride',1,'pad',1),...
             {'relu2_1'}, {'conv2_2'},{'conv2_2_w', 'conv2_2_b'});
-net.addLayer('relu2_2', dagnn.Relu(), {'conv2_2'}, {'relu2_2'});                
-net.addLayer('pool2', dagnn.Pooling('poolsize',[2 2]),'stride',2,'pad',0,...
-             'method','max',{'relu2_2'}, {'pool2'});
+net.addLayer('relu2_2', dagnn.ReLU(), {'conv2_2'}, {'relu2_2'});                
+net.addLayer('pool2', dagnn.Pooling('poolSize',[2 2],'stride',2,'pad',0,...
+             'method','max') ,{'relu2_2'}, {'pool2'});
                   
 % Conv 3 
-net.addLayer('conv3_1', dagnn.Conv('size',[3,3,128,256]),'stride',1,'pad',1,...
+net.addLayer('conv3_1', dagnn.Conv('size',[3,3,128,256],'stride',1,'pad',1),...
             {'pool2'}, {'conv3_1'},{'conv3_1_w', 'conv3_1_b'});
-net.addLayer('relu3_1', dagnn.Relu(), {'conv3_1'}, {'relu3_1'});
-net.addLayer('conv3_2', dagnn.Conv('size',[3,3,256,256]),'stride',1,'pad',1,...
+net.addLayer('relu3_1', dagnn.ReLU(), {'conv3_1'}, {'relu3_1'});
+net.addLayer('conv3_2', dagnn.Conv('size',[3,3,256,256],'stride',1,'pad',1),...
             {'relu3_1'}, {'conv3_2'},{'conv3_2_w', 'conv3_2_b'});
-net.addLayer('relu3_2', dagnn.Relu(), {'conv3_2'}, {'relu3_2'});                                
-net.addLayer('conv3_3', dagnn.Conv('size',[3,3,256,256]),'stride',1,'pad',1,...
+net.addLayer('relu3_2', dagnn.ReLU(), {'conv3_2'}, {'relu3_2'});                                
+net.addLayer('conv3_3', dagnn.Conv('size',[3,3,256,256],'stride',1,'pad',1),...
             {'relu3_2'}, {'conv3_3'},{'conv3_3_w', 'conv3_3_b'});
-net.addLayer('relu3_3', dagnn.Relu(), {'conv3_2'}, {'relu3_3'});
-net.addLayer('pool3', dagnn.Pooling('poolsize',[2 2]),'stride',2,'pad',0,...
-             'method','max',{'relu3_3'}, {'pool3'});
+net.addLayer('relu3_3', dagnn.ReLU(), {'conv3_2'}, {'relu3_3'});
+net.addLayer('pool3', dagnn.Pooling('poolSize',[2 2],'stride',2,'pad',0,...
+             'method','max') ,{'relu3_3'}, {'pool3'});
          
 % Conv 4 
-net.addLayer('conv4_1', dagnn.Conv('size',[3,3,256,512]),'stride',1,'pad',1,...
+net.addLayer('conv4_1', dagnn.Conv('size',[3,3,256,512],'stride',1,'pad',1),...
             {'pool3'}, {'conv4_1'},{'conv4_1_w', 'conv4_1_b'});
-net.addLayer('relu4_1', dagnn.Relu(), {'conv4_1'}, {'relu4_1'});
-net.addLayer('conv4_2', dagnn.Conv('size',[3,3,512,512]),'stride',1,'pad',1,...
+net.addLayer('relu4_1', dagnn.ReLU(), {'conv4_1'}, {'relu4_1'});
+net.addLayer('conv4_2', dagnn.Conv('size',[3,3,512,512],'stride',1,'pad',1),...
             {'relu4_1'}, {'conv4_2'},{'conv4_2_w', 'conv4_2_b'});
-net.addLayer('relu4_2', dagnn.Relu(), {'conv4_2'}, {'relu4_2'});        
-net.addLayer('conv4_3', dagnn.Conv('size',[3,3,512,512]),'stride',1,'pad',1,...
+net.addLayer('relu4_2', dagnn.ReLU(), {'conv4_2'}, {'relu4_2'});        
+net.addLayer('conv4_3', dagnn.Conv('size',[3,3,512,512],'stride',1,'pad',1),...
             {'relu4_2'}, {'conv4_3'},{'conv4_3_w', 'conv4_3_b'});
-net.addLayer('relu4_3', dagnn.Relu(), {'conv4_3'}, {'relu4_3'});                
-net.addLayer('pool4', dagnn.Pooling('poolsize',[2 2]),'stride',2,'pad',0,...
-             'method','max',{'relu4_3'}, {'pool4'});
+net.addLayer('relu4_3', dagnn.ReLU(), {'conv4_3'}, {'relu4_3'});                
+net.addLayer('pool4', dagnn.Pooling('poolSize',[2 2],'stride',2,'pad',0,...
+             'method','max') ,{'relu4_3'}, {'pool4'});
                   
 % Conv 5
-net.addLayer('conv5_1', dagnn.Conv('size',[3,3,512,512]),'stride',1,'pad',1,...
+net.addLayer('conv5_1', dagnn.Conv('size',[3,3,512,512],'stride',1,'pad',1),...
             {'pool4'}, {'conv5_1'},{'conv5_1_w', 'conv5_1_b'});
-net.addLayer('relu5_1', dagnn.Relu(), {'conv5_1'}, {'relu5_1'});                
-net.addLayer('conv5_2', dagnn.Conv('size',[3,3,512,512]),'stride',1,'pad',1,...
+net.addLayer('relu5_1', dagnn.ReLU(), {'conv5_1'}, {'relu5_1'});                
+net.addLayer('conv5_2', dagnn.Conv('size',[3,3,512,512],'stride',1,'pad',1),...
             {'relu5_1'}, {'conv5_2'},{'conv5_2_w', 'conv5_2_b'});
-net.addLayer('relu5_2', dagnn.Relu(), {'conv5_2'}, {'relu5_2'});                
-net.addLayer('conv5_3', dagnn.Conv('size',[3,3,512,512]),'stride',1,'pad',1,...
+net.addLayer('relu5_2', dagnn.ReLU(), {'conv5_2'}, {'relu5_2'});                
+net.addLayer('conv5_3', dagnn.Conv('size',[3,3,512,512],'stride',1,'pad',1),...
             {'relu5_2'}, {'conv5_3'},{'conv5_3_w', 'conv5_3_b'});
-net.addLayer('relu5_3', dagnn.Relu(), {'conv5_3'}, {'relu5_3'});                
-net.addLayer('pool5', dagnn.Pooling('poolsize',[2 2]),'stride',2,'pad',0,...
-             'method','max',{'relu5_3'}, {'pool5'});
+net.addLayer('relu5_3', dagnn.ReLU(), {'conv5_3'}, {'relu5_3'});                
+net.addLayer('pool5', dagnn.Pooling('poolSize',[2 2],'stride',2,'pad',0,...
+             'method','max') ,{'relu5_3'}, {'pool5'});
          
 % DSN Layers --------------------------------------------------------------
 % DSN 2
 net.addLayer('score_dsn2', dagnn.Conv('size',[1,1,128,2]),...
             {'conv2_2'}, {'score_dsn2'},{'score_dsn2_w', 'score_dsn2_b'});
-net.addLayer('score_dsn2_up', dagnn.ConvTranspose('size',[4,4,2,2],'stride',2),...
-            {'score_dsn2'}, {'score_dsn2_up'});
-net.addLayer('loss2', dagnn.Loss(),{'score_dsn2_up','labels'}, {'loss2'});
+net.addLayer('deconv2', dagnn.ConvTranspose('size',[4,4,2,2],'upsample',2),...
+            {'score_dsn2'}, {'score_dsn2_up'}, {'deconv2_w','deconv2_b'});
+net.addLayer('loss2', dagnn.Loss(),{'score_dsn2_up','labels'}, {'loss_dsn2'});
                   
 % DSN 3
 net.addLayer('score_dsn3', dagnn.Conv('size',[1,1,256,3]),...
             {'conv3_3'}, {'score_dsn3'},{'score_dsn3_w', 'score_dsn3_b'});
-net.addLayer('score_dsn3_up', dagnn.ConvTranspose('size',[8,8,3,3],'stride',4),...
-            {'score_dsn3'}, {'score_dsn3_up'});
-net.addLayer('loss3', dagnn.Loss(),{'score_dsn3_up','labels'}, {'loss3'});
+net.addLayer('deconv3', dagnn.ConvTranspose('size',[8,8,3,3],'upsample',4),...
+            {'score_dsn3'}, {'score_dsn3_up'}, {'deconv3_w','deconv3_b'});
+net.addLayer('loss3', dagnn.Loss(),{'score_dsn3_up','labels'}, {'loss_dsn3'});
                   
 % DSN 4
 net.addLayer('score_dsn4', dagnn.Conv('size',[1,1,512,4]),...
             {'conv4_3'}, {'score_dsn4'},{'score_dsn4_w', 'score_dsn4_b'});
-net.addLayer('score_dsn4_up', dagnn.ConvTranspose('size',[16,16,4,4],'stride',8),...
-            {'score_dsn4'}, {'score_dsn4_up'});
-net.addLayer('loss4', dagnn.Loss(),{'score_dsn4_up','labels'}, {'loss4'});
+net.addLayer('deconv4', dagnn.ConvTranspose('size',[16,16,4,4],'upsample',8),...
+            {'score_dsn4'}, {'score_dsn4_up'}, {'deconv4_w','deconv4_b'});
+net.addLayer('loss4', dagnn.Loss(),{'score_dsn4_up','labels'}, {'loss_dsn4'});
          
 % DSN 5
 net.addLayer('score_dsn5', dagnn.Conv('size',[1,1,512,5]),...
             {'conv5_3'}, {'score_dsn5'},{'score_dsn5_w', 'score_dsn5_b'});
-net.addLayer('score_dsn4_up', dagnn.ConvTranspose('size',[32,32,5,5],'stride',16),...
-            {'score_dsn5'}, {'score_dsn5_up'});
-net.addLayer('loss5', dagnn.Loss(),{'score_dsn5_up','labels'}, {'loss5'});
+net.addLayer('deconv5', dagnn.ConvTranspose('size',[32,32,5,5],'upsample',16),...
+            {'score_dsn5'}, {'score_dsn5_up'}, {'deconv5_w','deconv5_b'});
+net.addLayer('loss5', dagnn.Loss(),{'score_dsn5_up','labels'}, {'loss_dsn5'});
 
 % Slice side outputs ------------------------------------------------------
 net.addLayer('slice2', dagnn.Slice(), {'upscore_dsn2'},...
@@ -430,18 +449,18 @@ net.addLayer('concat3', dagnn.Concat(),...
       
 % Fuse scores corresponding to the same scale -----------------------------
 net.addLayer('cat0_score', dagnn.Conv('size',[1,1,4,1]), ...
-            {'concat0'}, {'concat0_score'});
+            {'concat0'}, {'concat0_score'}, {'cat0_score_w','cat0_score_b'});
 net.addLayer('cat1_score', dagnn.Conv('size',[1,1,4,1]), ...
-            {'concat1'}, {'concat1_score'});
+            {'concat1'}, {'concat1_score'}, {'cat1_score_w','cat1_score_b'});
 net.addLayer('cat2_score', dagnn.Conv('size',[1,1,3,1]), ...
-            {'concat2'}, {'concat2_score'});
+            {'concat2'}, {'concat2_score'}, {'cat2_score_w','cat2_score_b'});
 net.addLayer('cat3_score', dagnn.Conv('size',[1,1,2,1]), ...
-            {'concat3'}, {'concat3_score'});
+            {'concat3'}, {'concat3_score'}, {'cat3_score_w','cat3_score_b'});
 net.addLayer('cat4_score', dagnn.Conv('size',[1,1,1,1]), ...
-            {'slice5_4'}, {'concat4_score'});
+            {'slice5_4'},{'concat4_score'}, {'cat4_score_w','cat4_score_b'});
 
 % Fuse scores from all scales ---------------------------------------------
-net.addLayer('concat_fuse', dagnn.Conv('size',[1,1,5,1]), ...
+net.addLayer('concat_fuse', dagnn.Concat(), ...
             {'concat0_score','concat1_score','concat2_score',...
              'concat3_score','concat4_score'}, {'concat_fuse'});
 
