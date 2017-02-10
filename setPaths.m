@@ -8,6 +8,7 @@ paths.bsds500          = fullfile(paths.data,'BSDS500');
 paths.bsds500gt        = fullfile(paths.bsds500, 'groundtruth');
 paths.bsds500im        = fullfile(paths.bsds500, 'images');
 paths.symmax500        = fullfile(paths.data, 'SYMMAX500');
+paths.vgg16            = fullfile(paths.data, 'imagenet-vgg-verydeep-16.mat');
 
 % amat
 paths.amat.output      = fullfile(paths.amat.root, 'output');

@@ -1,11 +1,11 @@
 classdef Slice < dagnn.ElementWise
     properties
         dim = 3
+        splitPoints = []
     end
     
     properties (Transient)
         inputSizes  = {};
-        splitPoints = {}
     end
     
     methods
@@ -82,9 +82,6 @@ function y = vl_nnslice(inputs, dim, splitPoints, dzdy)
 %
 % This file is part of the VLFeat library and is made available under
 % the terms of the BSD license (see the COPYING file).
-
-opts.splitPoints = [] ;
-opts = vl_argparse(opts, varargin, 'nonrecursive') ;
 
 if nargin < 2, dim = 3; end;
 if nargin < 3, splitPoints = 1; end
