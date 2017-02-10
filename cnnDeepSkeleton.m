@@ -316,6 +316,9 @@ end
 % --------------------------------------------------------------------
 function net = vgg16skel()
 % --------------------------------------------------------------------
+% TODO: Make sure all the initializations, learning rates and other
+% parameters are the same as in deepskeleton code
+
 net = dagnn.DagNN();
 % Conv Layers -------------------------------------------------------------
 % Conv 1 
@@ -405,7 +408,7 @@ net.addLayer('score_dsn4_up', dagnn.ConvTranspose('size',[32,32,5,5],'stride',16
             {'score_dsn5'}, {'score_dsn5_up'});
 net.addLayer('loss5', dagnn.Loss(),{'score_dsn5_up','labels'}, {'loss5'});
 
-% Slice Layers ------------------------------------------------------------
+% Slice side outputs ------------------------------------------------------
 net.addLayer('slice2', dagnn.Slice(), {'upscore_dsn2'},...
             {'slice2_0','slice2_1'});
 net.addLayer('slice3', dagnn.Slice(), {'upscore_dsn3'},...
@@ -415,7 +418,7 @@ net.addLayer('slice4', dagnn.Slice(), {'upscore_dsn4'},...
 net.addLayer('slice5', dagnn.Slice(), {'upscore_dsn5'},...
             {'slice5_0','slice5_1','slice5_2','slice5_3','slice5_4'});
 
-% Concat layers -----------------------------------------------------------
+% Concat slices corresponding to the same scale ---------------------------
 net.addLayer('concat0', dagnn.Concat(),...
             {'slice2_0','slice3_0','slice4_0','slice5_0'}, {'concat0'});
 net.addLayer('concat1', dagnn.Concat(),...
@@ -425,6 +428,23 @@ net.addLayer('concat2', dagnn.Concat(),...
 net.addLayer('concat3', dagnn.Concat(),...
             {'slice4_3','slice5_3'}, {'concat3'});
       
-% Concatenate scores ------------------------------------------------------
-% TODO: initialize with fixed weights
-net.addLayer('cat0-score', dagnn.Conv())
+% Fuse scores corresponding to the same scale -----------------------------
+net.addLayer('cat0_score', dagnn.Conv('size',[1,1,4,1]), ...
+            {'concat0'}, {'concat0_score'});
+net.addLayer('cat1_score', dagnn.Conv('size',[1,1,4,1]), ...
+            {'concat1'}, {'concat1_score'});
+net.addLayer('cat2_score', dagnn.Conv('size',[1,1,3,1]), ...
+            {'concat2'}, {'concat2_score'});
+net.addLayer('cat3_score', dagnn.Conv('size',[1,1,2,1]), ...
+            {'concat3'}, {'concat3_score'});
+net.addLayer('cat4_score', dagnn.Conv('size',[1,1,1,1]), ...
+            {'slice5_4'}, {'concat4_score'});
+
+% Fuse scores from all scales ---------------------------------------------
+net.addLayer('concat_fuse', dagnn.Conv('size',[1,1,5,1]), ...
+            {'concat0_score','concat1_score','concat2_score',...
+             'concat3_score','concat4_score'}, {'concat_fuse'});
+
+% Final loss layer --------------------------------------------------------
+net.addLayer('loss_fuse',dagnn.Loss(),{'concat_fuse','labels'},{'fuse_loss'});
+        
