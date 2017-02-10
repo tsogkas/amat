@@ -263,7 +263,7 @@ opts.colorDeviation = zeros(3) ;
 opts = vl_argparse(opts, varargin) ;
 
 net.meta.normalization.imageSize = [224, 224, 3] ;
-net = vgg_vd(net, opts) ;
+net = vgg16skel(net, opts) ;
 bs = 32 ;
 
 % final touches
@@ -313,105 +313,118 @@ switch lower(opts.networkType)
     assert(false) ;
 end
 
-% -------------------------------------------------------------------------
-function weights = init_weight(opts, h, w, in, out, type)
-% -------------------------------------------------------------------------
-% See K. He, X. Zhang, S. Ren, and J. Sun. Delving deep into
-% rectifiers: Surpassing human-level performance on imagenet
-% classification. CoRR, (arXiv:1502.01852v1), 2015.
-
-switch lower(opts.weightInitMethod)
-  case 'gaussian'
-    sc = 0.01/opts.scale ;
-    weights = randn(h, w, in, out, type)*sc;
-  case 'xavier'
-    sc = sqrt(3/(h*w*in)) ;
-    weights = (rand(h, w, in, out, type)*2 - 1)*sc ;
-  case 'xavierimproved'
-    sc = sqrt(2/(h*w*out)) ;
-    weights = randn(h, w, in, out, type)*sc ;
-  otherwise
-    error('Unknown weight initialization method''%s''', opts.weightInitMethod) ;
-end
-
 % --------------------------------------------------------------------
-function net = add_dropout(net, opts, id)
+function net = vgg16skel()
 % --------------------------------------------------------------------
-if ~opts.batchNormalization
-  net.layers{end+1} = struct('type', 'dropout', ...
-                             'name', sprintf('dropout%s', id), ...
-                             'rate', 0.5) ;
-end
-
-% --------------------------------------------------------------------
-function net = vgg_vd(opts)
-% --------------------------------------------------------------------
-
 net = dagnn.DagNN();
-% Conv 1
-net.addLayer('conv1_1', dagnn.Conv('size',[3,3,3,64], 'hasBias', true),...
-             'stride',1,'pad',1, {'input'}, {'conv1_1'},...
-             {'conv1_1_w', 'conv1_1_b'});
-net.addLayer('conv1_2', dagnn.Conv('size',[3,3,64,64], 'hasBias', true),...
-             'stride',1,'pad',1, {'conv1_1'}, {'conv1_2'},...
-             {'conv1_2_w', 'conv1_2_b'});
+% Conv Layers -------------------------------------------------------------
+% Conv 1 
+net.addLayer('conv1_1', dagnn.Conv('size',[3,3,3,64]),'stride',1,'pad',1,...
+            {'input'}, {'conv1_1'}, {'conv1_1_w', 'conv1_1_b'});
+net.addLayer('relu1_1', dagnn.Relu(), {'conv1_1'}, {'relu1_1'});
+net.addLayer('conv1_2', dagnn.Conv('size',[3,3,64,64]),'stride',1,'pad',1,...
+            {'relu1_1'}, {name}, {'conv1_2_w', 'conv1_2_b'});
+net.addLayer('relu1_2', dagnn.Relu(), {'conv1_2'}, {'relu1_2'});
 net.addLayer('pool1', dagnn.Pooling('poolsize',[2 2]),'stride',2,'pad',0,...
-             'method','max',{'conv1_2'}, {'pool1'});
-% Conv 2
-net.addLayer('conv2_1', dagnn.Conv('size',[3,3,64,128], 'hasBias', true),...
-             'stride',1,'pad',1, {'pool1'}, {'conv2_1'},...
-             {'conv2_1_w', 'conv2_1_b'});
-net.addLayer('conv2_2', dagnn.Conv('size',[3,3,128,128], 'hasBias', true),...
-             'stride',1,'pad',1, {'conv2_1'}, {'conv2_2'},...
-             {'conv2_2_w', 'conv2_2_b'});
+             'method','max',{'relu1_2'}, {'pool1'});
+% Conv 2 
+net.addLayer('conv2_1', dagnn.Conv('size',[3,3,64,128]),'stride',1,'pad',1,...
+            {'pool1'}, {'conv2_1'},{'conv2_1_w', 'conv2_1_b'});
+net.addLayer('relu2_1', dagnn.Relu(), {'conv2_1'}, {'relu2_1'});        
+net.addLayer('conv2_2', dagnn.Conv('size',[3,3,128,128]),'stride',1,'pad',1,...
+            {'relu2_1'}, {'conv2_2'},{'conv2_2_w', 'conv2_2_b'});
+net.addLayer('relu2_2', dagnn.Relu(), {'conv2_2'}, {'relu2_2'});                
 net.addLayer('pool2', dagnn.Pooling('poolsize',[2 2]),'stride',2,'pad',0,...
-             'method','max',{'conv2_2'}, {'pool2'});
-% Conv 3
-net.addLayer('conv3_1', dagnn.Conv('size',[3,3,128,256], 'hasBias', true),...
-             'stride',1,'pad',1, {'pool2'}, {'conv3_1'},...
-             {'conv3_1_w', 'conv3_1_b'});
-net.addLayer('conv3_2', dagnn.Conv('size',[3,3,256,256], 'hasBias', true),...
-             'stride',1,'pad',1, {'conv3_1'}, {'conv3_2'},...
-             {'conv3_2_w', 'conv3_2_b'});
-net.addLayer('conv3_3', dagnn.Conv('size',[3,3,256,256], 'hasBias', true),...
-             'stride',1,'pad',1, {'conv3_2'}, {'conv3_3'},...
-             {'conv3_3_w', 'conv3_3_b'});
+             'method','max',{'relu2_2'}, {'pool2'});
+                  
+% Conv 3 
+net.addLayer('conv3_1', dagnn.Conv('size',[3,3,128,256]),'stride',1,'pad',1,...
+            {'pool2'}, {'conv3_1'},{'conv3_1_w', 'conv3_1_b'});
+net.addLayer('relu3_1', dagnn.Relu(), {'conv3_1'}, {'relu3_1'});
+net.addLayer('conv3_2', dagnn.Conv('size',[3,3,256,256]),'stride',1,'pad',1,...
+            {'relu3_1'}, {'conv3_2'},{'conv3_2_w', 'conv3_2_b'});
+net.addLayer('relu3_2', dagnn.Relu(), {'conv3_2'}, {'relu3_2'});                                
+net.addLayer('conv3_3', dagnn.Conv('size',[3,3,256,256]),'stride',1,'pad',1,...
+            {'relu3_2'}, {'conv3_3'},{'conv3_3_w', 'conv3_3_b'});
+net.addLayer('relu3_3', dagnn.Relu(), {'conv3_2'}, {'relu3_3'});
 net.addLayer('pool3', dagnn.Pooling('poolsize',[2 2]),'stride',2,'pad',0,...
-             'method','max',{'conv3_3'}, {'pool3'});
-
-% Conv 4
-net.addLayer('conv4_1', dagnn.Conv('size',[3,3,256,512], 'hasBias', true),...
-             'stride',1,'pad',1, {'pool3'}, {'conv4_1'},...
-             {'conv4_1_w', 'conv4_1_b'});
-net.addLayer('conv4_2', dagnn.Conv('size',[3,3,512,512], 'hasBias', true),...
-             'stride',1,'pad',1, {'conv4_1'}, {'conv4_2'},...
-             {'conv4_2_w', 'conv4_2_b'});
-net.addLayer('conv4_3', dagnn.Conv('size',[3,3,512,512], 'hasBias', true),...
-             'stride',1,'pad',1, {'conv4_2'}, {'conv4_3'},...
-             {'conv4_3_w', 'conv4_3_b'});
+             'method','max',{'relu3_3'}, {'pool3'});
+         
+% Conv 4 
+net.addLayer('conv4_1', dagnn.Conv('size',[3,3,256,512]),'stride',1,'pad',1,...
+            {'pool3'}, {'conv4_1'},{'conv4_1_w', 'conv4_1_b'});
+net.addLayer('relu4_1', dagnn.Relu(), {'conv4_1'}, {'relu4_1'});
+net.addLayer('conv4_2', dagnn.Conv('size',[3,3,512,512]),'stride',1,'pad',1,...
+            {'relu4_1'}, {'conv4_2'},{'conv4_2_w', 'conv4_2_b'});
+net.addLayer('relu4_2', dagnn.Relu(), {'conv4_2'}, {'relu4_2'});        
+net.addLayer('conv4_3', dagnn.Conv('size',[3,3,512,512]),'stride',1,'pad',1,...
+            {'relu4_2'}, {'conv4_3'},{'conv4_3_w', 'conv4_3_b'});
+net.addLayer('relu4_3', dagnn.Relu(), {'conv4_3'}, {'relu4_3'});                
 net.addLayer('pool4', dagnn.Pooling('poolsize',[2 2]),'stride',2,'pad',0,...
-             'method','max',{'conv4_3'}, {'pool4'});
-
+             'method','max',{'relu4_3'}, {'pool4'});
+                  
 % Conv 5
-net.addLayer('conv5_1', dagnn.Conv('size',[3,3,512,512], 'hasBias', true),...
-             'stride',1,'pad',1, {'pool4'}, {'conv5_1'},...
-             {'conv5_1_w', 'conv5_1_b'});
-net.addLayer('conv5_2', dagnn.Conv('size',[3,3,512,512], 'hasBias', true),...
-             'stride',1,'pad',1, {'conv5_1'}, {'conv5_2'},...
-             {'conv5_2_w', 'conv5_2_b'});
-net.addLayer('conv5_3', dagnn.Conv('size',[3,3,512,512], 'hasBias', true),...
-             'stride',1,'pad',1, {'conv5_2'}, {'conv5_3'},...
-             {'conv5_3_w', 'conv5_3_b'});
+net.addLayer('conv5_1', dagnn.Conv('size',[3,3,512,512]),'stride',1,'pad',1,...
+            {'pool4'}, {'conv5_1'},{'conv5_1_w', 'conv5_1_b'});
+net.addLayer('relu5_1', dagnn.Relu(), {'conv5_1'}, {'relu5_1'});                
+net.addLayer('conv5_2', dagnn.Conv('size',[3,3,512,512]),'stride',1,'pad',1,...
+            {'relu5_1'}, {'conv5_2'},{'conv5_2_w', 'conv5_2_b'});
+net.addLayer('relu5_2', dagnn.Relu(), {'conv5_2'}, {'relu5_2'});                
+net.addLayer('conv5_3', dagnn.Conv('size',[3,3,512,512]),'stride',1,'pad',1,...
+            {'relu5_2'}, {'conv5_3'},{'conv5_3_w', 'conv5_3_b'});
+net.addLayer('relu5_3', dagnn.Relu(), {'conv5_3'}, {'relu5_3'});                
 net.addLayer('pool5', dagnn.Pooling('poolsize',[2 2]),'stride',2,'pad',0,...
-             'method','max',{'conv5_3'}, {'pool5'});
+             'method','max',{'relu5_3'}, {'pool5'});
+         
+% DSN Layers --------------------------------------------------------------
+% DSN 2
+net.addLayer('score_dsn2', dagnn.Conv('size',[1,1,128,2]),...
+            {'conv2_2'}, {'score_dsn2'},{'score_dsn2_w', 'score_dsn2_b'});
+net.addLayer('score_dsn2_up', dagnn.ConvTranspose('size',[4,4,2,2],'stride',2),...
+            {'score_dsn2'}, {'score_dsn2_up'});
+net.addLayer('loss2', dagnn.Loss(),{'score_dsn2_up','labels'}, {'loss2'});
+                  
+% DSN 3
+net.addLayer('score_dsn3', dagnn.Conv('size',[1,1,256,3]),...
+            {'conv3_3'}, {'score_dsn3'},{'score_dsn3_w', 'score_dsn3_b'});
+net.addLayer('score_dsn3_up', dagnn.ConvTranspose('size',[8,8,3,3],'stride',4),...
+            {'score_dsn3'}, {'score_dsn3_up'});
+net.addLayer('loss3', dagnn.Loss(),{'score_dsn3_up','labels'}, {'loss3'});
+                  
+% DSN 4
+net.addLayer('score_dsn4', dagnn.Conv('size',[1,1,512,4]),...
+            {'conv4_3'}, {'score_dsn4'},{'score_dsn4_w', 'score_dsn4_b'});
+net.addLayer('score_dsn4_up', dagnn.ConvTranspose('size',[16,16,4,4],'stride',8),...
+            {'score_dsn4'}, {'score_dsn4_up'});
+net.addLayer('loss4', dagnn.Loss(),{'score_dsn4_up','labels'}, {'loss4'});
+         
+% DSN 5
+net.addLayer('score_dsn5', dagnn.Conv('size',[1,1,512,5]),...
+            {'conv5_3'}, {'score_dsn5'},{'score_dsn5_w', 'score_dsn5_b'});
+net.addLayer('score_dsn4_up', dagnn.ConvTranspose('size',[32,32,5,5],'stride',16),...
+            {'score_dsn5'}, {'score_dsn5_up'});
+net.addLayer('loss5', dagnn.Loss(),{'score_dsn5_up','labels'}, {'loss5'});
 
+% Slice Layers ------------------------------------------------------------
+net.addLayer('slice2', dagnn.Slice(), {'upscore_dsn2'},...
+            {'slice2_0','slice2_1'});
+net.addLayer('slice3', dagnn.Slice(), {'upscore_dsn3'},...
+            {'slice3_0','slice3_1','slice3_2'});
+net.addLayer('slice4', dagnn.Slice(), {'upscore_dsn4'},...
+            {'slice4_0','slice4_1','slice4_2','slice4_3'});
+net.addLayer('slice5', dagnn.Slice(), {'upscore_dsn5'},...
+            {'slice5_0','slice5_1','slice5_2','slice5_3','slice5_4'});
 
-net = add_block(net, opts, '6', 7, 7, 512, 4096, 1, 0) ;
-net = add_dropout(net, opts, '6') ;
-
-net = add_block(net, opts, '7', 1, 1, 4096, 4096, 1, 0) ;
-net = add_dropout(net, opts, '7') ;
-
-net = add_block(net, opts, '8', 1, 1, 4096, 1000, 1, 0) ;
-net.layers(end) = [] ;
-if opts.batchNormalization, net.layers(end) = [] ; end
+% Concat layers -----------------------------------------------------------
+net.addLayer('concat0', dagnn.Concat(),...
+            {'slice2_0','slice3_0','slice4_0','slice5_0'}, {'concat0'});
+net.addLayer('concat1', dagnn.Concat(),...
+            {'slice2_1','slice3_1','slice4_1','slice5_1'}, {'concat1'});
+net.addLayer('concat2', dagnn.Concat(),...
+            {'slice3_2','slice4_2','slice5_2'}, {'concat2'});
+net.addLayer('concat3', dagnn.Concat(),...
+            {'slice4_3','slice5_3'}, {'concat3'});
+      
+% Concatenate scores ------------------------------------------------------
+% TODO: initialize with fixed weights
+net.addLayer('cat0-score', dagnn.Conv())
