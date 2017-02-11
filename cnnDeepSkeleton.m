@@ -26,79 +26,27 @@ opts = vl_argparse(opts, varargin) ;
 if ~isfield(opts.train, 'gpus'), opts.train.gpus = []; end;
 
 % Initialize model
-net = cnnInit('initNetPath', paths.vgg16, 'averageImage', opts.averageImage);
+net = cnnInit('initNetPath', paths.vgg16);
 
 % Prepare training data
-imdb = getBMAX500Imdb('dataDir', opts.dataDir, 'mode',opts.mode);
+imdb = getBMAX500Imdb('dataDir', opts.dataDir,...
+                      'mode',opts.mode,...
+                      'averageImage', opts.averageImage);
 
 % Train          
-trainFn = @cnn_train_dag ;
-[net, info] = trainFn(net, imdb, getBatchFn(opts, net.meta), ...
+[net, info] = cnn_train_dag(net, imdb, @getBatch, ...
                       'expDir', opts.expDir, ...
                       net.meta.trainOpts, ...
                       opts.train) ;
 
-% Deploy
-net = cnn_imagenet_deploy(net) ;
-modelPath = fullfile(opts.expDir, 'net-deployed.mat');
-
-switch opts.networkType
-  case 'simplenn'
-    save(modelPath, '-struct', 'net') ;
-  case 'dagnn'
-    net_ = net.saveobj() ;
-    save(modelPath, '-struct', 'net_') ;
-    clear net_ ;
-end
 
 % -------------------------------------------------------------------------
-function fn = getBatchFn(opts, meta)
+function out = getBatch(imdb, batch)
 % -------------------------------------------------------------------------
-
-if numel(meta.normalization.averageImage) == 3
-  mu = double(meta.normalization.averageImage(:)) ;
-else
-  mu = imresize(single(meta.normalization.averageImage), ...
-                meta.normalization.imageSize(1:2)) ;
-end
-
-useGpu = numel(opts.train.gpus) > 0 ;
-
-bopts.test = struct(...
-  'useGpu', useGpu, ...
-  'numThreads', opts.numFetchThreads, ...
-  'imageSize',  meta.normalization.imageSize(1:2), ...
-  'cropSize', meta.normalization.cropSize, ...
-  'subtractAverage', mu) ;
-
-% Copy the parameters for data augmentation
-bopts.train = bopts.test ;
-for f = fieldnames(meta.augmentation)'
-  f = char(f) ;
-  bopts.train.(f) = meta.augmentation.(f) ;
-end
-
-fn = @(x,y) getBatch(bopts,useGpu,lower(opts.networkType),x,y) ;
-
-% -------------------------------------------------------------------------
-function varargout = getBatch(opts, useGpu, networkType, imdb, batch)
-% -------------------------------------------------------------------------
-images = strcat([imdb.imageDir filesep], imdb.images.name(batch)) ;
-if ~isempty(batch) && imdb.images.set(batch(1)) == 1
-  phase = 'train' ;
-else
-  phase = 'test' ;
-end
-data = getImageBatch(images, opts.(phase), 'prefetch', nargout == 0) ;
-if nargout > 0
-  labels = imdb.images.label(batch) ;
-  switch networkType
-    case 'simplenn'
-      varargout = {data, labels} ;
-    case 'dagnn'
-      varargout{1} = {'input', data, 'label', labels} ;
-  end
-end
+images = single(imdb.images.data(batch));
+labels = single(imdb.images.label(batch));
+images = bsxfun(@minus, images, reshape(imdb.meta.averageImage,1,1,3));
+out{1} = {'input', images, 'label', labels} ;
 
 % -------------------------------------------------------------------------
 function imdb = getBMAX500Imdb(varargin)
@@ -106,6 +54,7 @@ function imdb = getBMAX500Imdb(varargin)
 opts.mode = 'train';
 opts.dataDir = [] ;
 opts.lite = false ;
+opts.averageImage = zeros(3,1);
 opts = vl_argparse(opts, varargin) ;
 if ischar(opts.dataDir) && exist(opts.dataDir,'file')
     tmp = load(opts.dataDir); bmax500 = tmp.BMAX500; clear tmp;
@@ -135,14 +84,13 @@ else
     sets = {'train','val'}; 
 end
 
-% Load images/groundtruth and augment scales
+% Load images/groundtruth and augment scales. Each segmentation is
+% considered as an individual training example. 
+% TODO: is there a better way to handle multiple segmentations?
 for s=1:numel(sets)
     set = bmax500.(sets{s});
     % First count the total number of groundtruth maps for preallocation
-    nImages = 0;
-    for i=1:numel(set)
-        nImages = nImages + size(set(i).pts,3);
-    end
+    nImages = sum(cellfun(@(x) size(x,3), {set(:).pts}));
     % Preallocate
     imgs = zeros(Hmax,Wmax,3,nImages*(1+numel(scales)),'uint8');
     radi = zeros(Hmax,Wmax,1,nImages*(1+numel(scales)),'uint8');
@@ -159,6 +107,9 @@ for s=1:numel(sets)
                 img = imresize(img,scale,'bilinear');
                 rad = imresize(rad,scale,'bilinear')*scale;
                 pts = imresizeCrisp(pts,scale);
+            end
+            for k=1:size(pts,3)
+                plotDisks(img,pts(:,:,k),rad(:,:,k));
             end
             % Center data in the maxH x maxW array
             [H,W,~] = size(img);
@@ -203,9 +154,9 @@ lbls = imdb.images.labels;
 radi = imdb.images.radius;
 for theta = thetas
     if theta ~= 0
-        imdb.images.data   = cat(4, imdb.images.data,   imrotate(imgs,theta));
-        imdb.images.labels = cat(4, imdb.images.labels, imrotate(lbls,theta));
-        imdb.images.radius = cat(4, imdb.images.radius, imrotate(radi,theta));
+        imdb.images.data   = cat(4, imdb.images.data,   imrotate(imgs,theta,'bilinear'));
+        imdb.images.labels = cat(4, imdb.images.labels, imrotate(lbls,theta,'nearest'));
+        imdb.images.radius = cat(4, imdb.images.radius, imrotate(radi,theta,'nearest'));
     end
 end
 clear imgs lbls radi img pts rad
@@ -225,15 +176,13 @@ if strcmp(opts.mode, 'train')
     imdb.images.data = cat(4, imdb.images.data, imdb.val.images);
     imdb.val.images = []; imdb = rmfield(imdb,'val');
     imdb.images.set = [ones(1,nTrain) 2*ones(1,nVal)];
-elseif strcmp(opts.mode, 'trainval') % what to do for validation here??
+elseif strcmp(opts.mode, 'trainval') % TODO: what to do for validation here??
     nTrain = size(imdb.images.data,4);
     imdb.images.set = [ones(1,nTrain) 2*ones(1,nVal)];
 else error('Invalid opts.mode')
 end
 imdb.meta.sets = sets;
-
-% Subtract mean image
-imdb.images.data = bsxfun(@minus, imdb.images.data, []);
+imdb.meta.averageImage = opts.averageImage;
 
 % -------------------------------------------------------------------------
 function net = cnnInit(varargin)
@@ -246,37 +195,41 @@ function net = cnnInit(varargin)
 % (https://github.com/zeakey/DeepSkeleton/blob/master/examples/DeepSkeleton/train_val.prototxt)
 
 opts.initNetPath = [];
-opts.averageImage = zeros(3,1);
 opts.cudnnWorkspaceLimit = 1024*1024*1204 ; % 1GB
 opts = vl_argparse(opts, varargin) ;
 
 % Define network architecture and initialize parameters with random values
 net = vgg16deepskel();
-net.initParams(); % is this really necessary?
+net.initParams(); 
 
-% Initialize weights from the vgg-16 network trained for classification and
-% set learning parameters according to the deep skeleton network.
+% Set learning parameters for Convolutional layers
 vgg = load(opts.initNetPath); 
 for l=1:numel(vgg.layers)
     layer = vgg.layers{l};
     if strcmp(layer.type, 'conv')
+        % Initialize weights from the vgg-16 network
         indw = net.getParamIndex([layer.name '_w']);
         indb = net.getParamIndex([layer.name '_b']);
         if isnan(indw) || isnan(indb)
             warning(['Skipping non-existent layer ' layer.name '...'])
         else
+            % Set learning parameters according to the deep skeleton net.
             net.params(indw).value = layer.weights{1};
             net.params(indb).value = layer.weights{2};
-            net.params(indw).learningRate = 1;
             net.params(indw).weightDecay  = 1;
-            net.params(indb).learningRate = 2;
             net.params(indb).weightDecay  = 0;
+            if ismember(layer.name, {'conv5_1','conv5_2','conv5_3'})
+                net.params(indw).learningRate = 100;
+                net.params(indb).learningRate = 200;
+            else
+                net.params(indw).learningRate = 1;
+                net.params(indb).learningRate = 2;
+            end
         end
     end
 end
 
-% Set the remaining learning parameters according to the deep skeleton work
-% Still not sure if the default values should be used.
+% Learning parameters for deconvolutional (upsampling) layers
 for l={'deconv2','deconv3','deconv4','deconv5'}
     indw = net.getParamIndex([l{1} '_w']);
     indb = net.getParamIndex([l{1} '_b']);
@@ -286,6 +239,7 @@ for l={'deconv2','deconv3','deconv4','deconv5'}
     net.params(indb).weightDecay  = 0;
 end
 
+% Learning parameters for side output layers
 for l={'score_dsn2','score_dsn3','score_dsn4','score_dsn5'}
     indw = net.getParamIndex([l{1} '_w']);
     indb = net.getParamIndex([l{1} '_b']);
@@ -295,14 +249,15 @@ for l={'score_dsn2','score_dsn3','score_dsn4','score_dsn5'}
     net.params(indb).weightDecay  = 0;
 end
 
+% Layers for score fusion layers
 for l={'cat0_score','cat1_score','cat2_score','cat3_score','cat4_score'}
     indw = net.getParamIndex([l{1} '_w']);
     indb = net.getParamIndex([l{1} '_b']);
-    net.params(indw).learningRate = 0.05;
+    net.params(indw).learningRate = 0.05; % 0.01 for cat2-score in the original code - probably a typo
     net.params(indw).weightDecay  = 1;
     net.params(indb).learningRate = 0.002;
     net.params(indb).weightDecay  = 0;
-    % Initialize score fusion to equally weighing all scales
+    % Initialize score fusion to uniform weighting
     switch l{1}
         case {'cat0_score','cat1_score'}
             val = 0.25;
@@ -316,19 +271,18 @@ for l={'cat0_score','cat1_score','cat2_score','cat3_score','cat4_score'}
     net.params(indw).value = val * ones(size(net.params(indw).value));
 end
 
-
 % Meta parameters 
-net.meta.normalization.imageSize = [224 224 3] ;
-net.meta.normalization.averageImage = opts.averageImage ;
-
-%lr = logspace(-1, -3, 60) ;
-lr = [0.1 * ones(1,30), 0.01*ones(1,30), 0.001*ones(1,30)] ;
-net.meta.trainOpts.learningRate = lr ;
-net.meta.trainOpts.numEpochs = numel(lr) ;
+% - BSDS trainval set: 300 (200 for train set)
+% - Augmentation factor: 36 (~36*6 = 216 if we consider each segmentation 
+%   as a separate training example).
+% - Batchsize: 10
+% Hence: #iters/epoch = 300*36 / 10 = 1080, and we need ~15-20 epochs to
+% reach 20K iterations (~3 epochs in the case we use all segmentations).
+net.meta.trainOpts.learningRate = [1e-6*ones(1,5), 1e-7*ones(1,5), 1e-8*ones(1,5)] ;
+net.meta.trainOpts.numEpochs = numel(net.meta.trainOpts.learningRate) ;
 net.meta.trainOpts.momentum = 0.9 ;
-net.meta.trainOpts.batchSize = 256 ;
-net.meta.trainOpts.numSubBatches = 4 ;
 net.meta.trainOpts.weightDecay = 0.0002 ;
+net.meta.trainOpts.batchSize = 10 ;
 
 % --------------------------------------------------------------------
 function net = vgg16deepskel()
