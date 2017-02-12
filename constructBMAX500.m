@@ -32,6 +32,7 @@ catch
             'pts',[],'rad',[],'img',[],'seg',[],'bnd',[],'iid',[]), [1,nImages]);
         % For all images
         ticStart = tic;
+%         for i=1:nImages
         parfor (i=1:nImages, opts.parpoolSize)
             img = imread(fullfile(imDir,imFiles(i).name));
             gt  = load(fullfile(gtDir, gtFiles(i).name)); gt = gt.groundTruth;
@@ -77,24 +78,20 @@ catch
     save(savePath, 'BMAX500');
 end
 
-% Refine dataset 
+% Refine dataset and compute statistics
 disp('Refining dataset')
 for set = {'train','val','test'}
     if ~isfield(BMAX500, set{1}), continue; end
-    matgt = BMAX500.(set{1});
+    matgt = BMAX500.(set{1}); [matgt(:).nPixelsCovered] = deal(0);
     for i=1:numel(BMAX500.(set{1}))
         % Prune points with low confidence
         matgt(i).pts = matgt(i).pts >= opts.skelThresh;
         % Prune points with very small radius
         matgt(i).pts(matgt(i).rad < opts.minRadius) = false;
+        % Now remove the radii for all pruned points (set to zero)
+        matgt(i).rad(~matgt(i).pts) = 0;
     end
     BMAX500.(set{1}) = matgt;
 end
-
-% Check dataset coverage by medial axes
-
-
-
-
 
 

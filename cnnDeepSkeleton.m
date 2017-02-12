@@ -1,8 +1,19 @@
 function [net, info] = cnnDeepSkeleton(varargin)
+% TODO: How to initialize the Deconvolutional filters?.
+% TODO: Set "background"  label equal to L (0-labels are ignored).
+% TODO: Debug "objective" error and find how to fuse multiple losses.
+% TODO: What should I use as "val" set when I train using trainval?
+% TODO: Perhaps weigh the loss of each groundtruth skeleton point based on
+%       its skeleton score (confidence).
+% TODO: Perhaps use dagnn.Crop() layers instead of crop in  ConvTranspose.
+% TODO: Verify thas dagnn.Slice() works as intended.
+% TODO: Add debug flag for quick testing on low-RAM machines.
+% TODO: Debug set coverage by maximal disks (should be higher).
 
 % Network options
 opts.mode = 'train';
 opts.dataDir = constructBMAX500('resize',0.5);
+opts.visualizeDataset = false;
 opts.modelType = 'vgg-vd-16' ;
 opts.network = [] ;
 opts.networkType = 'dagnn' ;
@@ -31,7 +42,8 @@ net = cnnInit('initNetPath', paths.vgg16);
 % Prepare training data
 imdb = getBMAX500Imdb('dataDir', opts.dataDir,...
                       'mode',opts.mode,...
-                      'averageImage', opts.averageImage);
+                      'averageImage', opts.averageImage,...
+                      'visualizeDataset', opts.visualizeDataset);
 
 % Train          
 [net, info] = cnn_train_dag(net, imdb, @getBatch, ...
@@ -43,10 +55,10 @@ imdb = getBMAX500Imdb('dataDir', opts.dataDir,...
 % -------------------------------------------------------------------------
 function out = getBatch(imdb, batch)
 % -------------------------------------------------------------------------
-images = single(imdb.images.data(batch));
-labels = single(imdb.images.label(batch));
+images = single(imdb.images.data(:,:,:,batch));
+labels = single(imdb.images.labels(:,:,:,batch));
 images = bsxfun(@minus, images, reshape(imdb.meta.averageImage,1,1,3));
-out{1} = {'input', images, 'label', labels} ;
+out    = {'input', images, 'label', labels} ;
 
 % -------------------------------------------------------------------------
 function imdb = getBMAX500Imdb(varargin)
@@ -55,6 +67,7 @@ opts.mode = 'train';
 opts.dataDir = [] ;
 opts.lite = false ;
 opts.averageImage = zeros(3,1);
+opts.visualizeDataset = false;
 opts = vl_argparse(opts, varargin) ;
 if ischar(opts.dataDir) && exist(opts.dataDir,'file')
     tmp = load(opts.dataDir); bmax500 = tmp.BMAX500; clear tmp;
@@ -86,15 +99,14 @@ end
 
 % Load images/groundtruth and augment scales. Each segmentation is
 % considered as an individual training example. 
-% TODO: is there a better way to handle multiple segmentations?
 for s=1:numel(sets)
     set = bmax500.(sets{s});
     % First count the total number of groundtruth maps for preallocation
     nImages = sum(cellfun(@(x) size(x,3), {set(:).pts}));
     % Preallocate
-    imgs = zeros(Hmax,Wmax,3,nImages*(1+numel(scales)),'uint8');
-    radi = zeros(Hmax,Wmax,1,nImages*(1+numel(scales)),'uint8');
-    lbls = false(Hmax,Wmax,1,nImages*(1+numel(scales)));
+    imgs = zeros(Hmax,Wmax,3,nImages*(numel(scales)),'uint8');
+    radi = zeros(Hmax,Wmax,1,nImages*(numel(scales)),'uint8');
+    lbls = false(Hmax,Wmax,1,nImages*(numel(scales)));
     % Now assemble all examples
     ind = 1;
     for i=1:numel(set)
@@ -108,9 +120,9 @@ for s=1:numel(sets)
                 rad = imresize(rad,scale,'bilinear')*scale;
                 pts = imresizeCrisp(pts,scale);
             end
-            for k=1:size(pts,3)
-                plotDisks(img,pts(:,:,k),rad(:,:,k));
-            end
+%             for k=1:size(pts,3)
+%                 plotDisks(img,pts(:,:,k),rad(:,:,k));
+%             end
             % Center data in the maxH x maxW array
             [H,W,~] = size(img);
             hs = ceil((Hmax-H+1)/2); ws = ceil((Wmax-W+1)/2);
@@ -148,6 +160,13 @@ switch opts.mode
     otherwise, error('opts.mode can be ''train'',''trainval'', or''test''')
 end
 
+% Visual Inspection of dataset;
+if opts.visualizeDataset
+    figure(1); montage(imdb.images.data); title('Images')
+    figure(2); montage(imdb.images.labels); title('Skeletons')
+    figure(3); montage(imdb.images.radius,'DisplayRange',[]); title('Radus maps')
+end
+
 % Augment orientations
 imgs = imdb.images.data;
 lbls = imdb.images.labels;
@@ -176,7 +195,7 @@ if strcmp(opts.mode, 'train')
     imdb.images.data = cat(4, imdb.images.data, imdb.val.images);
     imdb.val.images = []; imdb = rmfield(imdb,'val');
     imdb.images.set = [ones(1,nTrain) 2*ones(1,nVal)];
-elseif strcmp(opts.mode, 'trainval') % TODO: what to do for validation here??
+elseif strcmp(opts.mode, 'trainval') 
     nTrain = size(imdb.images.data,4);
     imdb.images.set = [ones(1,nTrain) 2*ones(1,nVal)];
 else error('Invalid opts.mode')
@@ -187,13 +206,6 @@ imdb.meta.averageImage = opts.averageImage;
 % -------------------------------------------------------------------------
 function net = cnnInit(varargin)
 % -------------------------------------------------------------------------
-% TODO: We want to fine-tune, starting from the vgg-16 initialization so we
-% have to:
-% 1) Load the weights of that network (download it from the matconvet website)
-% 2) Set the values for the learning parameters to the same values as the
-% ones used in the DeepSkeleton paper
-% (https://github.com/zeakey/DeepSkeleton/blob/master/examples/DeepSkeleton/train_val.prototxt)
-
 opts.initNetPath = [];
 opts.cudnnWorkspaceLimit = 1024*1024*1204 ; % 1GB
 opts = vl_argparse(opts, varargin) ;
@@ -295,7 +307,10 @@ net = dagnn.DagNN();
 
 % Conv Layers -------------------------------------------------------------
 % Conv 1 
-net.addLayer('conv1_1', dagnn.Conv('size',[3,3,3,64],'stride',1,'pad',1),...
+% NOTE: In DeepSkeleton the conv1_1 layer has pad=35. Since we build the
+% training images so that most of them have considerable "empty" space
+% around the border, we use pad=1. We might need to change that.
+net.addLayer('conv1_1', dagnn.Conv('size',[3,3,3,64],'stride',1,'pad',35),...
             {'input'}, {'conv1_1'}, {'conv1_1_w', 'conv1_1_b'});
 net.addLayer('relu1_1', dagnn.ReLU(), {'conv1_1'}, {'relu1_1'});
 net.addLayer('conv1_2', dagnn.Conv('size',[3,3,64,64],'stride',1,'pad',1),...
@@ -356,30 +371,30 @@ net.addLayer('pool5', dagnn.Pooling('poolSize',[2 2],'stride',2,'pad',0,...
 % DSN 2
 net.addLayer('score_dsn2', dagnn.Conv('size',[1,1,128,2]),...
             {'conv2_2'}, {'score_dsn2'},{'score_dsn2_w', 'score_dsn2_b'});
-net.addLayer('deconv2', dagnn.ConvTranspose('size',[4,4,2,2],'upsample',2),...
+net.addLayer('deconv2', dagnn.ConvTranspose('size',[4,4,2,2],'upsample',2,'crop',35),...
             {'score_dsn2'}, {'score_dsn2_up'}, {'deconv2_w','deconv2_b'});
-net.addLayer('loss2', dagnn.Loss(),{'score_dsn2_up','labels'}, {'loss_dsn2'});
+net.addLayer('loss2', dagnn.Loss(),{'score_dsn2_up','label'}, {'loss_dsn2'});
                   
 % DSN 3
 net.addLayer('score_dsn3', dagnn.Conv('size',[1,1,256,3]),...
             {'conv3_3'}, {'score_dsn3'},{'score_dsn3_w', 'score_dsn3_b'});
-net.addLayer('deconv3', dagnn.ConvTranspose('size',[8,8,3,3],'upsample',4),...
+net.addLayer('deconv3', dagnn.ConvTranspose('size',[8,8,3,3],'upsample',4,'crop',35),...
             {'score_dsn3'}, {'score_dsn3_up'}, {'deconv3_w','deconv3_b'});
-net.addLayer('loss3', dagnn.Loss(),{'score_dsn3_up','labels'}, {'loss_dsn3'});
+net.addLayer('loss3', dagnn.Loss(),{'score_dsn3_up','label'}, {'loss_dsn3'});
                   
 % DSN 4
 net.addLayer('score_dsn4', dagnn.Conv('size',[1,1,512,4]),...
             {'conv4_3'}, {'score_dsn4'},{'score_dsn4_w', 'score_dsn4_b'});
-net.addLayer('deconv4', dagnn.ConvTranspose('size',[16,16,4,4],'upsample',8),...
+net.addLayer('deconv4', dagnn.ConvTranspose('size',[16,16,4,4],'upsample',8,'crop',35),...
             {'score_dsn4'}, {'score_dsn4_up'}, {'deconv4_w','deconv4_b'});
-net.addLayer('loss4', dagnn.Loss(),{'score_dsn4_up','labels'}, {'loss_dsn4'});
+net.addLayer('loss4', dagnn.Loss(),{'score_dsn4_up','label'}, {'loss_dsn4'});
          
 % DSN 5
 net.addLayer('score_dsn5', dagnn.Conv('size',[1,1,512,5]),...
             {'conv5_3'}, {'score_dsn5'},{'score_dsn5_w', 'score_dsn5_b'});
-net.addLayer('deconv5', dagnn.ConvTranspose('size',[32,32,5,5],'upsample',16),...
+net.addLayer('deconv5', dagnn.ConvTranspose('size',[32,32,5,5],'upsample',16,'crop',39),...
             {'score_dsn5'}, {'score_dsn5_up'}, {'deconv5_w','deconv5_b'});
-net.addLayer('loss5', dagnn.Loss(),{'score_dsn5_up','labels'}, {'loss_dsn5'});
+net.addLayer('loss5', dagnn.Loss(),{'score_dsn5_up','label'}, {'loss_dsn5'});
 
 % Slice side outputs ------------------------------------------------------
 net.addLayer('slice2', dagnn.Slice(), {'upscore_dsn2'},...
@@ -419,5 +434,5 @@ net.addLayer('concat_fuse', dagnn.Concat(), ...
              'concat3_score','concat4_score'}, {'concat_fuse'});
 
 % Final loss layer --------------------------------------------------------
-net.addLayer('loss_fuse',dagnn.Loss(),{'concat_fuse','labels'},{'fuse_loss'});
+net.addLayer('loss_fuse',dagnn.Loss(),{'concat_fuse','label'},{'fuse_loss'});
         
