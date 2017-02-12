@@ -17,6 +17,7 @@ function d = disk(r,method)
 
 if nargin < 2, method = 'simple'; end
 
+r = double(r); % make sure r can take negative values
 switch method
     case 'simple'
         [x,y] = meshgrid(-r:r, -r:r);
