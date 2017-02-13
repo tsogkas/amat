@@ -1,25 +1,24 @@
 function [net, info] = cnnDeepSkeleton(varargin)
-% TODO: How to initialize the Deconvolutional filters?.
-% TODO: Set "background"  label equal to L (0-labels are ignored).
-% TODO: Debug "objective" error and find how to fuse multiple losses.
 % TODO: What should I use as "val" set when I train using trainval?
 % TODO: Perhaps weigh the loss of each groundtruth skeleton point based on
 %       its skeleton score (confidence).
-% TODO: Perhaps use dagnn.Crop() layers instead of crop in  ConvTranspose.
-% TODO: Verify thas dagnn.Slice() works as intended.
-% TODO: Add debug flag for quick testing on low-RAM machines.
 % TODO: Debug set coverage by maximal disks (should be higher).
+% TODO: Add new scale-weighted loss layer (or maybe use instanceWeights
+%       with the standard dagnn.Loss() layer).
+
+% Data options
+opts.dataDir = constructBMAX500('resize',0.5);
+opts.visualizeDataset = false;
+opts.averageImage = [116.66877; 122.67892; 104.00699];  
+opts.debug = true;
 
 % Network options
 opts.mode = 'train';
-opts.dataDir = constructBMAX500('resize',0.5);
-opts.visualizeDataset = false;
 opts.modelType = 'vgg-vd-16' ;
 opts.network = [] ;
 opts.networkType = 'dagnn' ;
 opts.batchNormalization = true ;
 opts.weightInitMethod = 'gaussian' ;
-opts.averageImage = [116.66877; 122.67892; 104.00699];  
 [opts, varargin] = vl_argparse(opts, varargin) ;
 
 % Suffix and results directory setup
@@ -43,9 +42,11 @@ net = cnnInit('initNetPath', paths.vgg16);
 imdb = getBMAX500Imdb('dataDir', opts.dataDir,...
                       'mode',opts.mode,...
                       'averageImage', opts.averageImage,...
+                      'debug', opts.debug,...
                       'visualizeDataset', opts.visualizeDataset);
 
-% Train          
+% Train
+rng(0); % set rng for reproducibility
 [net, info] = cnn_train_dag(net, imdb, @getBatch, ...
                       'expDir', opts.expDir, ...
                       net.meta.trainOpts, ...
@@ -64,6 +65,7 @@ out    = {'input', images, 'label', labels} ;
 function imdb = getBMAX500Imdb(varargin)
 % -------------------------------------------------------------------------
 opts.mode = 'train';
+opts.debug = false;
 opts.dataDir = [] ;
 opts.lite = false ;
 opts.averageImage = zeros(3,1);
@@ -85,10 +87,16 @@ thetas = [0,90,180,270];  % angles in degrees
 % the input images and label maps, by centering the (possibly smaller) 
 % image in a D x D space. D is computed based on the maximum image
 % dimensions in the dataset and the maximum scaling used.
-% NOTE: Checking one image is enough because all images are either DxK or
-% KxD.
+% NOTE: Using the first image to compute Dmax is enough because all images 
+% are either DxK or KxD.
 Dmax = max(size(bmax500.train(1).img)); 
 Hmax = ceil(max(scales)*Dmax); Wmax = Hmax;
+
+% Receptive fields at the level of the scale-associated outputs. Used to
+% construct a scale-associated groundtruth map. This is essentially the
+% number of labels #labels/L for the equivalent multi-classification
+% regression problem
+rfields = [14,40,92,196];
 
 % Load only the necessary subsets to save RAM
 if strcmp(opts.mode, 'test')
@@ -101,15 +109,17 @@ end
 % considered as an individual training example. 
 for s=1:numel(sets)
     set = bmax500.(sets{s});
-    % First count the total number of groundtruth maps for preallocation
-    nImages = sum(cellfun(@(x) size(x,3), {set(:).pts}));
+    % If debug mode, use only one image from each set
+    if opts.debug, numImages = 1; else numImages = numel(set); end
+    % Total number of groundtruth maps for preallocation
+    numGroundtruthTotal = sum(cellfun(@(x) size(x,3), {set(1:numImages).pts}));
     % Preallocate
-    imgs = zeros(Hmax,Wmax,3,nImages*(numel(scales)),'uint8');
-    radi = zeros(Hmax,Wmax,1,nImages*(numel(scales)),'uint8');
-    lbls = false(Hmax,Wmax,1,nImages*(numel(scales)));
+    imgs = zeros(Hmax,Wmax,3,numGroundtruthTotal*numel(scales),'uint8');
+    lbls = zeros(Hmax,Wmax,1,numGroundtruthTotal*numel(scales),'uint8');
+    radi = zeros(Hmax,Wmax,1,numGroundtruthTotal*numel(scales),'uint8');
     % Now assemble all examples
     ind = 1;
-    for i=1:numel(set)
+    for i=1:numImages
         ngt = size(set(i).pts,3); % #gt for each image
         for scale = scales  % create scaled versions of images and gt
             img = set(i).img;
@@ -132,9 +142,17 @@ for s=1:numel(sets)
             ind = ind+ngt;
         end
     end
+    % Create scale-associatedlabels.
+    radi = 1.2 * radi; % make sure that the receptive field is large enough
+    for r=2:numel(rfields)
+        lbls(radi>rfields(r-1) & radi <= rfields(r)) = r;
+    end
+    % MatConvNet ignores 0-labels during the loss computation, so
+    % background must be set as #labels (2) in the binary case.
+    lbls(lbls == 0) = numel(rfields)+1;
     imdb.(sets{s}).images = imgs;
     imdb.(sets{s}).labels = lbls;
-    imdb.(sets{s}).radius = radi;
+%     imdb.(sets{s}).radius = radi;
 end
 
 % Tidy imdb
@@ -142,20 +160,20 @@ switch opts.mode
     case 'test'
         imdb.images.data   = imdb.test.images;  imdb.test.images = [];
         imdb.images.labels = imdb.test.labels;  imdb.test.labels = [];
-        imdb.images.radius = imdb.test.radius;  imdb.test.radius = [];
+%         imdb.images.radius = imdb.test.radius;  imdb.test.radius = [];
         imdb = rmfield(imdb, 'test');
     case 'train'
         imdb.images.data   = imdb.train.images; imdb.train.images = [];
         imdb.images.labels = imdb.train.labels; imdb.train.labels = []; 
-        imdb.images.radius = imdb.train.radius; imdb.train.radius = []; 
+%         imdb.images.radius = imdb.train.radius; imdb.train.radius = []; 
         imdb = rmfield(imdb, 'train');
     case 'trainval'
         imdb.images.data = cat(4, imdb.train.images, imdb.val.images);
         imdb.train.images = []; imdb.val.images = [];
         imdb.images.labels = cat(4, imdb.train.labels, imdb.val.labels);
         imdb.train.labels = []; imdb.val.labels = [];
-        imdb.images.radius = cat(4, imdb.train.radius, imdb.val.radius);
-        imdb.train.radius = []; imdb.val.radius = [];
+%         imdb.images.radius = cat(4, imdb.train.radius, imdb.val.radius);
+%         imdb.train.radius = []; imdb.val.radius = [];
         imdb = rmfield(imdb, {'train','val'});
     otherwise, error('opts.mode can be ''train'',''trainval'', or''test''')
 end
@@ -164,18 +182,18 @@ end
 if opts.visualizeDataset
     figure(1); montage(imdb.images.data); title('Images')
     figure(2); montage(imdb.images.labels); title('Skeletons')
-    figure(3); montage(imdb.images.radius,'DisplayRange',[]); title('Radus maps')
+%     figure(3); montage(imdb.images.radius,'DisplayRange',[]); title('Radius maps')
 end
 
 % Augment orientations
 imgs = imdb.images.data;
 lbls = imdb.images.labels;
-radi = imdb.images.radius;
+% radi = imdb.images.radius;
 for theta = thetas
     if theta ~= 0
         imdb.images.data   = cat(4, imdb.images.data,   imrotate(imgs,theta,'bilinear'));
         imdb.images.labels = cat(4, imdb.images.labels, imrotate(lbls,theta,'nearest'));
-        imdb.images.radius = cat(4, imdb.images.radius, imrotate(radi,theta,'nearest'));
+%         imdb.images.radius = cat(4, imdb.images.radius, imrotate(radi,theta,'nearest'));
     end
 end
 clear imgs lbls radi img pts rad
@@ -185,8 +203,8 @@ imdb.images.data = cat(4, imdb.images.data,...
     fliplr(imdb.images.data), flipud(imdb.images.data));
 imdb.images.labels = cat(4, imdb.images.labels,...
     fliplr(imdb.images.labels), flipud(imdb.images.labels));
-imdb.images.radius = cat(4, imdb.images.radius,...
-    fliplr(imdb.images.radius), flipud(imdb.images.radius));
+% imdb.images.radius = cat(4, imdb.images.radius,...
+%     fliplr(imdb.images.radius), flipud(imdb.images.radius));
 
 % Assign set indexes
 if strcmp(opts.mode, 'train')
@@ -202,6 +220,7 @@ else error('Invalid opts.mode')
 end
 imdb.meta.sets = sets;
 imdb.meta.averageImage = opts.averageImage;
+imdb.meta.numLabels = numel(rfields) + 1;
 
 % -------------------------------------------------------------------------
 function net = cnnInit(varargin)
@@ -265,7 +284,7 @@ end
 for l={'cat0_score','cat1_score','cat2_score','cat3_score','cat4_score'}
     indw = net.getParamIndex([l{1} '_w']);
     indb = net.getParamIndex([l{1} '_b']);
-    net.params(indw).learningRate = 0.05; % 0.01 for cat2-score in the original code - probably a typo
+    net.params(indw).learningRate = 0.05; % 0.01 for cat2-score in deepskel prototxt - probably a typo
     net.params(indw).weightDecay  = 1;
     net.params(indb).learningRate = 0.002;
     net.params(indb).weightDecay  = 0;
@@ -280,7 +299,12 @@ for l={'cat0_score','cat1_score','cat2_score','cat3_score','cat4_score'}
         case 'cat4_score'
             val = 1;
     end
-    net.params(indw).value = val * ones(size(net.params(indw).value));
+    net.params(indw).value = val * ones(size(net.params(indw).value),'single');
+end
+
+% Keep these layers inputs as they will be used for side outputs
+for l={'conv2_2','conv3_3','conv4_3','conv5_3'}
+    net.vars(net.getVarIndex(l)).precious = true;
 end
 
 % Meta parameters 
@@ -295,6 +319,9 @@ net.meta.trainOpts.numEpochs = numel(net.meta.trainOpts.learningRate) ;
 net.meta.trainOpts.momentum = 0.9 ;
 net.meta.trainOpts.weightDecay = 0.0002 ;
 net.meta.trainOpts.batchSize = 10 ;
+% Set objectives that will be considered during backpropagation
+net.meta.trainOpts.derOutputs = ...
+    {'loss2',1,'loss3',1,'loss4',1,'loss5',1,'loss_fuse',1};
 
 % --------------------------------------------------------------------
 function net = vgg16deepskel()
@@ -373,59 +400,59 @@ net.addLayer('score_dsn2', dagnn.Conv('size',[1,1,128,2]),...
             {'conv2_2'}, {'score_dsn2'},{'score_dsn2_w', 'score_dsn2_b'});
 net.addLayer('deconv2', dagnn.ConvTranspose('size',[4,4,2,2],'upsample',2,'crop',35),...
             {'score_dsn2'}, {'score_dsn2_up'}, {'deconv2_w','deconv2_b'});
-net.addLayer('loss2', dagnn.Loss(),{'score_dsn2_up','label'}, {'loss_dsn2'});
+net.addLayer('loss2', dagnn.Loss(),{'score_dsn2_up','label'}, {'loss2'});
                   
 % DSN 3
 net.addLayer('score_dsn3', dagnn.Conv('size',[1,1,256,3]),...
             {'conv3_3'}, {'score_dsn3'},{'score_dsn3_w', 'score_dsn3_b'});
 net.addLayer('deconv3', dagnn.ConvTranspose('size',[8,8,3,3],'upsample',4,'crop',35),...
             {'score_dsn3'}, {'score_dsn3_up'}, {'deconv3_w','deconv3_b'});
-net.addLayer('loss3', dagnn.Loss(),{'score_dsn3_up','label'}, {'loss_dsn3'});
+net.addLayer('loss3', dagnn.Loss(),{'score_dsn3_up','label'}, {'loss3'});
                   
 % DSN 4
 net.addLayer('score_dsn4', dagnn.Conv('size',[1,1,512,4]),...
             {'conv4_3'}, {'score_dsn4'},{'score_dsn4_w', 'score_dsn4_b'});
 net.addLayer('deconv4', dagnn.ConvTranspose('size',[16,16,4,4],'upsample',8,'crop',35),...
             {'score_dsn4'}, {'score_dsn4_up'}, {'deconv4_w','deconv4_b'});
-net.addLayer('loss4', dagnn.Loss(),{'score_dsn4_up','label'}, {'loss_dsn4'});
+net.addLayer('loss4', dagnn.Loss(),{'score_dsn4_up','label'}, {'loss4'});
          
 % DSN 5
 net.addLayer('score_dsn5', dagnn.Conv('size',[1,1,512,5]),...
             {'conv5_3'}, {'score_dsn5'},{'score_dsn5_w', 'score_dsn5_b'});
 net.addLayer('deconv5', dagnn.ConvTranspose('size',[32,32,5,5],'upsample',16,'crop',39),...
             {'score_dsn5'}, {'score_dsn5_up'}, {'deconv5_w','deconv5_b'});
-net.addLayer('loss5', dagnn.Loss(),{'score_dsn5_up','label'}, {'loss_dsn5'});
+net.addLayer('loss5', dagnn.Loss(),{'score_dsn5_up','label'}, {'loss5'});
 
 % Slice side outputs ------------------------------------------------------
-net.addLayer('slice2', dagnn.Slice(), {'upscore_dsn2'},...
+net.addLayer('slice2', dagnn.Slice(), {'score_dsn2_up'},...
             {'slice2_0','slice2_1'});
-net.addLayer('slice3', dagnn.Slice(), {'upscore_dsn3'},...
+net.addLayer('slice3', dagnn.Slice(), {'score_dsn3_up'},...
             {'slice3_0','slice3_1','slice3_2'});
-net.addLayer('slice4', dagnn.Slice(), {'upscore_dsn4'},...
+net.addLayer('slice4', dagnn.Slice(), {'score_dsn4_up'},...
             {'slice4_0','slice4_1','slice4_2','slice4_3'});
-net.addLayer('slice5', dagnn.Slice(), {'upscore_dsn5'},...
+net.addLayer('slice5', dagnn.Slice(), {'score_dsn5_up'},...
             {'slice5_0','slice5_1','slice5_2','slice5_3','slice5_4'});
 
 % Concat slices corresponding to the same scale ---------------------------
-net.addLayer('concat0', dagnn.Concat(),...
+net.addLayer('concat0', dagnn.Concat(),...  
             {'slice2_0','slice3_0','slice4_0','slice5_0'}, {'concat0'});
-net.addLayer('concat1', dagnn.Concat(),...
+net.addLayer('concat1', dagnn.Concat(),...  
             {'slice2_1','slice3_1','slice4_1','slice5_1'}, {'concat1'});
-net.addLayer('concat2', dagnn.Concat(),...
+net.addLayer('concat2', dagnn.Concat(),...  
             {'slice3_2','slice4_2','slice5_2'}, {'concat2'});
-net.addLayer('concat3', dagnn.Concat(),...
+net.addLayer('concat3', dagnn.Concat(),...  
             {'slice4_3','slice5_3'}, {'concat3'});
       
 % Fuse scores corresponding to the same scale -----------------------------
-net.addLayer('cat0_score', dagnn.Conv('size',[1,1,4,1]), ...
+net.addLayer('cat0_score', dagnn.Conv('size',[1,1,4,1]), ...    % scale 1
             {'concat0'}, {'concat0_score'}, {'cat0_score_w','cat0_score_b'});
-net.addLayer('cat1_score', dagnn.Conv('size',[1,1,4,1]), ...
+net.addLayer('cat1_score', dagnn.Conv('size',[1,1,4,1]), ...    % scale 2
             {'concat1'}, {'concat1_score'}, {'cat1_score_w','cat1_score_b'});
-net.addLayer('cat2_score', dagnn.Conv('size',[1,1,3,1]), ...
+net.addLayer('cat2_score', dagnn.Conv('size',[1,1,3,1]), ...    % scale 3
             {'concat2'}, {'concat2_score'}, {'cat2_score_w','cat2_score_b'});
-net.addLayer('cat3_score', dagnn.Conv('size',[1,1,2,1]), ...
+net.addLayer('cat3_score', dagnn.Conv('size',[1,1,2,1]), ...    % scale 4
             {'concat3'}, {'concat3_score'}, {'cat3_score_w','cat3_score_b'});
-net.addLayer('cat4_score', dagnn.Conv('size',[1,1,1,1]), ...
+net.addLayer('cat4_score', dagnn.Conv('size',[1,1,1,1]), ...    % scale 5
             {'slice5_4'},{'concat4_score'}, {'cat4_score_w','cat4_score_b'});
 
 % Fuse scores from all scales ---------------------------------------------
@@ -434,5 +461,5 @@ net.addLayer('concat_fuse', dagnn.Concat(), ...
              'concat3_score','concat4_score'}, {'concat_fuse'});
 
 % Final loss layer --------------------------------------------------------
-net.addLayer('loss_fuse',dagnn.Loss(),{'concat_fuse','label'},{'fuse_loss'});
+net.addLayer('loss_fuse',dagnn.Loss(),{'concat_fuse','label'},{'loss_fuse'});
         
