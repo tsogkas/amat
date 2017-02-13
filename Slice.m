@@ -12,14 +12,14 @@ classdef Slice < dagnn.ElementWise
         function outputs = forward(obj, inputs, params)
             % by default split each block on its own
             if isempty(obj.splitPoints)
-                obj.splitPoints = 1:size(inputs{1},obj.dim);
+                obj.splitPoints = 2:size(inputs{1},obj.dim);
             end
             outputs = vl_nnslice(inputs, obj.dim, obj.splitPoints) ;
             obj.inputSizes = cellfun(@size, inputs, 'UniformOutput', false) ;
         end
         
         function [derInputs, derParams] = backward(obj, inputs, params, derOutputs)
-            derInputs = vl_nnslice(inputs, obj.dim, obj.splitPoints, derOutputs{1}) ;
+            derInputs{1} = vl_nnslice(inputs, obj.dim, obj.splitPoints, derOutputs) ;
             derParams = {} ;
         end
         
@@ -94,10 +94,10 @@ if isempty(dzdy) % forward pass
     s.subs = {':', ':', ':', ':'} ;
     start = 1;
     for i=1:numel(splitPoints)
-        stop = start+splitPoints(i);
-        s.subs{dim} = start:stop-1;
+        stop = splitPoints(i)-1;
+        s.subs{dim} = start:stop;
         y{i} = subsref(inputs{1},s);
-        start = stop;
+        start = stop+1;
     end
     % Last blob
     s.subs{dim} = start:size(inputs{1},dim);
