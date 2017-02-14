@@ -16,16 +16,11 @@ opts.debug = true;
 opts.mode = 'train';
 opts.modelType = 'vgg-vd-16' ;
 opts.network = [] ;
-opts.networkType = 'dagnn' ;
-opts.batchNormalization = true ;
-opts.weightInitMethod = 'gaussian' ;
 [opts, varargin] = vl_argparse(opts, varargin) ;
 
 % Suffix and results directory setup
 paths = setPaths();
 sfx = opts.modelType ;
-if opts.batchNormalization, sfx = [sfx '-bnorm'] ; end
-sfx = [sfx '-' opts.networkType] ;
 opts.expDir = fullfile(paths.amat.output, ['deepskel-' sfx]) ;
 [opts, varargin] = vl_argparse(opts, varargin) ;
 
@@ -33,7 +28,7 @@ opts.expDir = fullfile(paths.amat.output, ['deepskel-' sfx]) ;
 opts.numFetchThreads = 12 ;
 opts.train = struct() ;
 opts = vl_argparse(opts, varargin) ;
-if ~isfield(opts.train, 'gpus'), opts.train.gpus = []; end;
+if ~isfield(opts.train, 'gpus'), opts.train.gpus = 1; end;
 
 % Initialize model
 net = cnnInit('initNetPath', paths.vgg16);
@@ -47,19 +42,23 @@ imdb = getBMAX500Imdb('dataDir', opts.dataDir,...
 
 % Train
 rng(0); % set rng for reproducibility
-[net, info] = cnn_train_dag(net, imdb, @getBatch, ...
+[net, info] = cnn_train_dag(net, imdb, @(x,y) getBatch(x,y,opts.train.gpus), ...
                       'expDir', opts.expDir, ...
                       net.meta.trainOpts, ...
                       opts.train) ;
 
 
 % -------------------------------------------------------------------------
-function out = getBatch(imdb, batch)
+function out = getBatch(imdb, batch, useGpu)
 % -------------------------------------------------------------------------
 images = single(imdb.images.data(:,:,:,batch));
 labels = single(imdb.images.labels(:,:,:,batch));
 images = bsxfun(@minus, images, reshape(imdb.meta.averageImage,1,1,3));
-out    = {'input', images, 'label', labels} ;
+if ~isempty(useGpu)
+    images = gpuArray(images);
+    labels = gpuArray(labels);
+end
+out = {'input', images, 'label', labels};
 
 % -------------------------------------------------------------------------
 function imdb = getBMAX500Imdb(varargin)
@@ -142,14 +141,15 @@ for s=1:numel(sets)
             ind = ind+ngt;
         end
     end
-    % Create scale-associatedlabels.
+    % Create scale-associated labels.
     radi = 1.2 * radi; % make sure that the receptive field is large enough
+    % MatConvNet ignores 0-labels during the loss computation. We use "1"
+    % as the background label.
+    lbls(radi == 0) = 1;
+    lbls(radi > 0 & radi <= rfields(1)) = 2;
     for r=2:numel(rfields)
-        lbls(radi>rfields(r-1) & radi <= rfields(r)) = r;
+        lbls(radi>rfields(r-1) & radi <= rfields(r)) = r+1;
     end
-    % MatConvNet ignores 0-labels during the loss computation, so
-    % background must be set as #labels (2) in the binary case.
-    lbls(lbls == 0) = numel(rfields)+1;
     imdb.(sets{s}).images = imgs;
     imdb.(sets{s}).labels = lbls;
 %     imdb.(sets{s}).radius = radi;
@@ -332,11 +332,11 @@ function net = vgg16deepskel()
 
 net = dagnn.DagNN();
 
-% Conv Layers -------------------------------------------------------------
-% Conv 1 
+% ------------------------------ CONV -------------------------------------
 % NOTE: In DeepSkeleton the conv1_1 layer has pad=35. Since we build the
 % training images so that most of them have considerable "empty" space
 % around the border, we use pad=1. We might need to change that.
+% Conv 1 
 net.addLayer('conv1_1', dagnn.Conv('size',[3,3,3,64],'stride',1,'pad',35),...
             {'input'}, {'conv1_1'}, {'conv1_1_w', 'conv1_1_b'});
 net.addLayer('relu1_1', dagnn.ReLU(), {'conv1_1'}, {'relu1_1'});
@@ -394,38 +394,39 @@ net.addLayer('relu5_3', dagnn.ReLU(), {'conv5_3'}, {'relu5_3'});
 net.addLayer('pool5', dagnn.Pooling('poolSize',[2 2],'stride',2,'pad',0,...
              'method','max') ,{'relu5_3'}, {'pool5'});
          
-% DSN Layers --------------------------------------------------------------
+% --------------------- DSN (Side output layers) --------------------------
 % DSN 2
 net.addLayer('score_dsn2', dagnn.Conv('size',[1,1,128,2]),...
             {'conv2_2'}, {'score_dsn2'},{'score_dsn2_w', 'score_dsn2_b'});
 net.addLayer('deconv2', dagnn.ConvTranspose('size',[4,4,2,2],'upsample',2,'crop',35),...
             {'score_dsn2'}, {'score_dsn2_up'}, {'deconv2_w','deconv2_b'});
-net.addLayer('loss2', dagnn.Loss(),{'score_dsn2_up','label'}, {'loss2'});
+% net.addLayer('loss2', dagnn.Loss(),{'score_dsn2_up','label'}, {'loss2'});
+net.addLayer('loss2', dagnn.ScaleLoss('scale',2),{'score_dsn2_up','label'}, {'loss2'});
                   
 % DSN 3
 net.addLayer('score_dsn3', dagnn.Conv('size',[1,1,256,3]),...
             {'conv3_3'}, {'score_dsn3'},{'score_dsn3_w', 'score_dsn3_b'});
 net.addLayer('deconv3', dagnn.ConvTranspose('size',[8,8,3,3],'upsample',4,'crop',35),...
             {'score_dsn3'}, {'score_dsn3_up'}, {'deconv3_w','deconv3_b'});
-net.addLayer('loss3', dagnn.Loss(),{'score_dsn3_up','label'}, {'loss3'});
+net.addLayer('loss3', dagnn.ScaleLoss('scale',3),{'score_dsn3_up','label'}, {'loss3'});
                   
 % DSN 4
 net.addLayer('score_dsn4', dagnn.Conv('size',[1,1,512,4]),...
             {'conv4_3'}, {'score_dsn4'},{'score_dsn4_w', 'score_dsn4_b'});
 net.addLayer('deconv4', dagnn.ConvTranspose('size',[16,16,4,4],'upsample',8,'crop',35),...
             {'score_dsn4'}, {'score_dsn4_up'}, {'deconv4_w','deconv4_b'});
-net.addLayer('loss4', dagnn.Loss(),{'score_dsn4_up','label'}, {'loss4'});
+net.addLayer('loss4', dagnn.ScaleLoss('scale',4),{'score_dsn4_up','label'}, {'loss4'});
          
 % DSN 5
 net.addLayer('score_dsn5', dagnn.Conv('size',[1,1,512,5]),...
             {'conv5_3'}, {'score_dsn5'},{'score_dsn5_w', 'score_dsn5_b'});
 net.addLayer('deconv5', dagnn.ConvTranspose('size',[32,32,5,5],'upsample',16,'crop',39),...
             {'score_dsn5'}, {'score_dsn5_up'}, {'deconv5_w','deconv5_b'});
-net.addLayer('loss5', dagnn.Loss(),{'score_dsn5_up','label'}, {'loss5'});
+net.addLayer('loss5', dagnn.ScaleLoss('scale',5),{'score_dsn5_up','label'}, {'loss5'});
 
-% Slice side outputs ------------------------------------------------------
+% ----------------------- SLICE side outputs ------------------------------
 net.addLayer('slice2', dagnn.Slice(), {'score_dsn2_up'},...
-            {'slice2_0','slice2_1'});
+            {'slice2_0','slice2_1'}); % scale 0 --> background 
 net.addLayer('slice3', dagnn.Slice(), {'score_dsn3_up'},...
             {'slice3_0','slice3_1','slice3_2'});
 net.addLayer('slice4', dagnn.Slice(), {'score_dsn4_up'},...
@@ -433,33 +434,33 @@ net.addLayer('slice4', dagnn.Slice(), {'score_dsn4_up'},...
 net.addLayer('slice5', dagnn.Slice(), {'score_dsn5_up'},...
             {'slice5_0','slice5_1','slice5_2','slice5_3','slice5_4'});
 
-% Concat slices corresponding to the same scale ---------------------------
-net.addLayer('concat0', dagnn.Concat(),...  
+% --------------- CONCAT slices of the same scale -------------------------
+net.addLayer('concat0', dagnn.Concat(),...  % scale 0 (background)
             {'slice2_0','slice3_0','slice4_0','slice5_0'}, {'concat0'});
-net.addLayer('concat1', dagnn.Concat(),...  
+net.addLayer('concat1', dagnn.Concat(),...  % scale 1 
             {'slice2_1','slice3_1','slice4_1','slice5_1'}, {'concat1'});
-net.addLayer('concat2', dagnn.Concat(),...  
+net.addLayer('concat2', dagnn.Concat(),...  % scale 2
             {'slice3_2','slice4_2','slice5_2'}, {'concat2'});
-net.addLayer('concat3', dagnn.Concat(),...  
-            {'slice4_3','slice5_3'}, {'concat3'});
+net.addLayer('concat3', dagnn.Concat(),...  % scale 3 (scale 4 does not need concat)
+            {'slice4_3','slice5_3'}, {'concat3'});        
       
-% Fuse scores corresponding to the same scale -----------------------------
-net.addLayer('cat0_score', dagnn.Conv('size',[1,1,4,1]), ...    % scale 1
+% Combine scale-responses from different stages into a single map ---------
+net.addLayer('cat0_score', dagnn.Conv('size',[1,1,4,1]), ...    % scale 0 (background)
             {'concat0'}, {'concat0_score'}, {'cat0_score_w','cat0_score_b'});
-net.addLayer('cat1_score', dagnn.Conv('size',[1,1,4,1]), ...    % scale 2
+net.addLayer('cat1_score', dagnn.Conv('size',[1,1,4,1]), ...    % scale 1
             {'concat1'}, {'concat1_score'}, {'cat1_score_w','cat1_score_b'});
-net.addLayer('cat2_score', dagnn.Conv('size',[1,1,3,1]), ...    % scale 3
+net.addLayer('cat2_score', dagnn.Conv('size',[1,1,3,1]), ...    % scale 2
             {'concat2'}, {'concat2_score'}, {'cat2_score_w','cat2_score_b'});
-net.addLayer('cat3_score', dagnn.Conv('size',[1,1,2,1]), ...    % scale 4
+net.addLayer('cat3_score', dagnn.Conv('size',[1,1,2,1]), ...    % scale 3
             {'concat3'}, {'concat3_score'}, {'cat3_score_w','cat3_score_b'});
-net.addLayer('cat4_score', dagnn.Conv('size',[1,1,1,1]), ...    % scale 5
+net.addLayer('cat4_score', dagnn.Conv('size',[1,1,1,1]), ...    % scale 4
             {'slice5_4'},{'concat4_score'}, {'cat4_score_w','cat4_score_b'});
 
-% Fuse scores from all scales ---------------------------------------------
+% --------------------- CONCAT scale responses ----------------------------
 net.addLayer('concat_fuse', dagnn.Concat(), ...
             {'concat0_score','concat1_score','concat2_score',...
              'concat3_score','concat4_score'}, {'concat_fuse'});
 
-% Final loss layer --------------------------------------------------------
-net.addLayer('loss_fuse',dagnn.Loss(),{'concat_fuse','label'},{'loss_fuse'});
+% --------------------- LOSS on fused scores ------------------------------
+net.addLayer('loss_fuse',dagnn.ScaleLoss('scale',5),{'concat_fuse','label'},{'loss_fuse'});
         
