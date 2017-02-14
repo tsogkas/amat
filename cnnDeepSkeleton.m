@@ -3,35 +3,49 @@ function [net, info] = cnnDeepSkeleton(varargin)
 % TODO: Perhaps weigh the loss of each groundtruth skeleton point based on
 %       its skeleton score (confidence).
 % TODO: Debug set coverage by maximal disks (should be higher).
-% TODO: Add new scale-weighted loss layer (or maybe use instanceWeights
-%       with the standard dagnn.Loss() layer).
+% TODO: Display dataset statistics.
+% TODO: Add diary/log options.
 
 % Data options
 opts.dataDir = constructBMAX500('resize',0.5);
-opts.visualizeDataset = false;
+opts.visualizeDataset = 0;
 opts.averageImage = [116.66877; 122.67892; 104.00699];  
-opts.debug = true;
-
-% Network options
+opts.debug = 0; % use small subset of the data for debugging
 opts.mode = 'train';
-opts.modelType = 'vgg-vd-16' ;
-opts.network = [] ;
-[opts, varargin] = vl_argparse(opts, varargin) ;
 
 % Suffix and results directory setup
+opts.modelType = 'vgg-vd-16' ;
 paths = setPaths();
 sfx = opts.modelType ;
 opts.expDir = fullfile(paths.amat.output, ['deepskel-' sfx]) ;
 [opts, varargin] = vl_argparse(opts, varargin) ;
 
-% GPU options
+% Train and GPU options
+% Example on how to selecte learning rate:
+% In the original DeepSkeleton work they use 10K-20K iterations with Caffe.
+% Since in MatConvNet each epoch goes through the complete train set, we
+% have to adjust the #epochs to get comparable results.
+% - BSDS trainval set: 300 (200 for train set)
+% - Augmentation factor: 36 (~36*6 = 216 if we consider each segmentation 
+%   as a separate training example).
+% - Batchsize: 10
+% Hence: #iters/epoch = 300*36 / 10 = 1080, and we need ~15-20 epochs to
+% reach 20K iterations (~3 epochs in the case we use all segmentations).
 opts.numFetchThreads = 12 ;
-opts.train = struct() ;
+opts.train.gpus = 1;
+opts.train.learningRate = [1e-6, 1e-7, 1e-8]; % #epochs = numel(learningRate)
+opts.train.momentum = 0.9 ;
+opts.train.weightDecay = 0.0002 ;
+opts.train.batchSize = 10 ;
 opts = vl_argparse(opts, varargin) ;
-if ~isfield(opts.train, 'gpus'), opts.train.gpus = 1; end;
 
 % Initialize model
-net = cnnInit('initNetPath', paths.vgg16);
+rng(0); % set rng for reproducibility
+net = cnnInit('initNetPath', paths.vgg16,...
+              'learningRate',opts.train.learningRate,...
+              'momentum', opts.train.momentum,...
+              'weightDecay', opts.train.weightDecay,...
+              'batchSize',opts.train.batchSize);
 
 % Prepare training data
 imdb = getBMAX500Imdb('dataDir', opts.dataDir,...
@@ -41,7 +55,6 @@ imdb = getBMAX500Imdb('dataDir', opts.dataDir,...
                       'visualizeDataset', opts.visualizeDataset);
 
 % Train
-rng(0); % set rng for reproducibility
 [net, info] = cnn_train_dag(net, imdb, @(x,y) getBatch(x,y,opts.train.gpus), ...
                       'expDir', opts.expDir, ...
                       net.meta.trainOpts, ...
@@ -181,7 +194,7 @@ end
 % Visual Inspection of dataset;
 if opts.visualizeDataset
     figure(1); montage(imdb.images.data); title('Images')
-    figure(2); montage(imdb.images.labels); title('Skeletons')
+    figure(2); montage(imdb.images.labels,[1,numel(rfields)+1]); title('Skeletons')
 %     figure(3); montage(imdb.images.radius,'DisplayRange',[]); title('Radius maps')
 end
 
@@ -210,23 +223,38 @@ imdb.images.labels = cat(4, imdb.images.labels,...
 if strcmp(opts.mode, 'train')
     nTrain = size(imdb.images.data,4);
     nVal = size(imdb.val.images,4);
-    imdb.images.data = cat(4, imdb.images.data, imdb.val.images);
-    imdb.val.images = []; imdb = rmfield(imdb,'val');
+    imdb.images.data  = cat(4, imdb.images.data,   imdb.val.images);
+    imdb.images.labels= cat(4, imdb.images.labels, imdb.val.labels);
+    imdb = rmfield(imdb,'val');
     imdb.images.set = [ones(1,nTrain) 2*ones(1,nVal)];
 elseif strcmp(opts.mode, 'trainval') 
     nTrain = size(imdb.images.data,4);
-    imdb.images.set = [ones(1,nTrain) 2*ones(1,nVal)];
+    imdb.images.set = [ones(1,nTrain) 2*ones(1,nVal)]; % what is val set ??
 else error('Invalid opts.mode')
 end
 imdb.meta.sets = sets;
 imdb.meta.averageImage = opts.averageImage;
 imdb.meta.numLabels = numel(rfields) + 1;
 
+% Data sanity checks
+dataSize  = size(imdb.images.data);
+labelSize = size(imdb.images.labels);
+assert(isequal(dataSize([1,2,4]), labelSize([1 2 4])));
+assert(all(isinrange(imdb.images.labels,[0,imdb.meta.numLabels])))
+assert(all(imdb.images.set <= 3 & imdb.images.set >= 1))
+
+% Display dataset information
+
+
 % -------------------------------------------------------------------------
 function net = cnnInit(varargin)
 % -------------------------------------------------------------------------
 opts.initNetPath = [];
 opts.cudnnWorkspaceLimit = 1024*1024*1204 ; % 1GB
+opts.learningRate = [1e-6, 1e-7, 1e-8] ;
+opts.momentum = 0.9 ;
+opts.weightDecay = 0.0002 ;
+opts.batchSize = 10 ;
 opts = vl_argparse(opts, varargin) ;
 
 % Define network architecture and initialize parameters with random values
@@ -308,17 +336,12 @@ for l={'conv2_2','conv3_3','conv4_3','conv5_3'}
 end
 
 % Meta parameters 
-% - BSDS trainval set: 300 (200 for train set)
-% - Augmentation factor: 36 (~36*6 = 216 if we consider each segmentation 
-%   as a separate training example).
-% - Batchsize: 10
-% Hence: #iters/epoch = 300*36 / 10 = 1080, and we need ~15-20 epochs to
-% reach 20K iterations (~3 epochs in the case we use all segmentations).
-net.meta.trainOpts.learningRate = [1e-6*ones(1,5), 1e-7*ones(1,5), 1e-8*ones(1,5)] ;
-net.meta.trainOpts.numEpochs = numel(net.meta.trainOpts.learningRate) ;
-net.meta.trainOpts.momentum = 0.9 ;
-net.meta.trainOpts.weightDecay = 0.0002 ;
-net.meta.trainOpts.batchSize = 10 ;
+net.meta.trainOpts.learningRate = opts.learningRate ;
+net.meta.trainOpts.numEpochs = numel(opts.learningRate) ;
+net.meta.trainOpts.momentum = opts.momentum ;
+net.meta.trainOpts.weightDecay = opts.weightDecay ;
+net.meta.trainOpts.batchSize = opts.batchSize ;
+
 % Set objectives that will be considered during backpropagation
 net.meta.trainOpts.derOutputs = ...
     {'loss2',1,'loss3',1,'loss4',1,'loss5',1,'loss_fuse',1};
