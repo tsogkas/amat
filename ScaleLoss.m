@@ -17,8 +17,13 @@ classdef ScaleLoss < dagnn.Loss
             % DSN layers by setting labels > s to the "background" label.
             [H,W,C,B] = size(inputs{1});
             inputs{2}(inputs{2}>obj.scale) = 1;
-            obj.opts{end+1} = 'instanceWeights'; 
-            obj.opts{end+1} = instanceWeights(inputs{2},obj.scale)/(H*W);
+            ind = find(strcmp('instanceWeights',obj.opts));
+            if isempty(ind)
+                obj.opts{end+1} = 'instanceWeights'; 
+                obj.opts{end+1} = instanceWeights(inputs{2},obj.scale)/(H*W);
+            else
+                obj.opts{ind+1} = instanceWeights(inputs{2},obj.scale)/(H*W);
+            end
             outputs{1} = vl_nnloss(inputs{1}, inputs{2}, [], 'loss', obj.loss, obj.opts{:}) ;
             n = obj.numAveraged ;
             m = n + size(inputs{1},4) ;
