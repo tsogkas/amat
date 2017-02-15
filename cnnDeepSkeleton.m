@@ -3,14 +3,13 @@ function [net, info] = cnnDeepSkeleton(varargin)
 % TODO: Perhaps weigh the loss of each groundtruth skeleton point based on
 %       its skeleton score (confidence).
 % TODO: Debug set coverage by maximal disks (should be higher).
-% TODO: Display dataset statistics.
 % TODO: Add diary/log options.
 
 % Data options
 opts.dataDir = constructBMAX500('resize',0.5);
 opts.visualizeDataset = 0;
 opts.averageImage = [116.66877; 122.67892; 104.00699];  
-opts.debug = 0; % use small subset of the data for debugging
+opts.debug = 1; % use small subset of the data for debugging
 opts.mode = 'train';
 
 % Suffix and results directory setup
@@ -32,14 +31,17 @@ opts.expDir = fullfile(paths.amat.output, ['deepskel-' sfx]) ;
 % Hence: #iters/epoch = 300*36 / 10 = 1080, and we need ~15-20 epochs to
 % reach 20K iterations (~3 epochs in the case we use all segmentations).
 opts.numFetchThreads = 12 ;
-opts.train.gpus = 1;
+opts.train.gpus = 1; 
 opts.train.learningRate = [1e-6, 1e-7, 1e-8]; % #epochs = numel(learningRate)
 opts.train.momentum = 0.9 ;
 opts.train.weightDecay = 0.0002 ;
 opts.train.batchSize = 10 ;
+[~,machine] = system('hostname'); 
+if strcmp(machine,'izual'), opts.train.gpus = []; end
 opts = vl_argparse(opts, varargin) ;
 
 % Initialize model
+disp('Initializing model...')
 rng(0); % set rng for reproducibility
 net = cnnInit('initNetPath', paths.vgg16,...
               'learningRate',opts.train.learningRate,...
@@ -48,6 +50,7 @@ net = cnnInit('initNetPath', paths.vgg16,...
               'batchSize',opts.train.batchSize);
 
 % Prepare training data
+disp('Preparing training data...')
 imdb = getBMAX500Imdb('dataDir', opts.dataDir,...
                       'mode',opts.mode,...
                       'averageImage', opts.averageImage,...
@@ -55,6 +58,9 @@ imdb = getBMAX500Imdb('dataDir', opts.dataDir,...
                       'visualizeDataset', opts.visualizeDataset);
 
 % Train
+disp('-------------------------------------------------------------------')
+disp('Training parameters')
+disp('-------------------------------------------------------------------')
 [net, info] = cnn_train_dag(net, imdb, @(x,y) getBatch(x,y,opts.train.gpus), ...
                       'expDir', opts.expDir, ...
                       net.meta.trainOpts, ...
@@ -244,7 +250,16 @@ assert(all(isinrange(imdb.images.labels,[0,imdb.meta.numLabels])))
 assert(all(imdb.images.set <= 3 & imdb.images.set >= 1))
 
 % Display dataset information
-
+disp('-------------------------------------------------------------------')
+disp('Training data information')
+disp('-------------------------------------------------------------------')
+disp(['#images: ' num2str(nTrain) ' (' num2str(dataSize(1:2)) ')'])
+trainlbls = imdb.images.labels(:,:,:,imdb.images.set==1);
+numPixels = numel(trainlbls);
+fprintf('Label stats: %.2f(1), %.2f(2), %.2f(3), %.2f(4), %.2f(5)',...
+    nnz(trainlbls==1)/numPixels, nnz(trainlbls==2)/numPixels,...
+    nnz(trainlbls==3)/numPixels, nnz(trainlbls==4)/numPixels,...
+    nnz(trainlbls==5)/numPixels)
 
 % -------------------------------------------------------------------------
 function net = cnnInit(varargin)
