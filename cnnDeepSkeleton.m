@@ -3,13 +3,12 @@ function [net, info] = cnnDeepSkeleton(varargin)
 % TODO: Perhaps weigh the loss of each groundtruth skeleton point based on
 %       its skeleton score (confidence).
 % TODO: Debug set coverage by maximal disks (should be higher).
-% TODO: Add diary/log options.
 
 % Data options
 opts.dataDir = constructBMAX500('resize',0.5);
 opts.visualizeDataset = 0;
 opts.averageImage = [116.66877; 122.67892; 104.00699];  
-opts.debug = 1; % use small subset of the data for debugging
+opts.debug = 0; % use small subset of the data for debugging
 opts.mode = 'train';
 
 % Suffix and results directory setup
@@ -17,6 +16,7 @@ opts.modelType = 'vgg-vd-16' ;
 paths = setPaths();
 sfx = opts.modelType ;
 opts.expDir = fullfile(paths.amat.output, ['deepskel-' sfx]) ;
+diary on; diary(fullfile(opts.expDir, 'diary.txt'));
 [opts, varargin] = vl_argparse(opts, varargin) ;
 
 % Train and GPU options
@@ -36,13 +36,16 @@ opts.train.learningRate = [1e-6, 1e-7, 1e-8]; % #epochs = numel(learningRate)
 opts.train.momentum = 0.9 ;
 opts.train.weightDecay = 0.0002 ;
 opts.train.batchSize = 10 ;
+opts.train.plotStatistics = false;
 [~,machine] = system('hostname'); 
 if strcmp(machine,'izual'), opts.train.gpus = []; end
 opts = vl_argparse(opts, varargin) ;
 
 % Initialize model
-disp('Initializing model...')
-rng(0); % set rng for reproducibility
+disp('-------------------------------------------------------------------')
+disp('Initializing model from vgg16 network...')
+disp('-------------------------------------------------------------------')
+disp('Set RNG seed to ''0'' for reproducibility'); rng(0); 
 net = cnnInit('initNetPath', paths.vgg16,...
               'learningRate',opts.train.learningRate,...
               'momentum', opts.train.momentum,...
@@ -50,7 +53,9 @@ net = cnnInit('initNetPath', paths.vgg16,...
               'batchSize',opts.train.batchSize);
 
 % Prepare training data
+disp('-------------------------------------------------------------------')
 disp('Preparing training data...')
+disp('-------------------------------------------------------------------')
 imdb = getBMAX500Imdb('dataDir', opts.dataDir,...
                       'mode',opts.mode,...
                       'averageImage', opts.averageImage,...
@@ -61,11 +66,12 @@ imdb = getBMAX500Imdb('dataDir', opts.dataDir,...
 disp('-------------------------------------------------------------------')
 disp('Training parameters')
 disp('-------------------------------------------------------------------')
+disp(opts.train)
 [net, info] = cnn_train_dag(net, imdb, @(x,y) getBatch(x,y,opts.train.gpus), ...
                       'expDir', opts.expDir, ...
                       net.meta.trainOpts, ...
                       opts.train) ;
-
+diary off;
 
 % -------------------------------------------------------------------------
 function out = getBatch(imdb, batch, useGpu)
@@ -250,13 +256,11 @@ assert(all(isinrange(imdb.images.labels,[0,imdb.meta.numLabels])))
 assert(all(imdb.images.set <= 3 & imdb.images.set >= 1))
 
 % Display dataset information
-disp('-------------------------------------------------------------------')
-disp('Training data information')
-disp('-------------------------------------------------------------------')
-disp(['#images: ' num2str(nTrain) ' (' num2str(dataSize(1:2)) ')'])
+disp('Training data information:')
+disp(['#images for training: ' num2str(nTrain) ' (' num2str(dataSize(1:2)) ')'])
 trainlbls = imdb.images.labels(:,:,:,imdb.images.set==1);
 numPixels = numel(trainlbls);
-fprintf('Label stats: %.2f(1), %.2f(2), %.2f(3), %.2f(4), %.2f(5)',...
+fprintf('Label stats: %.2f%%(1), %.2f%%(2), %.2f%%(3), %.2f%%(4), %.2f(5)%%\n',...
     nnz(trainlbls==1)/numPixels, nnz(trainlbls==2)/numPixels,...
     nnz(trainlbls==3)/numPixels, nnz(trainlbls==4)/numPixels,...
     nnz(trainlbls==5)/numPixels)
@@ -285,7 +289,7 @@ for l=1:numel(vgg.layers)
         indw = net.getParamIndex([layer.name '_w']);
         indb = net.getParamIndex([layer.name '_b']);
         if isnan(indw) || isnan(indb)
-            warning(['Skipping non-existent layer ' layer.name '...'])
+            disp(['Skipping non-existent layer ' layer.name])
         else
             % Set learning parameters according to the deep skeleton net.
             net.params(indw).value = layer.weights{1};
