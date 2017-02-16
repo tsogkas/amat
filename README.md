@@ -9,7 +9,6 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 
 ### TODO:
 ### HIGH PRIORITY ---------------------------------------------------------
-- wrap amat into a function
 - fill in evaluation scripts so that I can start running experiments
 
 
