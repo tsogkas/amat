@@ -9,15 +9,13 @@ parfor i=1:numel(s)
     m = false(H,W);
     for k=1:K
         m(:) = false;
-        rc = s(i).rad(:,:,k);
+        rc = round(s(i).rad(:,:,k));
         [yc,xc] = find(rc);
         for p=1:numel(yc)
-            x = single(xc(p));
-            y = single(yc(p));
+            x = xc(p);
+            y = yc(p);
             r = single(rc(y,x));
-            d = m((y-r):(y+r),(x-r):(x+r));
-            d(diskf{r}) = true;
-            m((y-r):(y+r),(x-r):(x+r)) = d;
+            m((y-r):(y+r),(x-r):(x+r)) = m((y-r):(y+r),(x-r):(x+r)) | diskf{r};
         end
         nPixels = nPixels + nnz(m);
     end

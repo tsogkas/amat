@@ -32,8 +32,8 @@ catch
             'pts',[],'rad',[],'img',[],'seg',[],'bnd',[],'iid',[]), [1,nImages]);
         % For all images
         ticStart = tic;
-%         for i=1:nImages
-        parfor (i=1:nImages, opts.parpoolSize)
+        for i=1:nImages
+%         parfor (i=1:nImages, opts.parpoolSize)
             img = imread(fullfile(imDir,imFiles(i).name));
             gt  = load(fullfile(gtDir, gtFiles(i).name)); gt = gt.groundTruth;
             if numel(opts.resize) == 2 || opts.resize ~= 1
@@ -82,7 +82,7 @@ end
 disp('Refining dataset')
 for set = {'train','val','test'}
     if ~isfield(BMAX500, set{1}), continue; end
-    matgt = BMAX500.(set{1}); [matgt(:).nPixelsCovered] = deal(0);
+    matgt = BMAX500.(set{1}); 
     for i=1:numel(BMAX500.(set{1}))
         % Prune points with low confidence
         matgt(i).pts = matgt(i).pts >= opts.skelThresh;
@@ -93,5 +93,6 @@ for set = {'train','val','test'}
     end
     BMAX500.(set{1}) = matgt;
 end
+BMAX500.opts = opts;
 
 
