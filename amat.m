@@ -126,7 +126,7 @@ mat.radius(yc,xc) = scales(rc);
 end
 
 % -------------------------------------------------------------------------
-function [diskCost,numNewPixelsCovered] = ...
+function [diskCost,numNewPixelsCovered,changed] = ...
         updateDiskCosts(diskCost,filters,numNewPixelsCovered,newPixelsCovered)
 % -------------------------------------------------------------------------
 % Find how many of the newPixelsCovered are covered by other disks in

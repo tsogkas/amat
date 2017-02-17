@@ -2,13 +2,12 @@ function [net, info] = cnnDeepSkeleton(varargin)
 % TODO: What should I use as "val" set when I train using trainval?
 % TODO: Perhaps weigh the loss of each groundtruth skeleton point based on
 %       its skeleton score (confidence).
-% TODO: Debug set coverage by maximal disks (should be higher).
 
 % Data options
 opts.dataDir = constructBMAX500('resize',0.5);
 opts.visualizeDataset = 0;
 opts.averageImage = [116.66877; 122.67892; 104.00699];  
-opts.debug = 0; % use small subset of the data for debugging
+opts.debug = 1; % use small subset of the data for debugging
 opts.mode = 'train';
 
 % Suffix and results directory setup
@@ -38,7 +37,7 @@ opts.train.weightDecay = 0.0002 ;
 opts.train.batchSize = 10 ;
 opts.train.plotStatistics = false;
 [~,machine] = system('hostname'); 
-if strcmp(machine,'izual'), opts.train.gpus = []; end
+if strcmp(machine(1:end-1),'izual'), opts.train.gpus = []; end
 opts = vl_argparse(opts, varargin) ;
 
 % Initialize model
@@ -440,40 +439,43 @@ net.addLayer('pool5', dagnn.Pooling('poolSize',[2 2],'stride',2,'pad',0,...
 % DSN 2
 net.addLayer('score_dsn2', dagnn.Conv('size',[1,1,128,2]),...
             {'conv2_2'}, {'score_dsn2'},{'score_dsn2_w', 'score_dsn2_b'});
-net.addLayer('deconv2', dagnn.ConvTranspose('size',[4,4,2,2],'upsample',2,'crop',35),...
+net.addLayer('deconv2', dagnn.ConvTranspose('size',[4,4,2,2],'upsample',2),...
             {'score_dsn2'}, {'score_dsn2_up'}, {'deconv2_w','deconv2_b'});
-% net.addLayer('loss2', dagnn.Loss(),{'score_dsn2_up','label'}, {'loss2'});
-net.addLayer('loss2', dagnn.ScaleLoss('scale',2),{'score_dsn2_up','label'}, {'loss2'});
+net.addLayer('crop2', dagnn.Crop('crop',[35 35]),{'score_dsn2_up','input'},{'score_dsn2_up_crop'});       
+net.addLayer('loss2', dagnn.ScaleLoss('scale',2),{'score_dsn2_up_crop','label'}, {'loss2'});
                   
 % DSN 3
 net.addLayer('score_dsn3', dagnn.Conv('size',[1,1,256,3]),...
             {'conv3_3'}, {'score_dsn3'},{'score_dsn3_w', 'score_dsn3_b'});
-net.addLayer('deconv3', dagnn.ConvTranspose('size',[8,8,3,3],'upsample',4,'crop',35),...
+net.addLayer('deconv3', dagnn.ConvTranspose('size',[8,8,3,3],'upsample',4),...
             {'score_dsn3'}, {'score_dsn3_up'}, {'deconv3_w','deconv3_b'});
-net.addLayer('loss3', dagnn.ScaleLoss('scale',3),{'score_dsn3_up','label'}, {'loss3'});
+net.addLayer('crop3', dagnn.Crop('crop',[35 35]),{'score_dsn3_up','input'},{'score_dsn3_up_crop'});       
+net.addLayer('loss3', dagnn.ScaleLoss('scale',3),{'score_dsn3_up_crop','label'}, {'loss3'});
                   
 % DSN 4
 net.addLayer('score_dsn4', dagnn.Conv('size',[1,1,512,4]),...
             {'conv4_3'}, {'score_dsn4'},{'score_dsn4_w', 'score_dsn4_b'});
-net.addLayer('deconv4', dagnn.ConvTranspose('size',[16,16,4,4],'upsample',8,'crop',35),...
+net.addLayer('deconv4', dagnn.ConvTranspose('size',[16,16,4,4],'upsample',8),...
             {'score_dsn4'}, {'score_dsn4_up'}, {'deconv4_w','deconv4_b'});
-net.addLayer('loss4', dagnn.ScaleLoss('scale',4),{'score_dsn4_up','label'}, {'loss4'});
+net.addLayer('crop4', dagnn.Crop('crop',[35 35]),{'score_dsn4_up','input'},{'score_dsn4_up_crop'});       
+net.addLayer('loss4', dagnn.ScaleLoss('scale',4),{'score_dsn4_up_crop','label'}, {'loss4'});
          
 % DSN 5
 net.addLayer('score_dsn5', dagnn.Conv('size',[1,1,512,5]),...
             {'conv5_3'}, {'score_dsn5'},{'score_dsn5_w', 'score_dsn5_b'});
-net.addLayer('deconv5', dagnn.ConvTranspose('size',[32,32,5,5],'upsample',16,'crop',39),...
+net.addLayer('deconv5', dagnn.ConvTranspose('size',[32,32,5,5],'upsample',16),...
             {'score_dsn5'}, {'score_dsn5_up'}, {'deconv5_w','deconv5_b'});
-net.addLayer('loss5', dagnn.ScaleLoss('scale',5),{'score_dsn5_up','label'}, {'loss5'});
+net.addLayer('crop5', dagnn.Crop('crop',[35 35]),{'score_dsn5_up','input'},{'score_dsn5_up_crop'});       
+net.addLayer('loss5', dagnn.ScaleLoss('scale',5),{'score_dsn5_up_crop','label'}, {'loss5'});
 
 % ----------------------- SLICE side outputs ------------------------------
-net.addLayer('slice2', dagnn.Slice(), {'score_dsn2_up'},...
+net.addLayer('slice2', dagnn.Slice(), {'score_dsn2_up_crop'},...
             {'slice2_0','slice2_1'}); % scale 0 --> background 
-net.addLayer('slice3', dagnn.Slice(), {'score_dsn3_up'},...
+net.addLayer('slice3', dagnn.Slice(), {'score_dsn3_up_crop'},...
             {'slice3_0','slice3_1','slice3_2'});
-net.addLayer('slice4', dagnn.Slice(), {'score_dsn4_up'},...
+net.addLayer('slice4', dagnn.Slice(), {'score_dsn4_up_crop'},...
             {'slice4_0','slice4_1','slice4_2','slice4_3'});
-net.addLayer('slice5', dagnn.Slice(), {'score_dsn5_up'},...
+net.addLayer('slice5', dagnn.Slice(), {'score_dsn5_up_crop'},...
             {'slice5_0','slice5_1','slice5_2','slice5_3','slice5_4'});
 
 % --------------- CONCAT slices of the same scale -------------------------

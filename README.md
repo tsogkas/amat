@@ -10,8 +10,6 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 ### TODO:
 ### HIGH PRIORITY ---------------------------------------------------------
 - fill in evaluation scripts so that I can start running experiments
-- double check skeleton dataset statistics. Reconstruction percentage of 
-  the original segmentation masks should be higher.
 
 
 ### low priority ----------------------------------------------------------
