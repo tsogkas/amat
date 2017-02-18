@@ -4,23 +4,27 @@ function [net, info] = cnnDeepSkeleton(varargin)
 %       its skeleton score (confidence).
 
 % Data options
+% opts.dataDir = constructBMAX500();
 opts.dataDir = constructBMAX500('resize',0.5);
 opts.visualizeDataset = 0;
-opts.averageImage = [116.66877; 122.67892; 104.00699];  
-opts.debug = 1; % use small subset of the data for debugging
+opts.averageImage = [122.67892; 116.66877; 104.00699];  
+opts.debug = 0; % use small subset of the data for debugging
 opts.mode = 'train';
 
 % Suffix and results directory setup
 opts.modelType = 'vgg-vd-16' ;
 paths = setPaths();
 sfx = opts.modelType ;
-opts.expDir = fullfile(paths.amat.output, ['deepskel-' sfx]) ;
+opts.expDir = fullfile(paths.amat.output, ['deepskel-' sfx]) ; 
+mkdir(opts.expDir)
 diary on; diary(fullfile(opts.expDir, 'diary.txt'));
 [opts, varargin] = vl_argparse(opts, varargin) ;
 
 % Train and GPU options
 % Example on how to selecte learning rate:
 % In the original DeepSkeleton work they use 10K-20K iterations with Caffe.
+% The (starting) learning rate they use there is 1e-6 and is divided by 10
+% every 5K epochs.
 % Since in MatConvNet each epoch goes through the complete train set, we
 % have to adjust the #epochs to get comparable results.
 % - BSDS trainval set: 300 (200 for train set)
@@ -31,7 +35,7 @@ diary on; diary(fullfile(opts.expDir, 'diary.txt'));
 % reach 20K iterations (~3 epochs in the case we use all segmentations).
 opts.numFetchThreads = 12 ;
 opts.train.gpus = 1; 
-opts.train.learningRate = [1e-6, 1e-7, 1e-8]; % #epochs = numel(learningRate)
+opts.train.learningRate = [1e-4, 1e-5, 1e-6]; % #epochs = numel(learningRate)
 opts.train.momentum = 0.9 ;
 opts.train.weightDecay = 0.0002 ;
 opts.train.batchSize = 10 ;
@@ -49,7 +53,8 @@ net = cnnInit('initNetPath', paths.vgg16,...
               'learningRate',opts.train.learningRate,...
               'momentum', opts.train.momentum,...
               'weightDecay', opts.train.weightDecay,...
-              'batchSize',opts.train.batchSize);
+              'batchSize',opts.train.batchSize,...
+              'averageImage',opts.averageImage);
 
 % Prepare training data
 disp('-------------------------------------------------------------------')
@@ -138,7 +143,6 @@ for s=1:numel(sets)
     numGroundtruthTotal = sum(cellfun(@(x) size(x,3), {set(1:numImages).pts}));
     % Preallocate
     imgs = zeros(Hmax,Wmax,3,numGroundtruthTotal*numel(scales),'uint8');
-    lbls = zeros(Hmax,Wmax,1,numGroundtruthTotal*numel(scales),'uint8');
     radi = zeros(Hmax,Wmax,1,numGroundtruthTotal*numel(scales),'uint8');
     % Now assemble all examples
     ind = 1;
@@ -150,18 +154,13 @@ for s=1:numel(sets)
             rad = set(i).rad;
             if scale ~= 1 && (strcmp(sets{s},'train') || strcmp(sets{s},'trainval'))
                 img = imresize(img,scale,'bilinear');
-                rad = imresize(rad,scale,'bilinear')*scale;
-                pts = imresizeCrisp(pts,scale);
+                rad = imresizeCrisp(rad,scale)*scale;
             end
-%             for k=1:size(pts,3)
-%                 plotDisks(img,pts(:,:,k),rad(:,:,k));
-%             end
             % Center data in the maxH x maxW array
             [H,W,~] = size(img);
             hs = ceil((Hmax-H+1)/2); ws = ceil((Wmax-W+1)/2);
             imgs(hs:hs+H-1, ws:ws+W-1,:, ind:ind+ngt-1) = repmat(img,[1,1,1,ngt]);
             radi(hs:hs+H-1, ws:ws+W-1,:, ind:ind+ngt-1) = reshape(rad,H,W,1,[]);
-            lbls(hs:hs+H-1, ws:ws+W-1,:, ind:ind+ngt-1) = reshape(pts,H,W,1,[]);
             ind = ind+ngt;
         end
     end
@@ -169,14 +168,13 @@ for s=1:numel(sets)
     radi = 1.2 * radi; % make sure that the receptive field is large enough
     % MatConvNet ignores 0-labels during the loss computation. We use "1"
     % as the background label.
-    lbls(radi == 0) = 1;
+    lbls = ones(size(radi),'uint8');
     lbls(radi > 0 & radi <= rfields(1)) = 2;
     for r=2:numel(rfields)
         lbls(radi>rfields(r-1) & radi <= rfields(r)) = r+1;
     end
     imdb.(sets{s}).images = imgs;
     imdb.(sets{s}).labels = lbls;
-%     imdb.(sets{s}).radius = radi;
 end
 
 % Tidy imdb
@@ -184,20 +182,16 @@ switch opts.mode
     case 'test'
         imdb.images.data   = imdb.test.images;  imdb.test.images = [];
         imdb.images.labels = imdb.test.labels;  imdb.test.labels = [];
-%         imdb.images.radius = imdb.test.radius;  imdb.test.radius = [];
         imdb = rmfield(imdb, 'test');
     case 'train'
         imdb.images.data   = imdb.train.images; imdb.train.images = [];
         imdb.images.labels = imdb.train.labels; imdb.train.labels = []; 
-%         imdb.images.radius = imdb.train.radius; imdb.train.radius = []; 
         imdb = rmfield(imdb, 'train');
     case 'trainval'
         imdb.images.data = cat(4, imdb.train.images, imdb.val.images);
         imdb.train.images = []; imdb.val.images = [];
         imdb.images.labels = cat(4, imdb.train.labels, imdb.val.labels);
         imdb.train.labels = []; imdb.val.labels = [];
-%         imdb.images.radius = cat(4, imdb.train.radius, imdb.val.radius);
-%         imdb.train.radius = []; imdb.val.radius = [];
         imdb = rmfield(imdb, {'train','val'});
     otherwise, error('opts.mode can be ''train'',''trainval'', or''test''')
 end
@@ -206,18 +200,15 @@ end
 if opts.visualizeDataset
     figure(1); montage(imdb.images.data); title('Images')
     figure(2); montage(imdb.images.labels,[1,numel(rfields)+1]); title('Skeletons')
-%     figure(3); montage(imdb.images.radius,'DisplayRange',[]); title('Radius maps')
 end
 
 % Augment orientations
 imgs = imdb.images.data;
 lbls = imdb.images.labels;
-% radi = imdb.images.radius;
 for theta = thetas
     if theta ~= 0
         imdb.images.data   = cat(4, imdb.images.data,   imrotate(imgs,theta,'bilinear'));
         imdb.images.labels = cat(4, imdb.images.labels, imrotate(lbls,theta,'nearest'));
-%         imdb.images.radius = cat(4, imdb.images.radius, imrotate(radi,theta,'nearest'));
     end
 end
 clear imgs lbls radi img pts rad
@@ -227,8 +218,6 @@ imdb.images.data = cat(4, imdb.images.data,...
     fliplr(imdb.images.data), flipud(imdb.images.data));
 imdb.images.labels = cat(4, imdb.images.labels,...
     fliplr(imdb.images.labels), flipud(imdb.images.labels));
-% imdb.images.radius = cat(4, imdb.images.radius,...
-%     fliplr(imdb.images.radius), flipud(imdb.images.radius));
 
 % Assign set indexes
 if strcmp(opts.mode, 'train')
@@ -246,6 +235,7 @@ end
 imdb.meta.sets = sets;
 imdb.meta.averageImage = opts.averageImage;
 imdb.meta.numLabels = numel(rfields) + 1;
+imdb.meta.imageSize = [Hmax,Wmax]; % size of the images used for training
 
 % Data sanity checks
 dataSize  = size(imdb.images.data);
@@ -273,6 +263,7 @@ opts.learningRate = [1e-6, 1e-7, 1e-8] ;
 opts.momentum = 0.9 ;
 opts.weightDecay = 0.0002 ;
 opts.batchSize = 10 ;
+opts.averageImage = zeros(3,1);
 opts = vl_argparse(opts, varargin) ;
 
 % Define network architecture and initialize parameters with random values
@@ -296,8 +287,8 @@ for l=1:numel(vgg.layers)
             net.params(indw).weightDecay  = 1;
             net.params(indb).weightDecay  = 0;
             if ismember(layer.name, {'conv5_1','conv5_2','conv5_3'})
-                net.params(indw).learningRate = 100;
-                net.params(indb).learningRate = 200;
+                net.params(indw).learningRate = 100; % this is 100 in deepskel prototxt
+                net.params(indb).learningRate = 200; % this is 200 in deepskel prototxt
             else
                 net.params(indw).learningRate = 1;
                 net.params(indb).learningRate = 2;
@@ -348,17 +339,13 @@ for l={'cat0_score','cat1_score','cat2_score','cat3_score','cat4_score'}
     net.params(indw).value = val * ones(size(net.params(indw).value),'single');
 end
 
-% Keep these layers inputs as they will be used for side outputs
-for l={'conv2_2','conv3_3','conv4_3','conv5_3'}
-    net.vars(net.getVarIndex(l)).precious = true;
-end
-
 % Meta parameters 
 net.meta.trainOpts.learningRate = opts.learningRate ;
 net.meta.trainOpts.numEpochs = numel(opts.learningRate) ;
 net.meta.trainOpts.momentum = opts.momentum ;
 net.meta.trainOpts.weightDecay = opts.weightDecay ;
 net.meta.trainOpts.batchSize = opts.batchSize ;
+net.meta.averageImage = opts.averageImage;
 
 % Set objectives that will be considered during backpropagation
 net.meta.trainOpts.derOutputs = ...
@@ -405,7 +392,7 @@ net.addLayer('conv3_2', dagnn.Conv('size',[3,3,256,256],'stride',1,'pad',1),...
 net.addLayer('relu3_2', dagnn.ReLU(), {'conv3_2'}, {'relu3_2'});                                
 net.addLayer('conv3_3', dagnn.Conv('size',[3,3,256,256],'stride',1,'pad',1),...
             {'relu3_2'}, {'conv3_3'},{'conv3_3_w', 'conv3_3_b'});
-net.addLayer('relu3_3', dagnn.ReLU(), {'conv3_2'}, {'relu3_3'});
+net.addLayer('relu3_3', dagnn.ReLU(), {'conv3_3'}, {'relu3_3'});
 net.addLayer('pool3', dagnn.Pooling('poolSize',[2 2],'stride',2,'pad',0,...
              'method','max') ,{'relu3_3'}, {'pool3'});
          
@@ -431,14 +418,12 @@ net.addLayer('conv5_2', dagnn.Conv('size',[3,3,512,512],'stride',1,'pad',1),...
 net.addLayer('relu5_2', dagnn.ReLU(), {'conv5_2'}, {'relu5_2'});                
 net.addLayer('conv5_3', dagnn.Conv('size',[3,3,512,512],'stride',1,'pad',1),...
             {'relu5_2'}, {'conv5_3'},{'conv5_3_w', 'conv5_3_b'});
-net.addLayer('relu5_3', dagnn.ReLU(), {'conv5_3'}, {'relu5_3'});                
-net.addLayer('pool5', dagnn.Pooling('poolSize',[2 2],'stride',2,'pad',0,...
-             'method','max') ,{'relu5_3'}, {'pool5'});
+net.addLayer('relu5_3', dagnn.ReLU(), {'conv5_3'}, {'relu5_3'});        
          
 % --------------------- DSN (Side output layers) --------------------------
 % DSN 2
 net.addLayer('score_dsn2', dagnn.Conv('size',[1,1,128,2]),...
-            {'conv2_2'}, {'score_dsn2'},{'score_dsn2_w', 'score_dsn2_b'});
+            {'relu2_2'}, {'score_dsn2'},{'score_dsn2_w', 'score_dsn2_b'});
 net.addLayer('deconv2', dagnn.ConvTranspose('size',[4,4,2,2],'upsample',2),...
             {'score_dsn2'}, {'score_dsn2_up'}, {'deconv2_w','deconv2_b'});
 net.addLayer('crop2', dagnn.Crop('crop',[35 35]),{'score_dsn2_up','input'},{'score_dsn2_up_crop'});       
@@ -446,7 +431,7 @@ net.addLayer('loss2', dagnn.ScaleLoss('scale',2),{'score_dsn2_up_crop','label'},
                   
 % DSN 3
 net.addLayer('score_dsn3', dagnn.Conv('size',[1,1,256,3]),...
-            {'conv3_3'}, {'score_dsn3'},{'score_dsn3_w', 'score_dsn3_b'});
+            {'relu3_3'}, {'score_dsn3'},{'score_dsn3_w', 'score_dsn3_b'});
 net.addLayer('deconv3', dagnn.ConvTranspose('size',[8,8,3,3],'upsample',4),...
             {'score_dsn3'}, {'score_dsn3_up'}, {'deconv3_w','deconv3_b'});
 net.addLayer('crop3', dagnn.Crop('crop',[35 35]),{'score_dsn3_up','input'},{'score_dsn3_up_crop'});       
@@ -454,7 +439,7 @@ net.addLayer('loss3', dagnn.ScaleLoss('scale',3),{'score_dsn3_up_crop','label'},
                   
 % DSN 4
 net.addLayer('score_dsn4', dagnn.Conv('size',[1,1,512,4]),...
-            {'conv4_3'}, {'score_dsn4'},{'score_dsn4_w', 'score_dsn4_b'});
+            {'relu4_3'}, {'score_dsn4'},{'score_dsn4_w', 'score_dsn4_b'});
 net.addLayer('deconv4', dagnn.ConvTranspose('size',[16,16,4,4],'upsample',8),...
             {'score_dsn4'}, {'score_dsn4_up'}, {'deconv4_w','deconv4_b'});
 net.addLayer('crop4', dagnn.Crop('crop',[35 35]),{'score_dsn4_up','input'},{'score_dsn4_up_crop'});       
@@ -462,7 +447,7 @@ net.addLayer('loss4', dagnn.ScaleLoss('scale',4),{'score_dsn4_up_crop','label'},
          
 % DSN 5
 net.addLayer('score_dsn5', dagnn.Conv('size',[1,1,512,5]),...
-            {'conv5_3'}, {'score_dsn5'},{'score_dsn5_w', 'score_dsn5_b'});
+            {'relu5_3'}, {'score_dsn5'},{'score_dsn5_w', 'score_dsn5_b'});
 net.addLayer('deconv5', dagnn.ConvTranspose('size',[32,32,5,5],'upsample',16),...
             {'score_dsn5'}, {'score_dsn5_up'}, {'deconv5_w','deconv5_b'});
 net.addLayer('crop5', dagnn.Crop('crop',[35 35]),{'score_dsn5_up','input'},{'score_dsn5_up_crop'});       
@@ -504,6 +489,7 @@ net.addLayer('cat4_score', dagnn.Conv('size',[1,1,1,1]), ...    % scale 4
 net.addLayer('concat_fuse', dagnn.Concat(), ...
             {'concat0_score','concat1_score','concat2_score',...
              'concat3_score','concat4_score'}, {'concat_fuse'});
+net.addLayer('softmax',dagnn.SoftMax(),{'concat_fuse'},{'spb'});         
 
 % --------------------- LOSS on fused scores ------------------------------
 net.addLayer('loss_fuse',dagnn.ScaleLoss('scale',5),{'concat_fuse','label'},{'loss_fuse'});

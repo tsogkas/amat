@@ -79,7 +79,7 @@ catch
 end
 
 % Refine dataset and compute statistics
-disp('Refining dataset')
+disp('Refining dataset...')
 for set = {'train','val','test'}
     if ~isfield(BMAX500, set{1}), continue; end
     matgt = BMAX500.(set{1}); 
