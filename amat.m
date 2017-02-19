@@ -2,7 +2,7 @@ function mat = amat(img,scales,ws,vistop)
 
 if nargin < 2, scales = 40; end
 if nargin < 3, ws = 1e-3; end
-if nargin < 4, vistop = false; end
+if nargin < 4, vistop = 0; end
 if isscalar(scales)
     R = scales;
     scales = 1:R;
@@ -12,40 +12,38 @@ else
     error('''scales'' must be a vector of disk radii or a scalar (#scales)')
 end
 
-% Construct disk-shaped filters
-filters = cell(1,R); for r=1:R, filters{r} = double(disk(scales(r))); end
-
 % Convert to CIE La*b* color space
 img = rgb2labNormalized(im2double(img));
 
 % Compute encodings f(D_I(x,y,r)) at every point (mean values in this case)
-enc = imageEncoding(img,filters,'average'); 
+enc = imageEncoding(img,scales);
 
 % Compute disk cost based on image reconstruction heuristic
-diskCost = reconstructionCost(img,enc,filters,scales);
+% profile on;
+diskCost = reconstructionCost(enc,scales);
 
 % Compute reedy approximation of the weighted set cover for the AMAT.
-profile on;
-mat = setCover(img,enc,diskCost,filters,scales,ws,vistop);
-profile off; profile viewer;
+mat = setCover(img,enc,diskCost,scales,ws,vistop);
+% profile off; profile viewer;
 end
 
 % -------------------------------------------------------------------------
-function mat = setCover(img,enc,diskCost,filters,scales,ws,vistop)
+function mat = setCover(img,enc,diskCost,scales,ws,vistop)
 % -------------------------------------------------------------------------
 % Greedy approximation of the weighted set cover problem.
 % -------------------------------------------------------------------------
-% Disk cost: refers to the cost contributed to the total absolute cost of 
-% placing the disk in the image.
-% -------------------------------------------------------------------------
-% Disk cost effective: refers to the "normalized" cost of the disk, divided
-% by the number of *new* pixels it covers when it is added in the solution.
-% -------------------------------------------------------------------------
-% numNewPixelsCovered: number of NEW pixels that would be covered by each
-% disk if it were to be added in the solution. This number can be easily 
-% computed using convolutions, while taking into account the fact that 
-% some disks exceed image boundaries.
-% -------------------------------------------------------------------------
+% - Disk cost: cost incurred by selecting ena r-disk, centered at (i,j).
+% - numNewPixelsCovered: number of NEW pixels covered by a selected disk.
+% - Cost per pixel: diskCost / numNewPixelsCovered.
+% - Disk cost effective: adjusted normalized cost: costPerPixel + scaleTerm
+%       where scaleTerm is a term that favors selecting disks of larger
+%       radii. Such a term is necessary, to resolve selection of disks in
+%       the case where diskCost is zero for more than on radii.
+% 
+% TODO: is there a way to first sort scores and then pick the next one in
+%       queue, to avoid min(diskCostEffective(:)) in each iteration?
+% TODO: check why numNewPixelsCovered and nnz(newPixelsCovered) are not
+%       always equal.
 
 % Initializations
 [H,W,C,R]          = size(enc);
@@ -63,6 +61,7 @@ mat.covered(end,[1,end]) = true;
 mat.ws = ws; % weight for scale-dependent cost term.
 
 % Compute how many pixels are covered be each r-disk.
+filters = cell(1,R); for r=1:R, filters{r} = double(disk(scales(r))); end
 numNewPixelsCovered = ones(H,W,R);
 for r=1:R
     numNewPixelsCovered(:,:,r) = ...
@@ -70,12 +69,12 @@ for r=1:R
 end
 
 % Add scale-dependent cost term to favor the selection of larger disks.
-effectiveCost = @(x,y) bsxfun(@plus, x./y, reshape(ws./scales,1,1,[])); 
-diskCostEffective = effectiveCost(diskCost,numNewPixelsCovered);
+costPerPixel = diskCost ./ numNewPixelsCovered;
+diskCostEffective = bsxfun(@plus, costPerPixel, reshape(ws./scales,1,1,[]));
 
 [x,y] = meshgrid(1:W,1:H);
-while ~all(mat.covered(:))
-% for i=1:1000
+% while ~all(mat.covered(:))
+for i=1:1000
     % Find the most cost-effective disk at the current iteration
     [minCost, indMin] = min(diskCostEffective(:));
     if isinf(minCost), break; end
@@ -85,27 +84,41 @@ while ~all(mat.covered(:))
     D = distFromCenterSquared <= scales(rc)^2;   % points covered by the selected disk
     newPixelsCovered  = D & ~mat.covered;        % NEW pixels that are covered by D
     
-    % Update MAT
+    % Update MAT 
     mat = updateMAT(mat);
     if ~any(newPixelsCovered(:)), break; end
     
-    % Update disk costs
-    [diskCost,numNewPixelsCovered] = ...
-        updateDiskCosts(diskCost,filters,numNewPixelsCovered,newPixelsCovered);
-    
-    % diskCost for disks that have been completely covered (e.g. the 
-    % currently selected disk) will be set to inf or nan, because of the
-    % division with numNewPixelsCovered which will be 0 for those disks.
-    diskCostEffective = effectiveCost(diskCost,numNewPixelsCovered);
-    diskCostEffective(numNewPixelsCovered == 0) = inf;
+    % Update costs 
+    [yy,xx] = find(newPixelsCovered);
+    xmin = min(xx); xmax = max(xx);
+    ymin = min(yy); ymax = max(yy);
+    newPixelsCovered = double(newPixelsCovered);
+    for r=1:R
+        scale = scales(r);
+        x1 = max(xmin-scale,1); y1 = max(ymin-scale,1);
+        x2 = min(xmax+scale,W); y2 = min(ymax+scale,H);
+        % Find how many of the newPixelsCovered are covered by other disks.
+        numPixelsSubtracted = ...
+            conv2(newPixelsCovered(y1:y2,x1:x2),filters{r},'same');
+        % and subtract the respective counts from those disks.
+        numNewPixelsCovered(y1:y2,x1:x2, r) = ...
+            numNewPixelsCovered(y1:y2,x1:x2, r) - numPixelsSubtracted;
+        % update diskCost, costPerPixel, and diskCostEfficiency *only* for
+        % the locations that have been affected, for efficiency.
+        diskCost(y1:y2,x1:x2, r) = max(0, diskCost(y1:y2,x1:x2, r) - ...
+            numPixelsSubtracted .* costPerPixel(y1:y2,x1:x2, r));
+        costPerPixel(y1:y2,x1:x2, r) = diskCost(y1:y2,x1:x2, r) ./ ...
+            max(eps,numNewPixelsCovered(y1:y2,x1:x2, r)) + ... % avoid 0/0
+            inf*(numNewPixelsCovered(y1:y2,x1:x2, r) == 0);    % x/0 = inf
+        diskCostEffective(y1:y2,x1:x2, r) = ...
+            costPerPixel(y1:y2,x1:x2, r) + ws/scales(r);
+    end
     assert(allvec(numNewPixelsCovered(yc,xc, 1:rc)==0))
     
     if vistop, visualizeProgress(mat,diskCostEffective); end
     fprintf('%d new pixels covered, %d pixels remaining\n',...
         nnz(newPixelsCovered),nnz(~mat.covered))
 end
-
-% Visualize results
 mat.reconstruction = reshape(mat.reconstruction,H,W,C);
 mat.input = reshape(mat.input,H,W,C);
 mat.visualize = @()visualize(mat);
@@ -123,34 +136,6 @@ mat.depth(D) = mat.depth(D) + 1;
 mat.reconstruction(newPixelsCovered,:) = reconstructedDisk;
 mat.axis(yc,xc,:) = enc(yc,xc,:,rc);
 mat.radius(yc,xc) = scales(rc);
-end
-
-% -------------------------------------------------------------------------
-function [diskCost,numNewPixelsCovered,changed] = ...
-        updateDiskCosts(diskCost,filters,numNewPixelsCovered,newPixelsCovered)
-% -------------------------------------------------------------------------
-% Find how many of the newPixelsCovered are covered by other disks in
-% the image and subtract the respective counts from those disks.
-[yy,xx] = find(newPixelsCovered);
-xmin = min(xx); xmax = max(xx);
-ymin = min(yy); ymax = max(yy);
-newPixelsCovered = double(newPixelsCovered);
-costPerPixel = diskCost ./ numNewPixelsCovered;
-for r=1:R
-    scale = scales(r);
-    xxmin = max(xmin-scale,1); yymin = max(ymin-scale,1);
-    xxmax = min(xmax+scale,W); yymax = min(ymax+scale,H);
-    numPixelsSubtracted = ...
-        conv2(newPixelsCovered(yymin:yymax,xxmin:xxmax),filters{r},'same');
-    numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) = ...
-        numNewPixelsCovered(yymin:yymax,xxmin:xxmax, r) - numPixelsSubtracted;
-    diskCost(yymin:yymax,xxmin:xxmax, r) = ...
-        diskCost(yymin:yymax,xxmin:xxmax, r) - ...
-        numPixelsSubtracted .* costPerPixel(yymin:yymax,xxmin:xxmax, r);
-end
-% Some pixels are assigned NaN values because of the inf-inf subtraction 
-% and since max(0,NaN) = 0, we have to reset them explicitly to inf.
-diskCost(isnan(diskCost)) = inf;
 end
 
 % -------------------------------------------------------------------------
@@ -185,7 +170,7 @@ end
 
 
 % -------------------------------------------------------------------------
-function [cost, numDisksCovered] = reconstructionCost(img,enc,filters,scales)
+function cost = reconstructionCost(enc,scales)
 % -------------------------------------------------------------------------
 % img: HxWxC input image (in the Lab color space). 
 % enc: HxWxCxR appearance encodings for all r-disks (mean RGB values by default).
@@ -201,20 +186,8 @@ function [cost, numDisksCovered] = reconstructionCost(img,enc,filters,scales)
 % 
 % Terminology: an r-disk is a disk of radius = r.
 
-
-[H,W,C] = size(img); R = numel(scales);
-
-% Precompute sums of I.^2 and I within r-disks for all r (needed later).
-img2 = img.^2; enc2 = enc.^2;
-sumI2 = zeros(H,W,C,R);
-for c=1:C
-    for r=1:R
-        sumI2(:,:,c,r) = conv2(img2(:,:,c),filters{r}/nnz(filters{r}),'same');
-    end
-end
-
-
 % Create grid of relative positions of disk centers for all scales. 
+[H,W,C,R] = size(enc);
 Rmax = scales(end); [x,y] = meshgrid(-Rmax:Rmax,-Rmax:Rmax);
 
 % cd is a HxWxR logical array, composed of 2D binary masks. 
@@ -226,27 +199,70 @@ Rmax = scales(end); [x,y] = meshgrid(-Rmax:Rmax,-Rmax:Rmax);
 % cd(:,:,k).
 % TODO: Should I add the scales from scales(1):-1:0 too?
 cd = bsxfun(@le, x.^2+y.^2, reshape([scales(end-1:-1:1) scales(1)-1].^2, 1,1,[]));
+enc2  = enc.^2;
+encx2 = 2*enc;
+cost = zeros(H,W,C,R);
+for c=1:C
+    for r=1:R
+        cdsubset = cd(:,:,end-r+1:end);
+        % for a given r-disk, consider all contained disks and accumulate
+        % M_R = sum(I_R)/D_R; M_ri = sum(I_ri)/R_ri;
+        % Cost = sum((M_R-M_ri)^2) for all enclosed ri-disks.
+        % Cost = sum( M_R^2 + M_ri^2 - 2*M_R*M_ri ) = ...
+        % D_R*enc2 + conv2(enc2) + encx2 .* conv2(enc)
+        encx2t = encx2(:,:,c,r);
+        for i=1:size(cdsubset,3)
+            D = cdsubset(:,:,i); D = double(cropImageBox(D,mask2bbox(D)));
+            cost(:,:,c,r) = cost(:,:,c,r) + ...
+                conv2(enc2(:,:,c,i), D,'same') - ...
+                conv2(enc(:,:,c,i),  D,'same').* encx2t;
+        end
+        cost(:,:,c,r) = cost(:,:,c,r) + enc2(:,:,c,r) * nnz(cdsubset);
+    end
+end
+tmp = cost;
+
+filters = cell(1,R); 
+for r=2:R, filters{r} = double(circle(scales(r-1))); end
+filters{1} = disk(scales(1)-1);
+enccsum = cumsum(enc,4);
+enc2csum= cumsum(enc2,4);
+for c=1:C
+    for r=1:R
+    end
+end
 
 % Accumulate the mean squared errors of all contained r-disks.
 cost = zeros(H,W,C,R);
-numDisksCovered = zeros(H,W,R);
-for r=1:R
-    cdsubset = cd(:,:,end-r+1:end);
-    % for a given r-disk, consider all contained disks and accumulate
-    for i=1:size(cdsubset,3)
-        D = cdsubset(:,:,i); D = double(cropImageBox(D,mask2bbox(D)));
-        for c=1:C
-            cost(:,:,c,r) = cost(:,:,c,r) + ...
-                conv2(sumI2(:,:,c,i),  D,'same') + enc2(:,:,c,r)*nnz(D) - ...
-                conv2(enc(:,:,c,i), D,'same') .* enc(:,:,c,r) .* 2;
+for c=1:C
+    for r=1:R
+        cdsubset = cd(:,:,end-r+1:end);
+        % for a given r-disk, consider all contained disks and accumulate
+        % M_R = sum(I_R)/D_R; M_ri = sum(I_ri)/R_ri;
+        % Cost = sum((M_R-M_ri)^2) for all enclosed ri-disks.
+        sumMri = zeros(H,W);
+        for i=1:size(cdsubset,3)
+            D = cdsubset(:,:,i); D = double(cropImageBox(D,mask2bbox(D)));
+            sumMri = sumMri + conv2(enc(:,:,c,i),  D,'same');
         end
-        numDisksCovered(:,:,r) = numDisksCovered(:,:,r) + nnz(D);
+        cost(:,:,c,r) = (enc(:,:,c,r)*nnz(cdsubset) - sumMri).^2;
     end
-    % Fix boundary conditions
-    cost([1:r, end-r+1:end],:,:,r) = inf;
-    cost(:,[1:r, end-r+1:end],:,r) = inf;
 end
-cost = max(0,cost); % account for numerical errors (costs should always be positive)
+
+
+% Fix boundary conditions. Setting r-borders to a very big cost helps us 
+% avoid selecting disks that cross the image boundaries.
+% We do not use Inf to avoid complications in the greedy set cover 
+% algorithm, caused by inf-inf subtractions and inf/inf divisions.
+% Also, keep in mind that max(0,NaN) = 0.
+BIG = 1e30;
+for r=1:R    
+    cost([1:r, end-r+1:end],:,:,r) = BIG;
+    cost(:,[1:r, end-r+1:end],:,r) = BIG;
+end
+
+% Sometimes due to numerical errors, cost are slightly negative
+cost = max(0,cost); 
 
 % Combine costs from different channels
 if C > 1
@@ -254,4 +270,23 @@ if C > 1
     cost = cost(:,:,1,:)*wc(1) + cost(:,:,2,:)*wc(2) + cost(:,:,3,:)*wc(3);
     cost = squeeze(cost);                 
 end
+end
+
+% -------------------------------------------------------------------------
+function enc = imageEncoding(img,scales)
+% -------------------------------------------------------------------------
+% Fast version of imageEncoding, using convolutions with circles + cumsum
+% instead of convolutions with disks. 
+[H,W,C] = size(img); R = numel(scales);
+filters = cell(1,R); for r=1:R, filters{r} = double(circle(scales(r))); end
+filters{1}(2,2) = 1; % if we use circle filters, center pixel is left out
+enc = zeros(H,W,C,R);
+for c=1:C
+    for r=1:R
+        enc(:,:,c,r) = conv2(img(:,:,c),filters{r},'same');
+    end
+end
+enc = cumsum(enc,4);
+areas = cumsum(cellfun(@nnz,filters));
+enc = bsxfun(@rdivide, enc, reshape(areas,1,1,1,[]));
 end
