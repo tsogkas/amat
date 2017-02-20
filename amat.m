@@ -201,72 +201,7 @@ function cost = reconstructionCost(enc,scales)
 % contained disk of radius r' < r (uniformity criterion).
 % 
 % Terminology: an r-disk is a disk of radius = r.
-
-[H,W,C,R] = size(enc);
-% costc = costConvCircles(enc,scales);
-cost = costConvCircles(enc,scales);
-
-% Fix boundary conditions. Setting r-borders to a very big cost helps us 
-% avoid selecting disks that cross the image boundaries.
-% We do not use Inf to avoid complications in the greedy set cover 
-% algorithm, caused by inf-inf subtractions and inf/inf divisions.
-% Also, keep in mind that max(0,NaN) = 0.
-BIG = 1e30;
-for r=1:R    
-    cost([1:r, end-r+1:end],:,:,r) = BIG;
-    cost(:,[1:r, end-r+1:end],:,r) = BIG;
-end
-
-% Sometimes due to numerical errors, cost are slightly negative
-cost = max(0,cost); 
-
-% Combine costs from different channels
-if C > 1
-    wc = [0.5,0.25,0.25]; % weights for luminance and color channels
-    cost = cost(:,:,1,:)*wc(1) + cost(:,:,2,:)*wc(2) + cost(:,:,3,:)*wc(3);
-    cost = squeeze(cost);                 
-end
-end
-
-
-function cost = costConvDisks(enc,scales)
-% Create grid of relative positions of disk centers for all scales. 
-[H,W,C,R] = size(enc);
-Rmax = scales(end); [x,y] = meshgrid(-Rmax:Rmax,-Rmax:Rmax);
-
-% cd is a HxWxR logical array, composed of 2D binary masks. 
-% cd(i,j,k) is true iff a "scales(end-1+k)-disk", centered at (i,j)
-% is *fully contained* within a "scales(end-1+n)-disk", centered at (0,0),
-% where n > k.
-% In other words, each nonzero point in cd(:,:,k+1:end) corresponds to a
-% different disk, contained in the disk represented by the binary mask in
-% cd(:,:,k).
-% TODO: Should I add the scales from scales(1):-1:0 too?
-cd = bsxfun(@le, x.^2+y.^2, reshape([scales(end-1:-1:1) scales(1)-1].^2, 1,1,[]));
-enc2  = enc.^2;
-encx2 = 2*enc;
-cost = zeros(H,W,C,R);
-for c=1:C
-    for r=1:R
-        cdsubset = cd(:,:,end-r+1:end);
-        % for a given r-disk, consider all contained disks and accumulate
-        % M_R = sum(I_R)/D_R; M_ri = sum(I_ri)/R_ri;
-        % Cost = sum((M_R-M_ri)^2) for all enclosed ri-disks.
-        % Cost = sum( M_R^2 + M_ri^2 - 2*M_R*M_ri ) = ...
-        % D_R*enc2 + conv2(enc2) + encx2 .* conv2(enc)
-        encx2t = encx2(:,:,c,r);
-        for i=1:size(cdsubset,3)
-            D = cdsubset(:,:,i); D = double(cropImageBox(D,mask2bbox(D)));
-            cost(:,:,c,r) = cost(:,:,c,r) + ...
-                conv2(enc2(:,:,c,i), D,'same') - ...
-                conv2(enc(:,:,c,i),  D,'same').* encx2t;
-        end
-        cost(:,:,c,r) = cost(:,:,c,r) + enc2(:,:,c,r) * nnz(cdsubset);
-    end
-end
-end
-
-function cost = costConvCircles(enc,scales)
+% 
 % The heuristic we use sums all square errors between the encoding of an 
 % r-disk centered at a point (i,j) and the encodings of all FULLY CONTAINED
 % disks. Written in a simplified mathematical form, for a given r_k-disk:
@@ -276,6 +211,7 @@ function cost = costConvCircles(enc,scales)
 % D_rk*enc2 + conv2(enc2) + 2 .* enc .* conv2(enc)
 % Given an r-disk, filters(r-i+1) is a mask that marks the centers of all
 % contained i-disks.
+
 [H,W,C,R]  = size(enc);
 filters    = cell(1,R); 
 filters{1} = double(disk(scales(1)-1));
@@ -298,5 +234,26 @@ for c=1:C
         end
         cost(:,:,c,r) = enc2(:,:,c,r)*nnzcd(r) + sumMri2 - 2*enc(:,:,c,r).*sumMri;
     end
+end
+
+% Fix boundary conditions. Setting r-borders to a very big cost helps us 
+% avoid selecting disks that cross the image boundaries.
+% We do not use Inf to avoid complications in the greedy set cover 
+% algorithm, caused by inf-inf subtractions and inf/inf divisions.
+% Also, keep in mind that max(0,NaN) = 0.
+BIG = 1e30;
+for r=1:R    
+    cost([1:r, end-r+1:end],:,:,r) = BIG;
+    cost(:,[1:r, end-r+1:end],:,r) = BIG;
+end
+
+% Sometimes due to numerical errors, cost are slightly negative
+cost = max(0,cost); 
+
+% Combine costs from different channels
+if C > 1
+    wc = [0.5,0.25,0.25]; % weights for luminance and color channels
+    cost = cost(:,:,1,:)*wc(1) + cost(:,:,2,:)*wc(2) + cost(:,:,3,:)*wc(3);
+    cost = squeeze(cost);                 
 end
 end
