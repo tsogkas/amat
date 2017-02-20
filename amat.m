@@ -19,12 +19,12 @@ img = rgb2labNormalized(im2double(img));
 enc = imageEncoding(img,scales);
 
 % Compute disk cost based on image reconstruction heuristic
-% profile on;
+profile on;
 diskCost = reconstructionCost(enc,scales);
 
 % Compute reedy approximation of the weighted set cover for the AMAT.
 mat = setCover(img,enc,diskCost,scales,ws,vistop);
-% profile off; profile viewer;
+profile off; profile viewer;
 end
 
 % -------------------------------------------------------------------------
@@ -42,8 +42,6 @@ function mat = setCover(img,enc,diskCost,scales,ws,vistop)
 % 
 % TODO: is there a way to first sort scores and then pick the next one in
 %       queue, to avoid min(diskCostEffective(:)) in each iteration?
-% TODO: check why numNewPixelsCovered and nnz(newPixelsCovered) are not
-%       always equal.
 
 % Initializations
 [H,W,C,R]          = size(enc);
@@ -59,6 +57,7 @@ mat.covered        = false(H,W);
 mat.covered([1,end],1)   = true;
 mat.covered(end,[1,end]) = true;
 mat.ws = ws; % weight for scale-dependent cost term.
+BIG = 1e30;
 
 % Compute how many pixels are covered be each r-disk.
 filters = cell(1,R); for r=1:R, filters{r} = double(disk(scales(r))); end
@@ -73,8 +72,8 @@ costPerPixel = diskCost ./ numNewPixelsCovered;
 diskCostEffective = bsxfun(@plus, costPerPixel, reshape(ws./scales,1,1,[]));
 
 [x,y] = meshgrid(1:W,1:H);
-% while ~all(mat.covered(:))
-for i=1:1000
+while ~all(mat.covered(:))
+% for i=1:1000
     % Find the most cost-effective disk at the current iteration
     [minCost, indMin] = min(diskCostEffective(:));
     if isinf(minCost), break; end
@@ -105,11 +104,11 @@ for i=1:1000
             numNewPixelsCovered(y1:y2,x1:x2, r) - numPixelsSubtracted;
         % update diskCost, costPerPixel, and diskCostEfficiency *only* for
         % the locations that have been affected, for efficiency.
-        diskCost(y1:y2,x1:x2, r) = max(0, diskCost(y1:y2,x1:x2, r) - ...
-            numPixelsSubtracted .* costPerPixel(y1:y2,x1:x2, r));
+        diskCost(y1:y2,x1:x2, r) = diskCost(y1:y2,x1:x2, r) - ...
+            numPixelsSubtracted .* costPerPixel(y1:y2,x1:x2, r);
         costPerPixel(y1:y2,x1:x2, r) = diskCost(y1:y2,x1:x2, r) ./ ...
             max(eps,numNewPixelsCovered(y1:y2,x1:x2, r)) + ... % avoid 0/0
-            inf*(numNewPixelsCovered(y1:y2,x1:x2, r) == 0);    % x/0 = inf
+            BIG*(numNewPixelsCovered(y1:y2,x1:x2, r) == 0);    % x/0 = inf
         diskCostEffective(y1:y2,x1:x2, r) = ...
             costPerPixel(y1:y2,x1:x2, r) + ws/scales(r);
     end
@@ -127,11 +126,9 @@ mat.visualize = @()visualize(mat);
 function mat = updateMAT(mat)
 % -------------------------------------------------------------------------
 reconstructedDisk = ...
-    repmat(reshape(enc(yc,xc,:,rc),[1 C]), [nnz(newPixelsCovered),1]);
-mat.se(newPixelsCovered) = sum(( ...
-    mat.reconstruction(newPixelsCovered,:) - reconstructedDisk ).^2,2);
-mat.price(newPixelsCovered) = minCost / nnz(newPixelsCovered);
-mat.covered(D) = true;
+    repmat(reshape(enc(yc,xc,:,rc),[1 C]), [numNewPixelsCovered(yc,xc,rc),1]);
+mat.price(newPixelsCovered) = minCost / numNewPixelsCovered(yc,xc,rc);
+mat.covered(newPixelsCovered) = true;
 mat.depth(D) = mat.depth(D) + 1;
 mat.reconstruction(newPixelsCovered,:) = reconstructedDisk;
 mat.axis(yc,xc,:) = enc(yc,xc,:,rc);
@@ -170,6 +167,25 @@ end
 
 
 % -------------------------------------------------------------------------
+function enc = imageEncoding(img,scales)
+% -------------------------------------------------------------------------
+% Fast version of imageEncoding, using convolutions with circles + cumsum
+% instead of convolutions with disks. 
+[H,W,C] = size(img); R = numel(scales);
+filters = cell(1,R); for r=1:R, filters{r} = double(circle(scales(r))); end
+filters{1}(2,2) = 1; % if we use circle filters, center pixel is left out
+enc = zeros(H,W,C,R);
+for c=1:C
+    for r=1:R
+        enc(:,:,c,r) = conv2(img(:,:,c),filters{r},'same');
+    end
+end
+enc = cumsum(enc,4);
+areas = cumsum(cellfun(@nnz,filters));
+enc = bsxfun(@rdivide, enc, reshape(areas,1,1,1,[]));
+end
+
+% -------------------------------------------------------------------------
 function cost = reconstructionCost(enc,scales)
 % -------------------------------------------------------------------------
 % img: HxWxC input image (in the Lab color space). 
@@ -186,6 +202,34 @@ function cost = reconstructionCost(enc,scales)
 % 
 % Terminology: an r-disk is a disk of radius = r.
 
+[H,W,C,R] = size(enc);
+% costc = costConvCircles(enc,scales);
+cost = costConvCircles(enc,scales);
+
+% Fix boundary conditions. Setting r-borders to a very big cost helps us 
+% avoid selecting disks that cross the image boundaries.
+% We do not use Inf to avoid complications in the greedy set cover 
+% algorithm, caused by inf-inf subtractions and inf/inf divisions.
+% Also, keep in mind that max(0,NaN) = 0.
+BIG = 1e30;
+for r=1:R    
+    cost([1:r, end-r+1:end],:,:,r) = BIG;
+    cost(:,[1:r, end-r+1:end],:,r) = BIG;
+end
+
+% Sometimes due to numerical errors, cost are slightly negative
+cost = max(0,cost); 
+
+% Combine costs from different channels
+if C > 1
+    wc = [0.5,0.25,0.25]; % weights for luminance and color channels
+    cost = cost(:,:,1,:)*wc(1) + cost(:,:,2,:)*wc(2) + cost(:,:,3,:)*wc(3);
+    cost = squeeze(cost);                 
+end
+end
+
+
+function cost = costConvDisks(enc,scales)
 % Create grid of relative positions of disk centers for all scales. 
 [H,W,C,R] = size(enc);
 Rmax = scales(end); [x,y] = meshgrid(-Rmax:Rmax,-Rmax:Rmax);
@@ -220,73 +264,39 @@ for c=1:C
         cost(:,:,c,r) = cost(:,:,c,r) + enc2(:,:,c,r) * nnz(cdsubset);
     end
 end
-tmp = cost;
-
-filters = cell(1,R); 
-for r=2:R, filters{r} = double(circle(scales(r-1))); end
-filters{1} = disk(scales(1)-1);
-enccsum = cumsum(enc,4);
-enc2csum= cumsum(enc2,4);
-for c=1:C
-    for r=1:R
-    end
 end
 
-% Accumulate the mean squared errors of all contained r-disks.
+function cost = costConvCircles(enc,scales)
+% The heuristic we use sums all square errors between the encoding of an 
+% r-disk centered at a point (i,j) and the encodings of all FULLY CONTAINED
+% disks. Written in a simplified mathematical form, for a given r_k-disk:
+% M_rk = sum_i(I_rk)/D_rk; M_ri = sum_i(I_ri)/R_ri;
+% Cost = sum((M_rk-M_ri)^2) for all enclosed ri-disks.
+% Cost = sum( M_rk^2 + M_ri^2 - 2*M_rk*M_ri ) = ...
+% D_rk*enc2 + conv2(enc2) + 2 .* enc .* conv2(enc)
+% Given an r-disk, filters(r-i+1) is a mask that marks the centers of all
+% contained i-disks.
+[H,W,C,R]  = size(enc);
+filters    = cell(1,R); 
+filters{1} = double(disk(scales(1)-1));
+for r=2:R, filters{r} = double(circle(scales(r-1))); end
+% Precompute necessary quantitities. We use circular filters applied on
+% cumulative sums instead of disk filters, for efficiency. 
+enc2     = enc.^2;
+enccsum  = cumsum(enc,4);
+enc2csum = cumsum(enc2,4);
+nnzcd    = cumsum(cumsum(cellfun(@nnz, filters)));
+
 cost = zeros(H,W,C,R);
 for c=1:C
     for r=1:R
-        cdsubset = cd(:,:,end-r+1:end);
-        % for a given r-disk, consider all contained disks and accumulate
-        % M_R = sum(I_R)/D_R; M_ri = sum(I_ri)/R_ri;
-        % Cost = sum((M_R-M_ri)^2) for all enclosed ri-disks.
-        sumMri = zeros(H,W);
-        for i=1:size(cdsubset,3)
-            D = cdsubset(:,:,i); D = double(cropImageBox(D,mask2bbox(D)));
-            sumMri = sumMri + conv2(enc(:,:,c,i),  D,'same');
+        sumMri  = zeros(H,W);
+        sumMri2 = zeros(H,W);
+        for i=1:r
+            sumMri  = sumMri  + conv2(enccsum(:,:,c,i), filters{r-i+1},'same');
+            sumMri2 = sumMri2 + conv2(enc2csum(:,:,c,i),filters{r-i+1},'same');
         end
-        cost(:,:,c,r) = (enc(:,:,c,r)*nnz(cdsubset) - sumMri).^2;
+        cost(:,:,c,r) = enc2(:,:,c,r)*nnzcd(r) + sumMri2 - 2*enc(:,:,c,r).*sumMri;
     end
 end
-
-
-% Fix boundary conditions. Setting r-borders to a very big cost helps us 
-% avoid selecting disks that cross the image boundaries.
-% We do not use Inf to avoid complications in the greedy set cover 
-% algorithm, caused by inf-inf subtractions and inf/inf divisions.
-% Also, keep in mind that max(0,NaN) = 0.
-BIG = 1e30;
-for r=1:R    
-    cost([1:r, end-r+1:end],:,:,r) = BIG;
-    cost(:,[1:r, end-r+1:end],:,r) = BIG;
-end
-
-% Sometimes due to numerical errors, cost are slightly negative
-cost = max(0,cost); 
-
-% Combine costs from different channels
-if C > 1
-    wc = [0.5,0.25,0.25]; % weights for luminance and color channels
-    cost = cost(:,:,1,:)*wc(1) + cost(:,:,2,:)*wc(2) + cost(:,:,3,:)*wc(3);
-    cost = squeeze(cost);                 
-end
-end
-
-% -------------------------------------------------------------------------
-function enc = imageEncoding(img,scales)
-% -------------------------------------------------------------------------
-% Fast version of imageEncoding, using convolutions with circles + cumsum
-% instead of convolutions with disks. 
-[H,W,C] = size(img); R = numel(scales);
-filters = cell(1,R); for r=1:R, filters{r} = double(circle(scales(r))); end
-filters{1}(2,2) = 1; % if we use circle filters, center pixel is left out
-enc = zeros(H,W,C,R);
-for c=1:C
-    for r=1:R
-        enc(:,:,c,r) = conv2(img(:,:,c),filters{r},'same');
-    end
-end
-enc = cumsum(enc,4);
-areas = cumsum(cellfun(@nnz,filters));
-enc = bsxfun(@rdivide, enc, reshape(areas,1,1,1,[]));
 end
