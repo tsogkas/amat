@@ -35,9 +35,9 @@ for m=1:numel(models)
         otherwise % load MIL or CNN model
             models{m} = loadModelFromMatFile(models{m},paths);
     end
-    models.stats.mse = zeros(opts.nImages, 4);
-    models.stats.psnr= zeros(opts.nImages, 4);
-    models.stats.ssim= zeros(opts.nImages, 4);
+    models.stats.mse = zeros(opts.nImages, 1);
+    models.stats.psnr= zeros(opts.nImages, 1);
+    models.stats.ssim= zeros(opts.nImages, 1);
 end
 
 % Evaluate models on test images and compute approximate reconstructions --
@@ -70,14 +70,7 @@ for i=1:opts.nImages
     progress(msg,i,opts.nImages,ticStart,1);
 end
 
-% Compute dataset-wide stats
 for m=1:numel(models)
-    [models{m}.stats.oidP,  models{m}.stats.oidR, ...
-     models{m}.stats.oidF,  models{m}.stats.oidT, ...
-     models{m}.stats.oisP,  models{m}.stats.oisR, ...
-     models{m}.stats.oisF,  models{m}.stats.AP] = ...
-        computeDatasetStats(models{m}.stats, opts);
-    % Create field with dataset-specific stats
     models{m}.(opts.dataset).(opts.set).stats = stats;
     models{m}.(opts.dataset).(opts.set).opts = opts;
     models{m} = rmfield(models{m},'stats');
@@ -109,7 +102,16 @@ scales = rfields(scales);
 function rec = reconstructionMIL(model,img)
 % -------------------------------------------------------------------------
 spb = spbMIL(img, 'featureSet',model.opts.featureSet,'w',model.w);
-spb = spb.thin;
+% Get binarized map, scales and thetas
+points = spb.thin > model.BMAX500.val.stats.odsT;
+scales = spb.scalesMap(points);
+thetas = spb.orientMap(points);
+rec = zeros(size(img,1),size(img,2));
+[y,x] = find(points);
+for i=1:nnz(points)
+    
+end
+
 
 % -------------------------------------------------------------------------
 function model = loadModelFromMatFile(model,paths)

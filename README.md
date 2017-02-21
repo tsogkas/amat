@@ -9,7 +9,6 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 
 ### TODO:
 ### HIGH PRIORITY ---------------------------------------------------------
-- add computation of ods,ois etc for methods with binary outputs (single threshold).
 - find a way to reconstruct images for MIL and deepskel methods.
 - finish testReconstruction().
 - figure out how to balance lambda, kappa (L0Smoothing) and ws (amat) parameters.
