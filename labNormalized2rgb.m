@@ -5,7 +5,7 @@ function imRGB = labNormalized2rgb(imLAB)
 %   imRGB = LABNORMALIZED2RGB(imLAB)
 % 
 % Stavros Tsogkas, <tsogkas@cs.toronto.edu>
-% Last update: November 2016 
+% Last update: February 2017
 
 imRGB = imLAB;
 if ~ismatrix(imRGB) % RGB image or image stack
@@ -18,6 +18,6 @@ if ~ismatrix(imRGB) % RGB image or image stack
     if verLessThan('matlab','R2014b')
         imRGB = applycform(imRGB, makecform('lab2srgb'));
     else
-        imRGB = rgb2lab(imRGB);
+        imRGB = lab2rgb(imRGB);
     end
 end

@@ -19,12 +19,12 @@ img = rgb2labNormalized(im2double(img));
 enc = imageEncoding(img,scales);
 
 % Compute disk cost based on image reconstruction heuristic
-profile on;
 diskCost = reconstructionCost(enc,scales);
 
 % Compute reedy approximation of the weighted set cover for the AMAT.
+% profile on;
 mat = setCover(img,enc,diskCost,scales,ws,vistop);
-profile off; profile viewer;
+% profile off; profile viewer;
 end
 
 % -------------------------------------------------------------------------
@@ -45,13 +45,13 @@ function mat = setCover(img,enc,diskCost,scales,ws,vistop)
 
 % Initializations
 [H,W,C,R]          = size(enc);
+zeroLabNormalized  = rgb2labNormalized(zeros(H,W,C));
 mat.input          = reshape(img, H*W, C);
-mat.reconstruction = reshape(mat.input, H*W, C);
-mat.axis           = zeros(H,W,C);
+mat.reconstruction = reshape(zeroLabNormalized,H*W,C);
+mat.axis           = zeroLabNormalized;
 mat.radius         = zeros(H,W);
 mat.depth          = zeros(H,W); % #disks points(x,y) is covered by
 mat.price          = zeros(H,W); % error contributed by each point
-mat.se             = zeros(H,W); % squared error at each point
 mat.covered        = false(H,W); 
 % Flag corners that are not accessible by our filter set
 mat.covered([1,end],1)   = true;
@@ -71,6 +71,9 @@ end
 costPerPixel = diskCost ./ numNewPixelsCovered;
 diskCostEffective = bsxfun(@plus, costPerPixel, reshape(ws./scales,1,1,[]));
 
+% Print remaining pixels to be covered in these points
+printBreakPoints = floor((4:-1:1).*(H*W/5));
+
 [x,y] = meshgrid(1:W,1:H);
 while ~all(mat.covered(:))
 % for i=1:1000
@@ -82,10 +85,10 @@ while ~all(mat.covered(:))
     distFromCenterSquared = (x-xc).^2 + (y-yc).^2;
     D = distFromCenterSquared <= scales(rc)^2;   % points covered by the selected disk
     newPixelsCovered  = D & ~mat.covered;        % NEW pixels that are covered by D
+    if ~any(newPixelsCovered(:)), break; end
     
     % Update MAT 
     mat = updateMAT(mat);
-    if ~any(newPixelsCovered(:)), break; end
     
     % Update costs 
     [yy,xx] = find(newPixelsCovered);
@@ -115,11 +118,14 @@ while ~all(mat.covered(:))
     assert(allvec(numNewPixelsCovered(yc,xc, 1:rc)==0))
     
     if vistop, visualizeProgress(mat,diskCostEffective); end
-    fprintf('%d new pixels covered, %d pixels remaining\n',...
-        nnz(newPixelsCovered),nnz(~mat.covered))
+    if ~isempty(printBreakPoints) && nnz(~mat.covered) < printBreakPoints(1)
+        disp([num2str(printBreakPoints(1)) ' pixels remaining'])
+        printBreakPoints(1) = [];
+    end
 end
-mat.reconstruction = reshape(mat.reconstruction,H,W,C);
-mat.input = reshape(mat.input,H,W,C);
+mat.reconstruction = labNormalized2rgb(reshape(mat.reconstruction,H,W,C));
+mat.input = labNormalized2rgb(reshape(mat.input,H,W,C));
+mat.axis  = labNormalized2rgb(mat.axis);
 mat.visualize = @()visualize(mat);
 
 % -------------------------------------------------------------------------
@@ -156,7 +162,6 @@ end
 % -------------------------------------------------------------------------
 function visualize(mat)
 % -------------------------------------------------------------------------
-figure; clf;
 subplot(221); imshow(mat.axis);             title('Medial axes');
 subplot(222); imshow(mat.radius,[]);        title('Radii');
 subplot(223); imshow(mat.input);            title('Original image');
