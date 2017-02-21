@@ -9,13 +9,12 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 
 ### TODO:
 ### HIGH PRIORITY ---------------------------------------------------------
-- fill in evaluation scripts so that I can start running experiments
-
+- add computation of ods,ois etc for methods with binary outputs (single threshold).
+- find a way to reconstruct images for MIL and deepskel methods.
+- finish testReconstruction().
+- figure out how to balance lambda, kappa (L0Smoothing) and ws (amat) parameters.
 
 ### low priority ----------------------------------------------------------
-- Maybe change rescoring scheme, or remove it entirely. Pay close attention 
-  to the quantity that is substracted: subtract the cost for the pixels that 
-  are covered from each disk.
 - Add an additional pre-processing step that accumulates consensus from neighboring 
     disks with similar histograms at similar radii and incorporate it in the total score 
     (perhaps in the hopes of avoiding rescoring in the main while loop?).
@@ -28,31 +27,17 @@ This code is released under the MIT License (refer to the LICENSE file for detai
     to the boundary are favored. We must explicitly favor the selection of disks
     whose centers are neighbors to the currently selected center.
 - Assign high cost to low-scale disks but handle them as special cases towards the end, to cover leftover pixels.
-- Use max(binDistance) when comparing two histograms for maximality error (and perhaps reconstruction error?).
-- Use a non-linear transformation on the chi2-distance.
 - Add constraint so the new disks cover more than a single pixel to speed up the greedy algo.
 - The uniformity/reconstruction error we are using right now is not an additive function of the total 
 	reconstruction (squared) error Sum(I-I')^2, so we cannot convincingly make the argument that 
 	we are optimizing wrt the reconstruction quality. We should analytically derive a relationship 
 	betweem the SE and the measure we are using right now (perhaps in the form of some upper bound?)
 	to sell our story better.
-- Compute histograms/mean-value disk features close to the image border by padding the image
-    with the color/brightness value that is "opposite" to the one exactly on the image border.
-- Maybe change the distribution used to draw negative samples, from uniform to one that favors 
-	disks of small and medium radii (because these appear more often?).    
 - In the case where you use the sketchification with L0 gradient smoothing, find a way to invert
 	the smoothed image to the original one (to compare reconstruction quality).	
 
 
-
 ### QUESTIONS
-- Should I compare histogram representations for the reconstruction error as well, or just for the maximality error?
-= Right now it seems that the new reconstructionCost is more suitable than just computing the rmse or chi2 distance, so NO.
-
-- Is the maximalityCost term (based e.g. in histogram differences) necessary or can we just use a ws/r term that assigns a fixed cost for each scale?
-= Using the new reconstructionCost computation (the one that takes into account 
-    similarity with all enclosed disks of smaller radii), maybe just the fixed cost term will work.
-
 - Should I distribute the cost of a disk over the number of its pixels before adding the maximality cost or after?
 = If the disk cost is updated when some of its pixels are covered, then the division should happen BEFORE
     adding the maximality cost. Otherwise, if we manage to assign a fixed cost to each disk once in the beginning
@@ -73,7 +58,7 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 - Image summarization and application in image retrieval, or image co-segmentation.
 
 
-### Low priority
+### Very low priority
 - Add mask shapes into a separate matlab class
 - Fill in missing histogram distance metrics in histogramDistance()
 - maybe squeeze cases with sum() and max() in histogramDistance()?

@@ -111,8 +111,6 @@ function rec = reconstructionMIL(model,img)
 spb = spbMIL(img, 'featureSet',model.opts.featureSet,'w',model.w);
 spb = spb.thin;
 
-
-
 % -------------------------------------------------------------------------
 function model = loadModelFromMatFile(model,paths)
 % -------------------------------------------------------------------------
