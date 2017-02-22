@@ -12,6 +12,8 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 - find a way to reconstruct images for MIL and deepskel methods.
 - finish testReconstruction().
 - figure out how to balance lambda, kappa (L0Smoothing) and ws (amat) parameters.
+- run experiments on boundary detection.
+- group medial points into branches.
 
 ### low priority ----------------------------------------------------------
 - Add an additional pre-processing step that accumulates consensus from neighboring 

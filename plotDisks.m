@@ -14,9 +14,10 @@ opts = parseVarargin(opts, varargin);
 if islogical(p)
     p = find(p);
     r = r(p);
+    pc = p;
 end
 
-if opts.sample <= 0 
+if opts.sample <= 0 || opts.sample > 1
     error('Sampling factor must be in (0,1]')
 elseif opts.sample < 1
     inds = randsample(numel(p), round(opts.sample * numel(p)));
@@ -34,6 +35,7 @@ viscircles([x(:),y(:)],r(:),...
             'Linewidth',0.5); 
 
 % Plot disk centers
+[y,x] = ind2sub([H,W], pc);
 hold on;
 plot(x(:),y(:),[opts.centerColor '.'],'Linewidth',opts.centerLineWidth);        
 hold off;
