@@ -1,9 +1,10 @@
 function testReconstruction(models,varargin)
 
 % Default testing options ------------------------------------------------
-opts = {'dataset',   'BSDS500',...
+opts = {'dataset',   'BMAX500',...
         'set',       'val',...   % 'val' or 'test'
         'visualize', false,...
+        'parpoolSize', feature('numcores')  % set to 0 to run serially
        };                        
 opts = parseVarargin(opts,varargin,'struct');
 
@@ -18,56 +19,17 @@ elseif ischar(opts.set) && strcmp(opts.set, 'test')
 elseif isstruct(opts.set)
     disp('Data provided in struct form')
     imageList = opts.set;
-    if strcmp(opts.dataset, 'BSDS500')
+    if strcmp(opts.dataset, 'BMAX500')
         if numel(imageList) == 100, opts.set = 'val'; else opts.set = 'test'; end
     end
 else
     error('set can be ''val'', ''test'', or a struct containing test data')
 end
-opts.nImages = numel(imageList);
 
 % Load models and initialize stats ----------------------------------------
 if ~iscell(models), models = {models}; end
 for m=1:numel(models)
-    switch lower(models{m})
-        case 'amat'
-            models{m} = struct('name',models{m});
-        otherwise % load MIL or CNN model
-            models{m} = loadModelFromMatFile(models{m},paths);
-    end
-    models.stats.mse = zeros(opts.nImages, 1);
-    models.stats.psnr= zeros(opts.nImages, 1);
-    models.stats.ssim= zeros(opts.nImages, 1);
-end
-
-% Evaluate models on test images and compute approximate reconstructions --
-ticStart = tic;
-for i=1:opts.nImages
-    if isfield(imageList(i), 'isdir')
-        % Load image and groundtruth data from disk
-        [~,iid,~] = fileparts(imageList(i).name);
-        img = im2double(imread(fullfile(imPath,imageList(i).name)));
-    else % Read image and groundtruth from struct
-        img = imageList(i).img;
-        iid = imageList(i).iid;
-    end
-    
-    clear features 
-    for m=1:numel(models)
-        switch models{m}.name
-            case 'amat'
-                rec = reconstructionAMAT(img);
-            case 'deepskel'
-                rec = reconstructionDeepSkel(models{m},img)
-            otherwise % MIL 
-                rec = reconstructionMIL(models{m},img);
-        end
-        [models{m}.stats.cntP(i,:), models{m}.stats.sumP(i,:),...
-         models{m}.stats.cntR(i,:), models{m}.stats.sumR(i,:),...
-         models{m}.stats.scores(i,:)] = computeImageStats(spb,gt,opts);
-    end
-    msg = sprintf('Testing on BSDS500 %s set\n', opts.set);
-    progress(msg,i,opts.nImages,ticStart,1);
+    models{m} = reconstructDataset(models{m},imageList,opts,paths);
 end
 
 for m=1:numel(models)
@@ -78,6 +40,52 @@ for m=1:numel(models)
     modelPath = fullfile(paths.sbpmil.models, models{m}.name);
     model = models{m}; save(modelPath, 'model')
 end
+
+% -------------------------------------------------------------------------
+function model = reconstructDataset(model,imageList,opts,paths)
+% -------------------------------------------------------------------------
+switch lower(model)
+    case 'amat'
+        model = struct('name',model);
+    otherwise % load MIL or CNN model
+        model = loadModelFromMatFile(model,paths);
+end
+
+% Initialize stats
+opts.nImages = numel(imageList);
+MSE  = zeros(opts.nImages,1);
+PSNR = zeros(opts.nImages,1);
+SSIM = zeros(opts.nImages,1);
+
+% Evaluate models on test images and compute approximate reconstructions --
+modelName = lower(model.name);
+ticStart = tic;
+% parfor (i=1:opts.nImages, opts.parpoolSize)
+for i=1:opts.nImages
+    if isfield(imageList(i), 'isdir')
+        img = imread(fullfile(opts.imPath,imageList(i).name));
+    else 
+        img = imageList(i).img;
+    end
+    
+    switch modelName
+        case 'amat'
+            rec = reconstructionAMAT(img);
+        case 'deepskel'
+            rec = reconstructionDeepSkel(model,img);
+        otherwise % MIL
+            rec = reconstructionMIL(model,img);
+    end
+    MSE(i)  = immse(rec,im2double(img));
+    PSNR(i) = psnr(rec,im2double(img));
+    SSIM(i) = ssim(rec, im2double(img));
+    msg = sprintf('Testing on %s %s set\n', opts.dataset, opts.set);
+    progress(msg,i,opts.nImages,ticStart,-1);
+end
+
+models.stats.mse  = MSE;
+models.stats.psnr = PSNR;
+models.stats.ssim = SSIM;
 
 % -------------------------------------------------------------------------
 function rec = reconstructionAMAT(img)
@@ -101,17 +109,35 @@ scales = rfields(scales);
 % -------------------------------------------------------------------------
 function rec = reconstructionMIL(model,img)
 % -------------------------------------------------------------------------
-spb = spbMIL(img, 'featureSet',model.opts.featureSet,'w',model.w);
+histf = computeHistogramFeatures(img);
+spb = spbMIL(img, 'featureSet',model.opts.featureSet,'w',model.w,'histFeatures',histf);
 % Get binarized map, scales and thetas
 points = spb.thin > model.BMAX500.val.stats.odsT;
 scales = spb.scalesMap(points);
 thetas = spb.orientMap(points);
+% Create rectangular filters at all scales and orientations
+filters = cell(numel(histf.thetas), numel(histf.scales));
+for s=1:numel(histf.scales)
+    sc = histf.scales(s);
+    rect = ones(2*sc+1, 2*histf.opts.ratio*sc+1);
+    for o=1:numel(histf.thetas)
+        filters{o,s} = imrotate(rect,rad2deg(histf.thetas(o)));
+    end
+end
+
+% Assemble means and create reconstruction
 rec = zeros(size(img,1),size(img,2));
 [y,x] = find(points);
 for i=1:nnz(points)
-    
+    yy = y(i); xx = x(i);
+    sc = scales(yy,xx);
+    th = thetas(yy,xx);
+    rf = filters{th,sc};
+    [h,w] = size(rf);
+    y1 = ceil((h-1)/2); y2 = yy+hs;
+    x1 = ceil((w-1)/2); x2 = xx+ws;
+    mval = sum(sum(img(y1:y2,x1:x2,:)))/(h*w);
 end
-
 
 % -------------------------------------------------------------------------
 function model = loadModelFromMatFile(model,paths)

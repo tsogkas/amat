@@ -32,8 +32,8 @@ catch
             'pts',[],'rad',[],'img',[],'seg',[],'bnd',[],'iid',[]), [1,nImages]);
         % For all images
         ticStart = tic;
-        for i=1:nImages
-%         parfor (i=1:nImages, opts.parpoolSize)
+%         for i=1:nImages
+        parfor (i=1:nImages, opts.parpoolSize)
             img = imread(fullfile(imDir,imFiles(i).name));
             gt  = load(fullfile(gtDir, gtFiles(i).name)); gt = gt.groundTruth;
             if numel(opts.resize) == 2 || opts.resize ~= 1
