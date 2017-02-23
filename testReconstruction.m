@@ -1,10 +1,10 @@
 function testReconstruction(models,varargin)
 
 % Default testing options ------------------------------------------------
-opts = {'dataset',   'BMAX500',...
-        'set',       'val',...   % 'val' or 'test'
-        'visualize', false,...
-        'parpoolSize', feature('numcores')  % set to 0 to run serially
+opts = {'dataset',      'BMAX500',...
+        'set',          'val',...   % 'val' or 'test'
+        'visualize',    false,...
+        'parpoolSize',  feature('numcores')  % set to 0 to run serially
        };                        
 opts = parseVarargin(opts,varargin,'struct');
 
@@ -32,12 +32,12 @@ for m=1:numel(models)
     models{m} = reconstructDataset(models{m},imageList,opts,paths);
 end
 
+% Store stats and save to disk
 for m=1:numel(models)
     models{m}.(opts.dataset).(opts.set).stats = stats;
     models{m}.(opts.dataset).(opts.set).opts = opts;
     models{m} = rmfield(models{m},'stats');
-    % And store results
-    modelPath = fullfile(paths.sbpmil.models, models{m}.name);
+    modelPath = fullfile(paths.amat.models, models{m}.name);
     model = models{m}; save(modelPath, 'model')
 end
 
@@ -83,15 +83,23 @@ for i=1:opts.nImages
     progress(msg,i,opts.nImages,ticStart,-1);
 end
 
-models.stats.mse  = MSE;
-models.stats.psnr = PSNR;
-models.stats.ssim = SSIM;
+% Store stats
+model.stats.mse  = MSE;
+model.stats.psnr = PSNR;
+model.stats.ssim = SSIM;
 
 % -------------------------------------------------------------------------
 function rec = reconstructionAMAT(img)
 % -------------------------------------------------------------------------
-mat = amat(img);
+img0 = img;
+lambda = 2e-2;
+kappa  = 1;
+[H,W,~] = size(img0);
+imgSub = imresize(img0,0.5,'bilinear');
+imgSmoothed = L0Smoothing(imgSub,lambda,kappa);
+mat = amat(imgSmoothed);
 rec = mat.reconstruction;
+rec = imresize(rec,[H,W],'bilinear');
 
 % -------------------------------------------------------------------------
 function rec = reconstructionDeepSkel(model,img)
@@ -111,10 +119,19 @@ function rec = reconstructionMIL(model,img)
 % -------------------------------------------------------------------------
 histf = computeHistogramFeatures(img);
 spb = spbMIL(img, 'featureSet',model.opts.featureSet,'w',model.w,'histFeatures',histf);
-% Get binarized map, scales and thetas
-points = spb.thin > model.BMAX500.val.stats.odsT;
-scales = spb.scalesMap(points);
-thetas = spb.orientMap(points);
+% Pad input image, scales and thetas by replicating image border. This is
+% necessary to compute mean value encoding correctly, and to avoid out of
+% bound errors. Pad = 2*max(scales) to account for rotated versions of filters.
+pad    = histf.scales(end) * histf.opts.ratio;
+imgPad = padarray(img,[pad,pad],'replicate','both');
+pb     = padarray(spb.thin,[pad,pad],0,'both');
+scales = padarray(spb.scalesMap,[pad,pad],1,'both');
+thetas = padarray(spb.orientMap,[pad,pad],1,'both');
+% Sort medial point locations, scales and orientations by their scores.
+[pbSorted, indSorted] = sort(pb(:),'descend');
+scales = scales(indSorted);
+thetas = thetas(indSorted);
+
 % Create rectangular filters at all scales and orientations
 filters = cell(numel(histf.thetas), numel(histf.scales));
 for s=1:numel(histf.scales)
@@ -125,18 +142,31 @@ for s=1:numel(histf.scales)
     end
 end
 
-% Assemble means and create reconstruction
-rec = zeros(size(img,1),size(img,2));
-[y,x] = find(points);
-for i=1:nnz(points)
+% Selecting medial points with the highest scores, compute mean values over
+% the respective filter support and stop when the entire image has been covered.
+[H,W,C] = size(imgPad);
+rec = zeros(H,W,C,'uint8');
+covered = false(H,W); covered(border(covered,pad)) = true;
+[y,x] = ind2sub([H,W], indSorted);
+i = 1;
+while pbSorted(i) > 0 && ~all(covered(:))
     yy = y(i); xx = x(i);
-    sc = scales(yy,xx);
-    th = thetas(yy,xx);
+    sc = scales(i);
+    th = thetas(i);
     rf = filters{th,sc};
     [h,w] = size(rf);
-    y1 = ceil((h-1)/2); y2 = yy+hs;
-    x1 = ceil((w-1)/2); x2 = xx+ws;
-    mval = sum(sum(img(y1:y2,x1:x2,:)))/(h*w);
+    hs = floor(h/2); y1 = yy-hs; y2 = y1+h-1;
+    ws = floor(w/2); x1 = xx-ws; x2 = x1+w-1;
+    assert(y2-y1+1 == h);
+    assert(x2-x1+1 == w);
+    % Compute mean value encoding of local rectangular patch
+    patch = bsxfun(@times, imgPad(y1:y2,x1:x2,:), uint8(rf));
+    mval = uint8(sum(sum(patch))/(h*w));
+    % Only fill in pixels that have not been already covered
+    patch = bsxfun(@times, mval, uint8(rf & ~covered(y1:y2,x1:x2)));
+    rec(y1:y2,x1:x2,:) = rec(y1:y2,x1:x2,:)+patch;
+    covered(y1:y2,x1:x2) = covered(y1:y2,x1:x2) | rf;
+    i = i+1;
 end
 
 % -------------------------------------------------------------------------

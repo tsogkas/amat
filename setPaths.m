@@ -12,6 +12,7 @@ paths.vgg16            = fullfile(paths.data, 'imagenet-vgg-verydeep-16.mat');
 
 % amat
 paths.amat.output      = fullfile(paths.amat.root, 'output');
+paths.amat.models      = fullfile(paths.amat.output,'models');
 
 % spb-mil
 paths.spbmil.root      = fullfile(paths.amat.root, 'external', 'spb-mil');
