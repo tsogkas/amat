@@ -15,7 +15,7 @@ opts.mode = 'train';
 opts.modelType = 'vgg-vd-16' ;
 paths = setPaths();
 sfx = opts.modelType ;
-opts.expDir = fullfile(paths.amat.output, ['deepskel-' sfx]) ; 
+opts.expDir = fullfile(paths.amat.models, ['deepskel-' sfx]) ; 
 mkdir(opts.expDir)
 diary on; diary(fullfile(opts.expDir, 'diary.txt'));
 [opts, varargin] = vl_argparse(opts, varargin) ;
@@ -150,7 +150,6 @@ for s=1:numel(sets)
         ngt = size(set(i).pts,3); % #gt for each image
         for scale = scales  % create scaled versions of images and gt
             img = set(i).img;
-            pts = set(i).pts;
             rad = set(i).rad;
             if scale ~= 1 && (strcmp(sets{s},'train') || strcmp(sets{s},'trainval'))
                 img = imresize(img,scale,'bilinear');

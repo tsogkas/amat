@@ -74,6 +74,7 @@ diskCostEffective = bsxfun(@plus, costPerPixel, reshape(ws./scales,1,1,[]));
 % Print remaining pixels to be covered in these points
 printBreakPoints = floor((4:-1:1).*(H*W/5));
 
+fprintf('Pixels remaining: ');
 [x,y] = meshgrid(1:W,1:H);
 while ~all(mat.covered(:))
 % for i=1:1000
@@ -119,10 +120,11 @@ while ~all(mat.covered(:))
     
     if vistop, visualizeProgress(mat,diskCostEffective); end
     if ~isempty(printBreakPoints) && nnz(~mat.covered) < printBreakPoints(1)
-        disp([num2str(printBreakPoints(1)) ' pixels remaining'])
+        fprintf('%d...',printBreakPoints(1))
         printBreakPoints(1) = [];
     end
 end
+fprintf('\n')
 mat.reconstruction = labNormalized2rgb(reshape(mat.reconstruction,H,W,C));
 mat.input = labNormalized2rgb(reshape(mat.input,H,W,C));
 mat.axis  = labNormalized2rgb(mat.axis);
