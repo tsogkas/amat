@@ -35,7 +35,7 @@ set(fh, 'WindowButtonDownFcn',   @changeMethod);
 set(fh, 'WindowScrollWheelFcn',  @changeRadius);
 [H,W,C] = size(imgRGB);
 tmap    = textonMap(imgRGB, numBins); 
-tmap    = reshape(tmap,[],C);
+tmap    = reshape(tmap,H*W,[]);
 imgRGB  = reshape(imgRGB, [], C);
 imgLab  = rgb2labNormalized(imgRGB);
 [xx,yy] = meshgrid(1:W,1:H);
