@@ -14,6 +14,7 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 - group medial points into branches.
 
 ### low priority ----------------------------------------------------------
+- Consider squares instead of disks. How would that affect the result?
 - Add an additional pre-processing step that accumulates consensus from neighboring 
     disks with similar histograms at similar radii and incorporate it in the total score 
     (perhaps in the hopes of avoiding rescoring in the main while loop?).

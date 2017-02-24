@@ -6,7 +6,7 @@ fprintf('Nonzero pixels: %d/%d (%.2f%%)\n', nnz(any(matgoogle.axis,3)), ...
     numel(matgoogle.radius),nnz(any(matgoogle.axis,3))/numel(matgoogle.radius)*100)
 
 %% live demo
-mat = amat(google,40,1e-3,1);
+% mat = amat(google,40,1e-3,1);
 
 %% Texture image (leopard)
 matleopard= amat(leopard);
