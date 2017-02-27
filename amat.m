@@ -46,6 +46,7 @@ function mat = setCover(img,enc,diskCost,scales,ws,vistop)
 % Initializations
 [H,W,C,R]          = size(enc);
 zeroLabNormalized  = rgb2labNormalized(zeros(H,W,C));
+mat.enc            = enc;
 mat.input          = reshape(img, H*W, C);
 mat.reconstruction = reshape(zeroLabNormalized,H*W,C);
 mat.axis           = zeroLabNormalized;
@@ -57,6 +58,7 @@ mat.covered        = false(H,W);
 mat.covered([1,end],1)   = true;
 mat.covered(end,[1,end]) = true;
 mat.ws = ws; % weight for scale-dependent cost term.
+mat.scales = scales;
 BIG = 1e30;
 
 % Compute how many pixels are covered be each r-disk.
@@ -77,7 +79,6 @@ printBreakPoints = floor((4:-1:1).*(H*W/5));
 fprintf('Pixels remaining: ');
 [x,y] = meshgrid(1:W,1:H);
 while ~all(mat.covered(:))
-% for i=1:1000
     % Find the most cost-effective disk at the current iteration
     [minCost, indMin] = min(diskCostEffective(:));
     if isinf(minCost), break; end
