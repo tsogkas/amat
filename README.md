@@ -11,7 +11,7 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 ### HIGH PRIORITY ---------------------------------------------------------
 - figure out how to balance lambda, kappa (L0Smoothing) and ws (amat) parameters.
 - run experiments on boundary detection.
-- group medial points into branches.
+- run experiments on object proposal.
 
 ### low priority ----------------------------------------------------------
 - Consider squares instead of disks. How would that affect the result?
@@ -36,12 +36,6 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 - In the case where you use the sketchification with L0 gradient smoothing, find a way to invert
 	the smoothed image to the original one (to compare reconstruction quality).	
 
-
-### QUESTIONS
-- Should I distribute the cost of a disk over the number of its pixels before adding the maximality cost or after?
-= If the disk cost is updated when some of its pixels are covered, then the division should happen BEFORE
-    adding the maximality cost. Otherwise, if we manage to assign a fixed cost to each disk once in the beginning
-    and then just apply the greedy algorithm, the division could go after adding the maximality cost.    
 
 ### Experiments/Applications
 - For natural images use first a method that sketchifies the image and apply the algorithm on the result. See:
