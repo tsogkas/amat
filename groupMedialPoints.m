@@ -16,7 +16,7 @@ maxLabel = 1;
 % For all scales 
 for r=1:R 
     cc(r).labels = zeros(1, cc(r).NumObjects); % zero for non-examined ccs
-    margin = ceil(marginFactor*r);
+    margin = ceil(marginFactor*r)+1;
     % For all connected components at the same scale
     for i=1:cc(r).NumObjects;
         % Create proximity mask in rectangle around cc for efficiency
@@ -71,7 +71,7 @@ end
 
 % Adjust labels
 oldLabels = unique(cat(2, cc(:).labels));
-newLabels = 0:numel(oldLabels);
-for i=2:numel(oldLabels) % 1st label is always zero (background)
+newLabels = 1:numel(oldLabels);
+for i=1:numel(oldLabels) % 1st label is always zero (background)
     branches(branches == oldLabels(i)) = newLabels(i);
 end
