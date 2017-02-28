@@ -1,18 +1,18 @@
 function mat = refineMAT(mat)
 
-labels = unique(mat.branches);
-numGroups = numel(labels)-1; % first label is zero (background)
+maxLabel = max(mat.branches(:));
+numGroups = maxLabel-1; % first label is zero (background)
 [H,W,C] = size(mat.input);
 branches = zeros(H,W,'uint8');
-radius   = zeros(H,W);
-axis     = zeros(H*W,C);
+radius = zeros(H,W);
+axes = zeros(H*W,C);
+SE = strel('disk',3);
 for i=1:numGroups
     branchOld = mat.branches == i;
-    branchNew = bwmorph(imdilate(branchOld,strel('disk',3)),'thin',inf);
-    idx = find(branchNew);
-    branches(idx) = branchNew(idx);    
+    branchNew = bwmorph(imdilate(branchOld,SE),'thin',inf);
+    branches(branchNew) = i;
     radiusOld = branchOld .* double(mat.radius);
-    cover = mat2mask(radiusOld);
+    cover     = mat2mask(radiusOld);
     radiusNew = round(bwdist(bwperim(cover)));
     radiusNew = radiusNew .* double(branchNew); 
     radius(radiusNew>0) = radiusNew(radiusNew>0);
@@ -25,7 +25,7 @@ R = numel(mat.scales);
 r = round(radius(branches>0));
 enc = reshape(permute(mat.enc,[1 2 4 3]), [], C);
 idx = sub2ind([H,W,R], y(:),x(:),r(:));
-axis(branches>0,:) = enc(idx,:);
+axes(branches>0,:) = enc(idx,:);
 % Update depth
 removed = any(mat.axis,3) & ~(branches > 0);
 added   = (branches > 0) & ~any(mat.axis,3);
@@ -55,6 +55,6 @@ end
 
 % Update mat fields
 mat.depth = mat.depth + depthOffset;
-mat.axis = axis;
+mat.axis = reshape(axes,H,W,C);
 mat.radius = radius;
 mat.branches = branches;
