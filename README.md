@@ -10,6 +10,9 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 ### TODO:
 ### HIGH PRIORITY ---------------------------------------------------------
 - figure out how to balance lambda, kappa (L0Smoothing) and ws (amat) parameters.
+  PERHAPS: setup code to chooce lambda and kappa based on how well they cover the 
+  boundaries of the BSDS500 validation set.
+- code for post-processing for boundary detection (use nonmaximum suppression)
 - run experiments on boundary detection.
 - run experiments on object proposal.
 
