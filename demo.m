@@ -18,9 +18,9 @@ matleopardSmoothed = amat(smoothed);
 
 %% deer
 deer = imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/41004.jpg'),0.5,'bilinear');
-matdeer = amat(deer);
+% matdeer = amat(deer);
 deerSmoothed = L0Smoothing(deer);
-matdeersmoothed = amat(deerSmoothed);
+matdeer = amat(deerSmoothed);
 
 %% Boundary extraction
 d = matgoogle.depth;

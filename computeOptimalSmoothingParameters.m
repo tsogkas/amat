@@ -8,10 +8,11 @@ kappaMax  = 2;
 kappaStep = 0.1;
 lambdas = lambdaMin:lambdaStep:lambdaMax;
 kappas  = kappaMin:kappaStep:kappaMax;
-stats(numel(lamdbas),numel(kappas)) = struct();
+stats(numel(lambdas),numel(kappas)) = struct();
 
 % Read validation images --------------------------------------------------
 paths = setPaths();
+opts.nThresh= 1;
 opts.imPath = fullfile(paths.bsds500im,'val');
 opts.gtPath = fullfile(paths.bsds500gt,'val');
 imageList   = dir(fullfile(opts.imPath, '*jpg'));
@@ -50,7 +51,9 @@ ticStart = tic;
 for i=1:opts.nImages % keep that just for debugging
     % Load image and groundtruth data from disk
     [~,iid,~] = fileparts(imageList(i).name);
-    gt  = load(fullfile(opts.gtPath,[iid '.mat' ])); gt = gt.gt;
+    tmp = load(fullfile(opts.gtPath,[iid '.mat' ])); tmp = tmp.groundTruth;
+    gt  = false([size(tmp{1}.Boundaries), numel(tmp)]);
+    for s=1:numel(tmp), gt(:,:,s) = tmp{s}.Boundaries; end
     img = imread(fullfile(opts.imPath,imageList(i).name));
     % Compute edges on smoothed image
     epb = smoothedEdges(img,lambda,kappa);
@@ -71,7 +74,8 @@ stats.scores = scores;
 % -------------------------------------------------------------------------
 function e = smoothedEdges(img,lambda,kappa)
 % -------------------------------------------------------------------------
-e = edge(L0Smoothing(img,lambda,kappa));
+imgSmoothed = L0Smoothing(img,lambda,kappa);
+e = edge(imgSmoothed);
 
 % -------------------------------------------------------------------------
 function [cntP,sumP,cntR,sumR,scores] = computeImageStats(pb,gt,opts)

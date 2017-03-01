@@ -1,36 +1,40 @@
 function mat = refineMAT(mat)
 
-maxLabel = max(mat.branches(:));
-numGroups = maxLabel-1; % first label is zero (background)
-[H,W,C] = size(mat.input);
-branches = zeros(H,W,'uint8');
-radius = zeros(H,W);
-axes = zeros(H*W,C);
-SE = strel('disk',3);
+% The group labels are already sorted and first label is zero (background)
+numGroups = max(mat.branches(:)); 
+[H,W,C]   = size(mat.input);
+branches  = zeros(H,W,'uint8');
+radius    = zeros(H,W);
+mataxes   = reshape(rgb2labNormalized(zeros(H,W,C)),H*W,C);
+SE        = strel('disk',3);
 for i=1:numGroups
     branchOld = mat.branches == i;
     branchNew = bwmorph(imdilate(branchOld,SE),'thin',inf);
-    branches(branchNew) = i;
     radiusOld = branchOld .* double(mat.radius);
     cover     = mat2mask(radiusOld);
     radiusNew = round(bwdist(bwperim(cover)));
-    radiusNew = radiusNew .* double(branchNew); 
+    radiusNew = radiusNew .* double(branchNew);
+    branchNew(branchNew > 0 & radiusNew == 0) = 0;
+    branches(branchNew) = i;
     radius(radiusNew>0) = radiusNew(radiusNew>0);
+    assert(all(radiusNew(branchNew)>0))
 end
 
-assert(allvec(radius(branches>0)>0))
+assert(all(radius(branches>0)>0))
 % Update encodings
 R = numel(mat.scales);
 [y,x] = find(branches);
 r = round(radius(branches>0));
 enc = reshape(permute(mat.enc,[1 2 4 3]), [], C);
 idx = sub2ind([H,W,R], y(:),x(:),r(:));
-axes(branches>0,:) = enc(idx,:);
+mataxes(branches>0,:) = enc(idx,:);
+
 % Update depth
 removed = any(mat.axis,3) & ~(branches > 0);
 added   = (branches > 0) & ~any(mat.axis,3);
 depthOffset = zeros(H,W);
 [xx,yy] = meshgrid(1:W,1:H);
+
 % First subtract depth of removed pixels
 [y,x] = find(removed);
 for i=1:numel(y)
@@ -55,6 +59,6 @@ end
 
 % Update mat fields
 mat.depth = mat.depth + depthOffset;
-mat.axis = reshape(axes,H,W,C);
+mat.axis = labNormalized2rgb(reshape(mataxes,H,W,C));
 mat.radius = radius;
 mat.branches = branches;
