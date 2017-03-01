@@ -103,7 +103,7 @@ img = imresize(img,0.5,'bilinear');
 img = L0Smoothing(img);
 mat = amat(img);
 mat.branches = groupMedialPoints(mat);
-mat = refineMAT(mat);
+% mat = refineMAT(mat);
 epb = mat2edges(mat);
 epb = imresize(epb,[H,W],'bilinear');
 

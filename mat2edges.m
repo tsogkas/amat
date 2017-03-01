@@ -8,25 +8,34 @@ if nargin < 2, r = 5; end
 if nargin < 3, s = 5; end
 
 % Remove small branches
-branches = zeros(size(mat.branches));
-radius = zeros(size(mat.branches));
-numGroups = max(mat.branches(:));
-l = 1; % initial label
-for i=1:numGroups
-    if nnz(mat.branches == i) > 5
-        branches(mat.branches == i) = l;
-        radius(mat.branches == i) = mat.radius(mat.branches == i);
-        l = l+1;
-    end
-end
+% branches = zeros(size(mat.branches));
+% radius = zeros(size(mat.branches));
+% numGroups = max(mat.branches(:));
+% l = 1; % initial label
+% for i=1:numGroups
+%     if nnz(mat.branches == i) > 5
+%         branches(mat.branches == i) = l;
+%         radius(mat.branches == i) = mat.radius(mat.branches == i);
+%         l = l+1;
+%     end
+% end
 
+branches = mat.branches;
+radius   = mat.radius;
 % Compute the depth contribution of each branch separately.
 [H,W] = size(mat.depth);
-numGroups = max(branches(:));
-depthGroup = zeros(H,W,numGroups);
-for i=1:numGroups
+numBranches = max(branches(:));
+depthGroup = zeros(H,W,numBranches);
+for i=1:numBranches
     depthGroup(:,:,i) = mat2mask(radius .* double(branches == i));
 end
+
+% Count the number of points for each branch
+numPoints = zeros(numBranches,1);
+for i=1:numBranches
+    numPoints(i) = nnz(branches == i);
+end
+[~,idxSorted] = sort(numPoints,'descend');
 
 % The edges are the points in the image that are covered by few disks
 % belonging in the current branch AND by few disks belonging to OTHER
@@ -34,12 +43,14 @@ end
 % strength of the edges of the current branch.
 e = ones(H,W);
 dsum = sum(depthGroup,3);
-for i=1:numGroups
+for i=idxSorted'
     d  = depthGroup(:,:,i);
     dc = dsum-d;
     d  = 1-d/max(eps,max(d(:)));
     dc = 1-dc/max(eps,max(dc(:)));
     e  = e .* d .* dc;
+%     e = min(e, min(d,dc));
+    imshow(e)
 end
 
 % Nonmaximum suppression (optional)
