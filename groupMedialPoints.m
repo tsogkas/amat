@@ -68,7 +68,7 @@ for r=1:R
 end
 
 % Construct label map
-branches = zeros(H,W,'uint8');
+branches = zeros(H,W);
 for r=1:R
     for i=1:cc(r).NumObjects
         branches(cc(r).PixelIdxList{i}) = cc(r).labels(i);

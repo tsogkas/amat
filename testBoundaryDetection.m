@@ -5,7 +5,7 @@ if nargin < 1, models = 'amat'; end
 opts = {'dataset',      'BSDS500',...
         'set',          'val',...   % 'val' or 'test'
         'visualize',    false,...
-        'parpoolSize',  feature('numcores')  % set to 0 to run serially
+        'parpoolSize',  feature('numcores'),...% set to 0 to run serially
         'nThresh',      30,...      % #thresholds used for computing p-r
         'maxDist',      0.01        % controls max distance of an accurately 
        };                           % detected point from groundtruth.
@@ -28,7 +28,7 @@ end
 % Load models and initialize stats ----------------------------------------
 if ~iscell(models), models = {models}; end
 for m=1:numel(models)
-    models{m} = evaluateModel(models{m},imageList,opts,paths);
+    models{m} = evaluateModel(models{m},imageList,opts);
 end
 
 % Compute dataset-wide stats
@@ -71,7 +71,9 @@ ticStart = tic;
 for i=1:opts.nImages % keep that just for debugging
     % Load image and groundtruth data from disk
     [~,iid,~] = fileparts(imageList(i).name);
-    gt  = load(fullfile(opts.gtPath,[iid '.mat' ])); gt = gt.gt;
+    tmp = load(fullfile(opts.gtPath,[iid '.mat' ])); tmp = tmp.groundTruth;
+    gt  = false([size(tmp{1}.Boundaries), numel(tmp)]);
+    for s=1:numel(tmp), gt(:,:,s) = tmp{s}.Boundaries; end
     img = imread(fullfile(opts.imPath,imageList(i).name));
     
     switch modelName

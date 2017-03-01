@@ -9,15 +9,22 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 
 ### TODO:
 ### HIGH PRIORITY ---------------------------------------------------------
-- figure out how to balance lambda, kappa (L0Smoothing) and ws (amat) parameters.
-  PERHAPS: setup code to chooce lambda and kappa based on how well they cover the 
-  boundaries of the BSDS500 validation set. See what edge detection algorithm 
-  the L0Smoothing authors use.
-- code for post-processing for boundary detection (use nonmaximum suppression)
+- Maybe remove all branches with less than some number of pixels
 - run experiments on boundary detection.
 - run experiments on object proposal.
+- try replacing reconstructionError() from summing all errors to returning the maximum
+	of the errors of all contained disks, by using the equivalent formula
+- make sure the encodings are correct after refining.	
 
 ### low priority ----------------------------------------------------------
+- Speedup amat.
+- figure out how to balance lambda, kappa (L0Smoothing) and ws (amat) parameters.
+  Use default values to begin with.
+  PERHAPS: setup code to chooce lambda and kappa based on how well they cover the 
+  boundaries of the BSDS500 validation set. See what edge detection algorithm 
+  the L0Smoothing authors use. (-->DEPENDS ON THE CHOICE OF THE EDGE DETECTION ALGORITHM).
+  Maybe directly optimize lambda and kappa values wrt to reconstruction of the image
+  by the mat.
 - Consider squares instead of disks. How would that affect the result?
 - Add constraint so the new disks cover more than a single pixel to speed up the greedy algo.
 - The uniformity/reconstruction error we are using right now is not an additive function of the total 
