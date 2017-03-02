@@ -1,47 +1,14 @@
 \documentclass[10pt,twocolumn,letterpaper]{article}
 
-\usepackage{iccv}
-\usepackage{times}
-\usepackage{epsfig}
-\usepackage{graphicx}
-\usepackage{amsmath}
-\usepackage{amssymb}
-
-% Include other packages here, before hyperref.
-
-% If you comment hyperref and then uncomment it, you should delete
-% egpaper.aux before re-running latex.  (Or just hit 'q' on the first latex
-% run, let it finish, and you should be clear).
-\usepackage[pagebackref=true,breaklinks=true,letterpaper=true,colorlinks,bookmarks=false]{hyperref}
+\include{formatAndDefs}
 
 % \iccvfinalcopy % *** Uncomment this line for the final submission
 
 \def\iccvPaperID{****} % *** Enter the ICCV Paper ID here
 \def\httilde{\mbox{\tt\raisebox{-.5ex}{\symbol{126}}}}
 
-% Pages are numbered in submission mode, and unnumbered in camera-ready
-\ificcvfinal\pagestyle{empty}\fi
 \begin{document}
-
-%%%%%%%%% TITLE
 \title{\LaTeX\ Author Guidelines for ICCV Proceedings}
-
-\author{First Author\\
-Institution1\\
-Institution1 address\\
-{\tt\small firstauthor@i1.org}
-% For a paper whose authors are all at the same institution,
-% omit the following lines up until the closing ``}''.
-% Additional authors and addresses can be added with ``\and'',
-% just like the second author.
-% To save space, use either the email address or home page, not both
-\and
-Second Author\\
-Institution2\\
-First line of institution2 address\\
-{\tt\small secondauthor@i2.org}
-}
-
 \maketitle
 %\thispagestyle{empty}
 
@@ -54,8 +21,12 @@ First line of institution2 address\\
 % ==========================================================
 \section{Introduction}\label{sec:introduction}
 % ==========================================================
-Add MAT-, perceptual grouping-, and symmetry-related works here.
-Also, application in which MAT has been used (shape matching, shape retrieval etc)
+\begin{itemize}
+\item MAT, perceptual grouping, symmetry.
+\item application in which MAT has been used (shape matching, shape retrieval etc)
+\item
+\end{itemize}
+
 
 % ==========================================================
 \section{Related Work}\label{sec:related}
@@ -76,14 +47,45 @@ Also, application in which MAT has been used (shape matching, shape retrieval et
 % ==========================================================
 \section{Background}\label{sec:background}
 % ==========================================================
+To make the paper self-contained, we include a brief review of two basic concepts that our work is based on.
+
 \subsubsection*{Medial Axis Transform}
-\subsubsection*{Geometric Set Cover}
+Consider a two-dimensional binary shape, $O$, in the image plane, and its boundary $\Theta_O$.
+The \emph{medial axis} of $O$ is the set of points $\vec{p}$ that lie midway between two sections of 
+its boundary. The points $\vec{p}$ are the centers of maximally inscribed disks, bitangent to $\Theta_O$
+in the interior of the shape. The radius $r(\vec{p})$ of the disk is the distance between $\vec{p}$ and 
+the points where the disk touches $\Theta_O$, and is called the \emph{medial radius}.
+Based on the above definitions, the \emph{medial axis transform} is the process of 
+mapping $O$ to the set of tuples $(\vec{p},r(\vec{p})) \in \mathbb{R}^2 \times \mathbb{R}$.
+Given these pairs, we can fully reconstruct the object as a union of overlapping disks that sweep-out 
+the object's interior. 
+
+\subsubsection*{Weighted Geometric Set Cover}
+The geometric set cover is the extension of the well studied set cover problem, in a geometric space.
+For simplicity, here we only consider the case of a two-dimensional space and we particularly focus in the 
+\emph{weighted} version of the problem, which is defined as follows:
+Consider a universe of $n$ points $set{X} \in \R^2$ and a family of sets 
+$\set{D} = \{D_1,D_2,\ldots,D_m\} \subseteq \set{X}$. 
+A common choice for these sets are intersections of $\set{X}$ and simple shape primitives, such as disks or rectangles.
+
+Now assume that each set in $\set{D}$ is associated with a non-negative weight or \emph{cost} $c_i$.
+Solving the WGSC problem amounts to finding a sub-collection $\bar{\set{D}} \in \set{D}$ that covers the entire $\set{X}$
+(all $n$ elements of $\set{X}$ are contained in at least one set in $\bar{\set{D}}$), while having the minimum
+total cost $C$; the total cost is simply the sum of costs of individual elements in $\bar{\set{D}}$.
+
+WGSC is an NP-hard problem for which several polynomial-time approximate solutions (PTAS) exist~\cite{PTAS algos for WGSC}.
+Perhaps the simplest and more straightforward is the greedy algorithm described in~\cite{Vazirani}. 
+\stavros{We will include pseudocode for the algorithm applied in our own problem}
+The interested reader can find more details on the WGSC and related algorithms in~\cite{other WGSC works}.
+
 
 % ==========================================================
 \section{Method}\label{sec:method}
 % ==========================================================
-\subsection{Appearance-MAT definition}\label{sec:amat}
+\subsection{Problem Definition}\label{sec:definition}
+
 \subsection{AMAT as a Geometric Set Cover Problem}
+
 \subsection{Extending AMAT to Textured Images}
 \begin{itemize}
 \item $L_0$ Smoothing
@@ -97,22 +99,23 @@ Also, application in which MAT has been used (shape matching, shape retrieval et
 Experiments on image reconstruction using standard metrics (MSE, PSNR, and metrics using CNN feature similarity.
 
 \subsubsection*{Abstract Scenes}
+
 \subsubsection*{BSDS500}
 This can only be done if we can make the GAN work and generate texture.
-\subsubsection*{MSCOCO/Imagenet}
-This can only be done if we can make the GAN work and generate texture.
 
-\subsection{Medial Axis extraction (BSDS500)}
+\subsection{Medial Point Detection (BMAX500)}\label{sec:medial-point-detection}
 Recover all medial axes of the BSDS500. Compare with other skeletonization algorithms, such
 as the CNN based method, and my previous MIL-based method
 
-\subsection{Boundary detection (BSDS500)}
+\subsection{Boundary Detection (BSDS500)}\label{sec:boundary-detection}
 Medial axes to boundaries. 
 MIL: compute an approximate scale based on the scale with maximum probability and try to recover boundaries.
 CNN: same as above, this was already done in that paper for estimating segmentation masks using scale information.
 We can compare the boundary recovery results as well.
 EDGE DETECTORS: Standard edge detection algorithms (Dollar, HED, Canny, gPB etc: compare with algorithms specifically
 tailored for this task. WE ARE NOT EXPECTING SOTA PERFORMANCE.
+
+\subsection{Object Proposals}\label{sec:object-proposals}
 
 % ==========================================================
 \section{Discussion}\label{sec:discussion}
