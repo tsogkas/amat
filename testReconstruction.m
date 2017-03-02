@@ -79,7 +79,7 @@ for i=1:opts.nImages
     MSE(i)  = immse(rec,im2double(img));
     PSNR(i) = psnr(rec,im2double(img));
     SSIM(i) = ssim(rec, im2double(img));
-    msg = sprintf('Testing on %s %s set\n', opts.dataset, opts.set);
+    msg = sprintf('Testing image reconstruction on %s %s set. ', opts.dataset, opts.set);
     progress(msg,i,opts.nImages,ticStart,-1);
 end
 

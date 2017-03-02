@@ -50,9 +50,9 @@ end
 % -------------------------------------------------------------------------
 function model = evaluateModel(model,imageList,opts)
 % -------------------------------------------------------------------------
+opts.thresh = linspace(1/(opts.nThresh+1),1-1/(opts.nThresh+1),opts.nThresh)';
 switch lower(model)
     case 'amat'
-        opts.thresh = 0.5; opts.nThresh = 1;
         model = struct('name',model);
     otherwise, error('Model not supported')
 end
@@ -84,7 +84,7 @@ for i=1:opts.nImages % keep that just for debugging
     [cntP(i,:), sumP(i,:), cntR(i,:), sumR(i,:),scores(i,:)] = ...
         computeImageStats(epb,gt,opts);
     
-    msg = sprintf('Testing on %s %s set', opts.dataset, opts.set);
+    msg = sprintf('Testing boundary detection on %s %s set. ', opts.dataset, opts.set);
     progress(msg,i,opts.nImages,ticStart,-1);
 end
 
@@ -103,8 +103,7 @@ img = imresize(img,0.5,'bilinear');
 img = L0Smoothing(img);
 mat = amat(img);
 mat.branches = groupMedialPoints(mat);
-% mat = refineMAT(mat);
-epb = mat2edges(mat);
+epb = mat2edges(mat,3,5);
 epb = imresize(epb,[H,W],'bilinear');
 
 % -------------------------------------------------------------------------
