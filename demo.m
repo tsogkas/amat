@@ -86,3 +86,10 @@ e  = prod(dp,3);
 branchImportance = squeeze(sum(sum(depthBranch>0)));
 [~,idxSorted] = sort(branchImportance,'descend');
 e = prod(dp(:,:,idxSorted(1:10)));
+
+
+%% Test refineMAT()
+mat = mattotem;
+mat.branches = groupMedialPoints(mat);
+matrefined = refineMAT(mat);
+
