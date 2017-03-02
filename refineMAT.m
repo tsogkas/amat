@@ -17,10 +17,14 @@ for i=1:numGroups
     branchNew(branchNew > 0 & radiusNew == 0) = 0;
     branches(branchNew) = i;
     radius(radiusNew>0) = radiusNew(radiusNew>0);
-    assert(all(radiusNew(branchNew)>0))
 end
 
-assert(numel(unique(mat.branches)) == numel(unique(branches)));
+% Re-adjust labels
+newGroups = unique(branches); newGroups(1) = []; % first group is zero
+for i=1:numel(newGrouos)
+    branches(branches == newGroups(i)) = i;
+end
+
 assert(all(radius(branches>0)>0))
 % Update encodings
 R = numel(mat.scales);

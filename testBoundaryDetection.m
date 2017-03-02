@@ -12,7 +12,7 @@ opts = {'dataset',      'BSDS500',...
 opts = parseVarargin(opts,varargin,'struct');
 
 % Read test images --------------------------------------------------------
-paths = setPaths();
+paths = setPaths(); mkdir(paths.amat.models);
 if ischar(opts.set) && strcmp(opts.set, 'val')
     opts.imPath = fullfile(paths.bsds500im,'val');
     opts.gtPath = fullfile(paths.bsds500gt,'val');
@@ -26,6 +26,7 @@ else
 end
 
 % Load models and initialize stats ----------------------------------------
+opts.thresh = linspace(1/(opts.nThresh+1),1-1/(opts.nThresh+1),opts.nThresh)';
 if ~iscell(models), models = {models}; end
 for m=1:numel(models)
     models{m} = evaluateModel(models{m},imageList,opts);
@@ -43,14 +44,13 @@ for m=1:numel(models)
     models{m}.(opts.dataset).(opts.set).opts = opts;
     models{m} = rmfield(models{m},'stats');
     % And store results
-    modelPath = fullfile(paths.spbmil.models, models{m}.name);
+    modelPath = fullfile(paths.amat.models, models{m}.name);
     model = models{m}; save(modelPath, 'model')
 end
 
 % -------------------------------------------------------------------------
 function model = evaluateModel(model,imageList,opts)
 % -------------------------------------------------------------------------
-opts.thresh = linspace(1/(opts.nThresh+1),1-1/(opts.nThresh+1),opts.nThresh)';
 switch lower(model)
     case 'amat'
         model = struct('name',model);
@@ -84,7 +84,8 @@ for i=1:opts.nImages % keep that just for debugging
     [cntP(i,:), sumP(i,:), cntR(i,:), sumR(i,:),scores(i,:)] = ...
         computeImageStats(epb,gt,opts);
     
-    msg = sprintf('Testing boundary detection on %s %s set. ', opts.dataset, opts.set);
+    msg = sprintf('Testing %s for boundary detection on %s %s set. ', ...
+        modelName, opts.dataset, opts.set);
     progress(msg,i,opts.nImages,ticStart,-1);
 end
 
@@ -136,7 +137,9 @@ for t = 1:numel(thresh),
     accP = 0;
     for s=1:size(gt,3)
         [match1,match2] = correspondPixels(double(bmap),double(gt(:,:,s)),opts.maxDist);
-        if opts.visualize, plotMatch(1,bmap,gt(:,:,s),match1,match2); end
+        if opts.visualize
+            plotMatch(1,bmap,gt(:,:,s),match1,match2); 
+        end
         % accumulate machine matches
         accP = accP | match1;
         cntR(t) = cntR(t) + nnz(match2>0); % tp (for recall)
