@@ -63,11 +63,8 @@ BIG = 1e30;
 
 % Compute how many pixels are covered be each r-disk.
 filters = cell(1,R); for r=1:R, filters{r} = double(disk(scales(r))); end
-numNewPixelsCovered = ones(H,W,R);
-for r=1:R
-    numNewPixelsCovered(:,:,r) = ...
-        conv2(numNewPixelsCovered(:,:,r), filters{r},'same');
-end
+diskAreas = cellfun(@nnz,filters);
+numNewPixelsCovered = repmat(reshape(diskAreas,1,1,[]), [H,W]);
 
 % Add scale-dependent cost term to favor the selection of larger disks.
 costPerPixel = diskCost ./ numNewPixelsCovered;
@@ -84,14 +81,12 @@ while ~all(mat.covered(:))
     if isinf(minCost), break; end
         
     [yc,xc,rc] = ind2sub([H,W,R], indMin);
-    distFromCenterSquared = (x-xc).^2 + (y-yc).^2;
-    D = distFromCenterSquared <= scales(rc)^2;   % points covered by the selected disk
+    D = (x-xc).^2 + (y-yc).^2 <= scales(rc)^2;   % points covered by the selected disk
     newPixelsCovered  = D & ~mat.covered;        % NEW pixels that are covered by D
     if ~any(newPixelsCovered(:)), break; end
     
     % Update MAT 
     mat = updateMAT(mat);
-    
     % Update costs 
     [yy,xx] = find(newPixelsCovered);
     xmin = min(xx); xmax = max(xx);
@@ -117,7 +112,9 @@ while ~all(mat.covered(:))
         diskCostEffective(y1:y2,x1:x2, r) = ...
             costPerPixel(y1:y2,x1:x2, r) + ws/scales(r);
     end
-    assert(allvec(numNewPixelsCovered(yc,xc, 1:rc)==0))
+    % Make sure the same point is not selected again
+    diskCost(yc,xc,:) = BIG; diskCostEffective(yc,xc,:) = BIG;
+    
     
     if vistop, visualizeProgress(mat,diskCostEffective); end
     if ~isempty(printBreakPoints) && nnz(~mat.covered) < printBreakPoints(1)

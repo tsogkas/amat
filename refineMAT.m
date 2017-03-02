@@ -20,6 +20,7 @@ for i=1:numGroups
     assert(all(radiusNew(branchNew)>0))
 end
 
+assert(numel(unique(mat.branches)) == numel(unique(branches)));
 assert(all(radius(branches>0)>0))
 % Update encodings
 R = numel(mat.scales);

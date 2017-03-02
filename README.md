@@ -10,7 +10,6 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 ### TODO:
 ### HIGH PRIORITY ---------------------------------------------------------
 - refineMAT() has a bug that sometimes removes some of the branches.
-- Maybe remove all branches with less than some number of pixels
 - run experiments on boundary detection.
 - run experiments on object proposal.
 - try replacing reconstructionError() from summing all errors to returning the maximum
