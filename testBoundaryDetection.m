@@ -6,6 +6,7 @@ opts = {'dataset',      'BSDS500',...
         'set',          'val',...   % 'val' or 'test'
         'visualize',    false,...
         'parpoolSize',  feature('numcores'),...% set to 0 to run serially
+        'edgeDepth',    3,...       % threshold used to get edges from mat
         'nThresh',      30,...      % #thresholds used for computing p-r
         'maxDist',      0.01        % controls max distance of an accurately 
        };                           % detected point from groundtruth.
@@ -78,7 +79,7 @@ for i=1:opts.nImages % keep that just for debugging
     
     switch modelName
         case 'amat'
-            epb = amatEdges(img);
+            epb = amatEdges(img,opts.edgeDepth);
         otherwise, error('Method not supported')
     end
     [cntP(i,:), sumP(i,:), cntR(i,:), sumR(i,:),scores(i,:)] = ...
@@ -97,15 +98,18 @@ model.stats.sumR = sumR;
 model.stats.scores = scores;
 
 % -------------------------------------------------------------------------
-function epb = amatEdges(img)
+function epb = amatEdges(img,edgeDepth)
 % -------------------------------------------------------------------------
 [H,W,~] = size(img);
 img = imresize(img,0.5,'bilinear');
 img = L0Smoothing(img);
 mat = amat(img);
-mat.branches = groupMedialPoints(mat);
-epb = mat2edges(mat,3,5);
-epb = imresize(epb,[H,W],'bilinear');
+epb = mat.depth;
+epb(border(epb,3)) = inf; % avoid responses near the image border
+epb = imresize(epb <= edgeDepth, [H,W], 'nearest');
+% mat.branches = groupMedialPoints(mat);
+% epb = mat2edges(mat,3,5);
+% epb = imresize(epb,[H,W],'bilinear');
 
 % -------------------------------------------------------------------------
 function [cntP,sumP,cntR,sumR,scores] = computeImageStats(pb,gt,opts)
