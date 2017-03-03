@@ -68,8 +68,8 @@ scores = zeros(opts.nImages, 4); % optimal P,R,F,T for each image
 
 modelName = lower(model.name);
 ticStart = tic;
-% parfor (i=1:opts.nImages, opts.parpoolSize)
-for i=1:opts.nImages % keep that just for debugging
+parfor (i=1:opts.nImages, opts.parpoolSize)
+% for i=1:opts.nImages % keep that just for debugging
     % Load image and groundtruth data from disk
     [~,iid,~] = fileparts(imageList(i).name);
     tmp = load(fullfile(opts.gtPath,[iid '.mat' ])); tmp = tmp.groundTruth;
@@ -77,11 +77,7 @@ for i=1:opts.nImages % keep that just for debugging
     for s=1:numel(tmp), gt(:,:,s) = tmp{s}.Boundaries; end
     img = imread(fullfile(opts.imPath,imageList(i).name));
     
-    switch modelName
-        case 'amat'
-            epb = amatEdges(img,opts.edgeDepth);
-        otherwise, error('Method not supported')
-    end
+    epb = amatEdges(img,opts.edgeDepth);
     [cntP(i,:), sumP(i,:), cntR(i,:), sumR(i,:),scores(i,:)] = ...
         computeImageStats(epb,gt,opts);
     
