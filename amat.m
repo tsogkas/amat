@@ -1,7 +1,7 @@
 function mat = amat(img,scales,ws,vistop)
 
 if nargin < 2, scales = 40; end
-if nargin < 3, ws = 1e-3; end
+if nargin < 3, ws = 1e-4; end
 if nargin < 4, vistop = 0; end
 if isscalar(scales)
     R = scales;

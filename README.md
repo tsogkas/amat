@@ -9,6 +9,7 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 
 ### TODO:
 ### HIGH PRIORITY ---------------------------------------------------------
+- better weigh L and color channels in grouMedialPoints.
 - eliminate disconnected 1-radius pixels from the amat.
 - refineMAT() has a bug that sometimes removes some of the branches.
 - make sure the encodings are correct after refining.	
