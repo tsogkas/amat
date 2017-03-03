@@ -1,12 +1,17 @@
 function mat = refineMAT(mat)
 
+% Clean up the medial axis
+matpoints = any(mat.axis,3);
+matpoints = bwmorph(matpoints & mat.radius == 1, 'clean');
+
+
 % The group labels are already sorted and first label is zero (background)
 numGroups = max(mat.branches(:)); 
 [H,W,C]   = size(mat.input);
-branches  = zeros(H,W,'uint8');
+branches  = zeros(H,W);
 radius    = zeros(H,W);
 mataxes   = reshape(rgb2labNormalized(zeros(H,W,C)),H*W,C);
-SE        = strel('disk',3);
+SE        = ones(2);
 for i=1:numGroups
     branchOld = mat.branches == i;
     branchNew = bwmorph(imdilate(branchOld,SE),'thin',inf);
@@ -21,7 +26,7 @@ end
 
 % Re-adjust labels
 newGroups = unique(branches); newGroups(1) = []; % first group is zero
-for i=1:numel(newGrouos)
+for i=1:numel(newGroups)
     branches(branches == newGroups(i)) = i;
 end
 
