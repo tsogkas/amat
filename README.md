@@ -9,6 +9,7 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 
 ### TODO:
 ### HIGH PRIORITY ---------------------------------------------------------
+- fix scales(r) instead of r in amat().
 - make sure the encodings are correct after refining.	
 - run experiments on boundary detection.
 - run experiments on object proposal.
@@ -35,7 +36,6 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 	to sell our story better.
 - In the case where you use the sketchification with L0 gradient smoothing, find a way to invert
 	the smoothed image to the original one (to compare reconstruction quality).	
-- replace mat2mask with "double()" version. Return depth mask instead of binary.
 
 ### Very low priority
 - Create AMAT class. 
