@@ -1,14 +1,11 @@
 function mat = amat(img,scales,ws,vistop)
 
-if nargin < 2, scales = 40; end
+if nargin < 2, scales = 2:41; end
 if nargin < 3, ws = 1e-4; end
 if nargin < 4, vistop = 0; end
 if isscalar(scales)
-    R = scales;
-    scales = 1:R;
-elseif isvector(scales)
-    R = numel(scales);
-else
+    scales = 2:(scales+1);
+elseif ~isvector(scales)
     error('''scales'' must be a vector of disk radii or a scalar (#scales)')
 end
 
@@ -42,6 +39,7 @@ function mat = setCover(img,enc,diskCost,scales,ws,vistop)
 % 
 % TODO: is there a way to first sort scores and then pick the next one in
 %       queue, to avoid min(diskCostEffective(:)) in each iteration?
+% TODO: should conv2(...,'same') be replaced with conv2(...,'valid')?
 
 % Initializations
 [H,W,C,R]          = size(enc);
@@ -54,9 +52,10 @@ mat.radius         = zeros(H,W);
 mat.depth          = zeros(H,W); % #disks points(x,y) is covered by
 mat.price          = zeros(H,W); % error contributed by each point
 mat.covered        = false(H,W); 
-% Flag corners that are not accessible by our filter set
-mat.covered([1,end],1)   = true;
-mat.covered(end,[1,end]) = true;
+% Flag border pixels that cannot be accessed by filters.
+r = scales(1);
+mat.covered([1:r,end-r+1:end], [1,end]) = true;
+mat.covered([1,end], [1:r,end-r+1:end]) = true;
 mat.ws = ws; % weight for scale-dependent cost term.
 mat.scales = scales;
 BIG = 1e30;
@@ -78,12 +77,18 @@ fprintf('Pixels remaining: ');
 while ~all(mat.covered(:))
     % Find the most cost-effective disk at the current iteration
     [minCost, indMin] = min(diskCostEffective(:));
-    if isinf(minCost), break; end
+    if isinf(minCost), 
+        warning('Stopping: selected disk has infinite cost.')
+        break; 
+    end
         
     [yc,xc,rc] = ind2sub([H,W,R], indMin);
-    D = (x-xc).^2 + (y-yc).^2 <= scales(rc)^2;   % points covered by the selected disk
-    newPixelsCovered  = D & ~mat.covered;        % NEW pixels that are covered by D
-    if ~any(newPixelsCovered(:)), break; end
+    D = (x-xc).^2 + (y-yc).^2 <= scales(rc)^2; % points covered by the selected disk
+    newPixelsCovered  = D & ~mat.covered;      % NEW pixels that are covered by D
+    if ~any(newPixelsCovered(:))
+        warning('Stopping: Zero new pixels covered by selected disk.')
+        break; 
+    end
     
     % Update MAT 
     mat = updateMAT(mat);
@@ -177,8 +182,8 @@ function enc = imageEncoding(img,scales)
 % Fast version of imageEncoding, using convolutions with circles + cumsum
 % instead of convolutions with disks. 
 [H,W,C] = size(img); R = numel(scales);
-filters = cell(1,R); for r=1:R, filters{r} = double(circle(scales(r))); end
-filters{1}(2,2) = 1; % if we use circle filters, center pixel is left out
+filters = cell(1,R); filters{1} = double(disk(scales(1))); 
+for r=2:R, filters{r} = double(circle(scales(r))); end
 enc = zeros(H,W,C,R);
 for c=1:C
     for r=1:R
@@ -241,18 +246,19 @@ for c=1:C
     end
 end
 
-% Fix boundary conditions. Setting r-borders to a very big cost helps us 
-% avoid selecting disks that cross the image boundaries.
+% Fix boundary conditions. Setting scale(r)-borders to a very big cost 
+% helps us avoid selecting disks that cross the image boundaries.
 % We do not use Inf to avoid complications in the greedy set cover 
 % algorithm, caused by inf-inf subtractions and inf/inf divisions.
 % Also, keep in mind that max(0,NaN) = 0.
 BIG = 1e30;
-for r=1:R    
-    cost([1:r, end-r+1:end],:,:,r) = BIG;
-    cost(:,[1:r, end-r+1:end],:,r) = BIG;
+for r=1:R
+    scale = scales(r);
+    cost([1:scale, end-scale+1:end],:,:,r) = BIG;
+    cost(:,[1:scale, end-scale+1:end],:,r) = BIG;
 end
 
-% Sometimes due to numerical errors, cost are slightly negative
+% Sometimes due to numerical errors, cost are slightly negative. Fix this.
 cost = max(0,cost); 
 
 % Combine costs from different channels

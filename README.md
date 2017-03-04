@@ -9,17 +9,20 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 
 ### TODO:
 ### HIGH PRIORITY ---------------------------------------------------------
-- fix scales(r) instead of r in amat().
-- make sure the encodings are correct after refining.	
-- run experiments on boundary detection.
-- run experiments on object proposal.
-- go through recent papers on (non-semantic) segmentation and setup code for 
-	segmentation experiments.
+- Fix bug in `mat2mask`  (does not support scales that do not start from "1").
+- Fix bug with large circular segments appearing because of pixels at high scales that 
+	are not merged in the proper group.
+- in amat() should `conv2(...'same')` be replaced with `conv2(...,'valid')`?
+- consider using more "spread-out" (non-linear) distribution of scales for computing the amat.
+	Denser in finer scales and coarser in larger scales
+- fix refineMAT() and make sure the encodings are correct after refining.	
+- run experiments on object proposal by using our grouped boundaries in edgeBoxes.
 - try replacing reconstructionError() from summing all errors to returning the maximum
 	of the errors of all contained disks, by using the equivalent formula
 
 ### low priority ----------------------------------------------------------
 - Speedup amat.
+- Check if we can use `bwlabel` in the grouping scheme.
 - figure out how to balance lambda, kappa (L0Smoothing) and ws (amat) parameters.
   Use default values to begin with.
   PERHAPS: setup code to chooce lambda and kappa based on how well they cover the 

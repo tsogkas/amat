@@ -1,4 +1,4 @@
-function testBoundaryDetection(models,varargin)
+function models = testBoundaryDetection(models,varargin)
 
 % Default testing options ------------------------------------------------
 if nargin < 1, models = 'amat'; end
@@ -7,6 +7,7 @@ opts = {'dataset',      'BSDS500',...
         'visualize',    false,...
         'parpoolSize',  feature('numcores'),...% set to 0 to run serially
         'edgeDepth',    3,...       % threshold used to get edges from mat
+        'minCoverage',  0.9,...     % threshold used to keep more important segments
         'nThresh',      30,...      % #thresholds used for computing p-r
         'maxDist',      0.01        % controls max distance of an accurately 
        };                           % detected point from groundtruth.
@@ -30,7 +31,7 @@ end
 opts.thresh = linspace(1/(opts.nThresh+1),1-1/(opts.nThresh+1),opts.nThresh)';
 if ~iscell(models), models = {models}; end
 for m=1:numel(models)
-    models{m} = evaluateModel(models{m},imageList,opts);
+    models{m} = evaluateModel(models{m},imageList,opts,paths);
 end
 
 % Compute dataset-wide stats
@@ -50,11 +51,12 @@ for m=1:numel(models)
 end
 
 % -------------------------------------------------------------------------
-function model = evaluateModel(model,imageList,opts)
+function model = evaluateModel(model,imageList,opts,paths)
 % -------------------------------------------------------------------------
 switch lower(model)
     case 'amat'
-        model = struct('name',model);
+        opts.thresh = 0.5; opts.nThresh = 1;
+        model = loadModelFromMatFile(model,paths);
     otherwise, error('Model not supported')
 end
 
@@ -77,7 +79,7 @@ parfor (i=1:opts.nImages, opts.parpoolSize)
     for s=1:numel(tmp), gt(:,:,s) = tmp{s}.Boundaries; end
     img = imread(fullfile(opts.imPath,imageList(i).name));
     
-    epb = amatEdges(img,opts.edgeDepth);
+    epb = amatEdges(img,opts.minCoverage);
     [cntP(i,:), sumP(i,:), cntR(i,:), sumR(i,:),scores(i,:)] = ...
         computeImageStats(epb,gt,opts);
     
@@ -94,18 +96,15 @@ model.stats.sumR = sumR;
 model.stats.scores = scores;
 
 % -------------------------------------------------------------------------
-function epb = amatEdges(img,edgeDepth)
+function epb = amatEdges(img,minCoverage)
 % -------------------------------------------------------------------------
 [H,W,~] = size(img);
 img = imresize(img,0.5,'bilinear');
 img = L0Smoothing(img);
 mat = amat(img);
-epb = mat.depth;
-epb(border(epb,3)) = inf; % avoid responses near the image border
-epb = imresize(epb <= edgeDepth, [H,W], 'nearest');
-% mat.branches = groupMedialPoints(mat);
-% epb = mat2edges(mat,3,5);
-% epb = imresize(epb,[H,W],'bilinear');
+seg = mat2seg(mat,minCoverage);
+epb = seg2edges(seg)>0;
+epb = imresize(epb,[H,W],'nearest');
 
 % -------------------------------------------------------------------------
 function [cntP,sumP,cntR,sumR,scores] = computeImageStats(pb,gt,opts)
@@ -186,7 +185,7 @@ if length(P) > 1 % soft probability maps
     % AP score (scalar)
     AP = interp1(R,P, 0:0.01:1); 
     AP = sum(AP(~isnan(AP)))/100;
-else    % binary symmetry maps
+else    % binary maps
     odsP = P; odsR = R; odsF = fmeasure(P,R); odsT = 0.5;
     oisP = odsP; oisR = odsR; oisF = odsF; AP = odsP;
 end
@@ -213,4 +212,16 @@ for t = 2:numel(T)
         bestF = f; bestT = Tt(indMax);
         bestP = Pt(indMax); bestR = Rt(indMax); 
     end
+end
+
+% -------------------------------------------------------------------------
+function model = loadModelFromMatFile(model,paths)
+% -------------------------------------------------------------------------
+if exist(fullfile(paths.amat.models, model),'file') || ...
+   exist([fullfile(paths.amat.models, model) '.mat'],'file')
+    tmp = load(fullfile(paths.amat.models, model)); model = tmp.model;
+elseif exist(model,'file')
+    tmp = load(model); model = tmp.model;
+else
+    model = struct('name',model); 
 end
