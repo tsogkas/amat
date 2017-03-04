@@ -59,38 +59,15 @@ manstickSmoothed = L0Smoothing(manstick);
 matmanstick = amat(manstickSmoothed,40,1e-4);
 
 %% Boundary extraction
-mat = matbird;
+mat = matmanstick;
 mat.branches = groupMedialPoints(mat);
-branches = mat.branches;
-radius   = mat.radius;
-% Compute the depth contribution of each branch separately.
-[H,W] = size(mat.depth);
-numBranches = max(branches(:));
-depthBranch = zeros(H,W,numBranches);
-for i=1:numBranches
-    depthBranch(:,:,i) = mat2mask(radius .* double(branches == i));
-end
 
 %%
-% The edges are the points in the image that are covered by few disks
-% belonging in the current branch AND by few disks belonging to OTHER
-% branches. We use the edge strength of all the other branches to weigh the
-% strength of the edges of the current branch.
-d  = depthBranch;
-dc = bsxfun(@minus,mat.depth,d); % complement of the depth for a branch
-dsoft  = 1-bsxfun(@rdivide,d, max(eps,max(max(d))));
-dcsoft = 1-bsxfun(@rdivide,dc,max(eps,max(max(dc))));
-dpsoft = dsoft .* dcsoft;
-
-branchImportance = sum(sum(depthBranch>0))/(size(depthBranch,1)*size(depthBranch,2));
-[importanceSorted,idxSorted] = sort(branchImportance,'descend');
-d = d(:,:,idxSorted);
-dc= dc(:,:,idxSorted);
-dsoft  = dsoft(:,:,idxSorted);
-dcsoft = dcsoft(:,:,idxSorted);
-dpsoft = dpsoft(:,:,idxSorted);
-% e = prod(dp(:,:,idxSorted(1:10)));
-
+minCoverage = 0.95;
+seg = mat2seg(mat,minCoverage);
+e = seg2edges(seg);
+figure; imshow(label2rgb(seg));
+figure; imshow(label2rgb(e));
 
 %% Test refineMAT()
 mat = mattotem;

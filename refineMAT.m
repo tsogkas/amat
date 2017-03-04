@@ -1,18 +1,13 @@
 function mat = refineMAT(mat)
 
-% Clean up the medial axis
-matpoints = any(mat.axis,3);
-matpoints = bwmorph(matpoints & mat.radius == 1, 'clean');
-
-
 % The group labels are already sorted and first label is zero (background)
-numGroups = max(mat.branches(:)); 
+numBranches = max(mat.branches(:)); 
 [H,W,C]   = size(mat.input);
 branches  = zeros(H,W);
 radius    = zeros(H,W);
 mataxes   = reshape(rgb2labNormalized(zeros(H,W,C)),H*W,C);
 SE        = ones(2);
-for i=1:numGroups
+for i=1:numBranches
     branchOld = mat.branches == i;
     branchNew = bwmorph(imdilate(branchOld,SE),'thin',inf);
     radiusOld = branchOld .* double(mat.radius);
@@ -66,6 +61,10 @@ for i=1:numel(y)
         double(((xx(ymin:ymax,xmin:xmax)-x(i)).^2 + ...
          (yy(ymin:ymax,xmin:xmax)-y(i)).^2) <= r^2);
 end
+
+% Reconstruct the reconstruction
+reconstruction = zeros(H*W,C);
+
 
 % Update mat fields
 mat.depth = mat.depth + depthOffset;

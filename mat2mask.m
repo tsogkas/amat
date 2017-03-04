@@ -2,7 +2,7 @@ function m = mat2mask(mat,diskf)
 % mat = pts .* rad: double, HxW array whos nonzero elements equal mat radii
 
 if nargin < 3,
-    diskf = cell(1,40); for r=1:numel(diskf), diskf{r} = double(disk(r)); end
+    diskf = cell(1,40); for r=1:numel(diskf), diskf{r} = double(disk(r+1)); end
 end
 
 m = zeros(size(mat));

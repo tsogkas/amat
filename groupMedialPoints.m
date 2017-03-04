@@ -39,7 +39,7 @@ for r=1:R
         
         % Find groups at smaller scales that can potentially be merged 
         mergedLabels = cc(r).labels(i);
-        for rr=(r-1):-1:max(1,r-3)
+        for rr=(r-1):-1:max(1,r-4)
             for j=1:cc(rr).NumObjects
                 if ~any(mergedLabels == cc(rr).labels(j)) && merge(cc(rr).PixelIdxList{j})
                     mergedLabels = [mergedLabels, cc(rr).labels(j)];
