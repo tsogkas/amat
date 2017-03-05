@@ -70,8 +70,8 @@ scores = zeros(opts.nImages, 4); % optimal P,R,F,T for each image
 
 modelName = lower(model.name);
 ticStart = tic;
-parfor (i=1:opts.nImages, opts.parpoolSize)
-% for i=1:opts.nImages % keep that just for debugging
+% parfor (i=1:opts.nImages, opts.parpoolSize)
+for i=1:opts.nImages % keep that just for debugging
     % Load image and groundtruth data from disk
     [~,iid,~] = fileparts(imageList(i).name);
     tmp = load(fullfile(opts.gtPath,[iid '.mat' ])); tmp = tmp.groundTruth;
@@ -137,7 +137,7 @@ for t = 1:numel(thresh),
     for s=1:size(gt,3)
         [match1,match2] = correspondPixels(double(bmap),double(gt(:,:,s)),opts.maxDist);
         if opts.visualize
-            plotMatch(1,bmap,gt(:,:,s),match1,match2); 
+            plotMatch(1,bmap,gt(:,:,s),match1,match2); drawnow;
         end
         % accumulate machine matches
         accP = accP | match1;
@@ -220,8 +220,6 @@ function model = loadModelFromMatFile(model,paths)
 if exist(fullfile(paths.amat.models, model),'file') || ...
    exist([fullfile(paths.amat.models, model) '.mat'],'file')
     tmp = load(fullfile(paths.amat.models, model)); model = tmp.model;
-elseif exist(model,'file')
-    tmp = load(model); model = tmp.model;
 else
     model = struct('name',model); 
 end

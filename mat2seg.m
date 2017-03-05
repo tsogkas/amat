@@ -20,7 +20,7 @@ end
 numBranches = max(mat.branches(:));
 depthBranch = zeros(H,W,numBranches);
 for i=1:numBranches
-    depthBranch(:,:,i) = mat2mask(mat.radius .* double(mat.branches == i));
+    depthBranch(:,:,i) = mat2mask(mat.radius .* double(mat.branches == i),mat.scales);
 end
 
 % Segments are the areas covered by individual branches.
@@ -52,7 +52,12 @@ end
 if minCoverage < 1
     cumAreaSorted = cumsum(areaSorted)/(H*W);
     numSegmentsKeep = find(cumAreaSorted >= minCoverage, 1);
-    assert(numSegmentsKeep >= 1, 'No segments satisfy given requirements!')
+    if isempty(numSegmentsKeep)
+        error('No segments satisfy given requirements!')
+    elseif cumAreaSorted(numSegmentsKeep) < minCoverage
+        warning('%.1f%% coverage achieved (<%.1f%%)',...
+            cumAreaSorted(numSegmentsKeep)*100,minCoverage*100)
+    end
     segments = segments(:,:,1:numSegmentsKeep);
 end
 seg = max(segments,[],3);

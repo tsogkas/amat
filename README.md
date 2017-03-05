@@ -9,19 +9,26 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 
 ### TODO:
 ### HIGH PRIORITY ---------------------------------------------------------
-- Fix bug in `mat2mask`  (does not support scales that do not start from "1").
-- Fix bug with large circular segments appearing because of pixels at high scales that 
-	are not merged in the proper group.
-- in amat() should `conv2(...'same')` be replaced with `conv2(...,'valid')`?
-- consider using more "spread-out" (non-linear) distribution of scales for computing the amat.
-	Denser in finer scales and coarser in larger scales
-- fix refineMAT() and make sure the encodings are correct after refining.	
+- Find alternative way of MAT refinement that preserves the _exact_ covers from 
+	individual branches. 
 - run experiments on object proposal by using our grouped boundaries in edgeBoxes.
-- try replacing reconstructionError() from summing all errors to returning the maximum
-	of the errors of all contained disks, by using the equivalent formula
+- Don't forget when resizing the MAT, to also multiply radius map with appropriate factor.	
 
 ### low priority ----------------------------------------------------------
+- Fix bug with large circular segments appearing because of pixels at high scales that 
+	are not merged in the proper group.
+- try replacing `reconstructionError` from summing all errors to returning the maximum
+	of the errors of all contained disks, by using the equivalent formula.
+- Bundle everything in a matlab class.
+- Figure out the reason for the discrepancy between `mat2mask(double(newpts).*radius,mat.scales)`
+	and `mat.depth + depthAdded - depthRemoved`. This is probably because the
+ 	new radii are changed EVEN FOR THE POINTS THAT ARE NOT REMOVED from the old MAT.
+ 	Perhaps force the pixels that remain in the new MAT take the radius values from 
+ 	the old MAT?
+- Optimize `refineMAT` by only applying post processing method to a cropped input.
 - Speedup amat.
+- consider using more "spread-out" (non-linear) distribution of scales for computing the amat.
+	Denser in finer scales and coarser in larger scales. Useful for speedup too.
 - Check if we can use `bwlabel` in the grouping scheme.
 - figure out how to balance lambda, kappa (L0Smoothing) and ws (amat) parameters.
   Use default values to begin with.

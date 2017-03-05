@@ -16,5 +16,6 @@ else
     for i=1:numNewSegments
         e(bwperim(bg == i)) = numSegments + i;
     end
+    % Remove noisy border responses
     e(border(e,2)) = 0;
 end

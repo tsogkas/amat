@@ -128,20 +128,17 @@ while ~all(mat.covered(:))
     end
 end
 fprintf('\n')
-mat.reconstruction = labNormalized2rgb(reshape(mat.reconstruction,H,W,C));
 mat.input = labNormalized2rgb(reshape(mat.input,H,W,C));
 mat.axis  = labNormalized2rgb(mat.axis);
+mat.reconstruction = mat2reconstruction(mat.axis,mat.radius,mat.depth,mat.scales);
 mat.visualize = @()visualize(mat);
 
 % -------------------------------------------------------------------------
 function mat = updateMAT(mat)
 % -------------------------------------------------------------------------
-reconstructedDisk = ...
-    repmat(reshape(enc(yc,xc,:,rc),[1 C]), [numNewPixelsCovered(yc,xc,rc),1]);
 mat.price(newPixelsCovered) = minCost / numNewPixelsCovered(yc,xc,rc);
 mat.covered(newPixelsCovered) = true;
 mat.depth(D) = mat.depth(D) + 1;
-mat.reconstruction(newPixelsCovered,:) = reconstructedDisk;
 mat.axis(yc,xc,:) = enc(yc,xc,:,rc);
 mat.radius(yc,xc) = scales(rc);
 end
