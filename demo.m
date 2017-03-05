@@ -72,5 +72,57 @@ figure; imshow(label2rgb(e));
 %% Test refineMAT()
 mat = mattotem;
 mat.branches = groupMedialPoints(mat);
-matrefined = refineMAT(mat);
+% matrefined = refineMAT(mat);
+% The group labels are already sorted and first label is zero (background)
+%%
+numBranches = max(mat.branches(:)); 
+branchOld   = bsxfun(@eq, mat.branches, reshape(1:numBranches,1,1,[]));
+% sort branches
+dilated     = false(size(branchOld));
+isodilated  = false(size(branchOld));
+thindil     = false(size(branchOld));
+thinisodil  = false(size(branchOld));
+skeldil     = false(size(branchOld));
+skelisodil  = false(size(branchOld));
+cover       = false(size(branchOld));
+thincover   = false(size(branchOld));
+skelcover   = false(size(branchOld));
+for i=1:numBranches
+    cover(:,:,i) = mat2mask(mat.radius.*branchOld(:,:,i), mat.scales)>0;
+end
+[~,idxSorted] = sort(sum(sum(cover)),'descend');
+cover = cover(:,:,idxSorted);
+branchOld = branchOld(:,:,idxSorted);
+r = 3;
+SE = strel('disk',r);
+for i=1:numBranches
+    dilated(:,:,i)    = imdilate(branchOld(:,:,i),SE);
+    isodilated(:,:,i) = bwdist(branchOld(:,:,i)) <= r;
+    thindil(:,:,i)    = bwthin(dilated(:,:,i));
+    thinisodil(:,:,i) = bwthin(isodilated(:,:,i));
+    thincover(:,:,i)  = bwthin(cover(:,:,i));
+    skelcover(:,:,i)  = bwmorph(cover(:,:,i),'skel',inf);
+end
 
+%%
+for i=1:min(numBranches,10)
+    figure, imshowpair(cover(:,:,i),branchOld(:,:,i)); 
+    title('Branch and cover')
+    figure, imshowpair(thindil(:,:,i),thinisodil(:,:,i)); 
+    title(sprintf('Thinned dilation and isotropic dilation (r=%d)',r))
+    figure, imshow(skelcover(:,:,i)); 
+    title('Skeletonized cover')
+%     figure, imshowpair(thincover(:,:,i),skelcover(:,:,i)); 
+%     title('Thinned and skeletonized cover')
+end
+
+%% Edge boxes (PACSCAL images)
+pascalpath = '/home/tsogkas/datasets/VOC2007/VOCdevkit/VOC2007/JPEGImages/';
+imgfile = '000025';
+img = imresize(imread(fullfile(pascalpath,[imgfile, '.jpg'])),0.5,'bilinear');
+smoothed = L0Smoothing(img);
+mat = amat(smoothed);
+mat.branches = groupMedialPoints(mat);
+%%
+[seg,segments] = mat2seg(mat,0.9);
+e = seg2edges(seg);
