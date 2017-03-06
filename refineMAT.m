@@ -77,7 +77,7 @@ depth = mat2mask(radius,mat.scales);
 [y,x] = find(newpts);
 r   = radius(newpts);
 R   = numel(mat.scales);
-enc = reshape(permute(mat.enc,[1 2 4 3]), [], C);
+enc = reshape(permute(imageEncoding(mat.input,mat.scales),[1 2 4 3]), [], C);
 idx = sub2ind([H,W,R], y(:),x(:),r(:));
 newaxis = reshape(rgb2labNormalized(zeros(H,W,C)),H*W,C);
 newaxis(newpts,:) = enc(idx,:); % remember that encodings are in LAB!
@@ -93,3 +93,22 @@ mat.axis     = newaxis;
 mat.depth    = depth;
 mat.reconstruction = reconstruction;
 
+
+
+% -------------------------------------------------------------------------
+function enc = imageEncoding(img,scales)
+% -------------------------------------------------------------------------
+% Fast version of imageEncoding, using convolutions with circles + cumsum
+% instead of convolutions with disks. 
+[H,W,C] = size(img); R = numel(scales);
+filters = cell(1,R); filters{1} = double(disk(scales(1))); 
+for r=2:R, filters{r} = double(circle(scales(r))); end
+enc = zeros(H,W,C,R);
+for c=1:C
+    for r=1:R
+        enc(:,:,c,r) = conv2(img(:,:,c),filters{r},'same');
+    end
+end
+enc = cumsum(enc,4);
+areas = cumsum(cellfun(@nnz,filters));
+enc = bsxfun(@rdivide, enc, reshape(areas,1,1,1,[]));

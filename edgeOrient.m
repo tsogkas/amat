@@ -1,5 +1,24 @@
+function O = edgeOrient( E, r, matlabOnly)
+% Actually the code for both subfunctions is taken from Piotr Dollar's edge
+% detection code. The second one is the variant with matlab-only dependency
+
+if nargin < 2, r = 4; end
+if nargin < 3, matlabOnly = false; end
+if matlabOnly
+    O = edgeOrientMatlab(E,r);
+else
+    O = edgeOrientDollar(E,r);
+end
+
 % -------------------------------------------------------------------------
-function O = edgeOrient( E, r )
+function O = edgeOrientDollar(E,r)
+% -------------------------------------------------------------------------
+[Ox,Oy]=gradient2(convTri(E,r));
+[Oxx,~]=gradient2(Ox); [Oxy,Oyy]=gradient2(Oy);
+O=mod(atan(Oyy.*sign(-Oxy)./(Oxx+1e-5)),pi);
+
+% -------------------------------------------------------------------------
+function O = edgeOrientMatlab(E,r)
 % -------------------------------------------------------------------------
 % Compute very approximate orientation map from edge map. We have replaced
 % convTri with the slightly slower equivalent code to reduce dependencies.

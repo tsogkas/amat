@@ -9,9 +9,13 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 
 ### TODO:
 ### HIGH PRIORITY ---------------------------------------------------------
+- run the following experiments on object proposal using edge boxes on VOC2007:
+	1. replace structured edges with our own edge result.
+	2. replace edge clustering step with our grouped boundaries in edgeBoxes.
+	3. replace edges with our medial branches.
 - Find alternative way of MAT refinement that preserves the _exact_ covers from 
 	individual branches. 
-- run experiments on object proposal by using our grouped boundaries in edgeBoxes.
+- Compare with grouping with *Making Better Use of Edges via Perceptual Grouping* paper.
 - Don't forget when resizing the MAT, to also multiply radius map with appropriate factor.	
 
 ### low priority ----------------------------------------------------------
