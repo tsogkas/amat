@@ -117,12 +117,47 @@ for i=1:min(numBranches,10)
 end
 
 %% Edge boxes (PACSCAL images)
-pascalpath = '/home/tsogkas/datasets/VOC2007/VOCdevkit/VOC2007/JPEGImages/';
-imgfile = '000025';
-img = imresize(imread(fullfile(pascalpath,[imgfile, '.jpg'])),0.5,'bilinear');
-smoothed = L0Smoothing(img);
+% pascalpath = '/home/tsogkas/datasets/VOC2007/VOCdevkit/VOC2007/JPEGImages/';
+% imgfile = '000025';
+% img = imresize(imread(fullfile(pascalpath,[imgfile, '.jpg'])),0.5,'bilinear');
+
+% Load model and default edge Boxes options
+model=load('models/forest/modelBsds'); model=model.model;
+model.opts.multiscale=0; model.opts.sharpen=2; model.opts.nThreads=4;
+opts = edgeBoxes;
+opts.alpha = .65;     % step size of sliding window search
+opts.beta  = .75;     % nms threshold for object proposals
+opts.minScore = .01;  % min score of boxes to detect
+opts.maxBoxes = 1e4;  % max number of boxes to detect
+
+%% Read image and compute mat, branches, and edges
+img = imread('peppers.png');
+smoothed = L0Smoothing(imresize(img,0.5,'bilinear'));
 mat = amat(smoothed);
 mat.branches = groupMedialPoints(mat);
-%%
 [seg,segments] = mat2seg(mat,0.9);
-e = seg2edges(seg);
+eg = single(seg2edges(seg)); % labelled edges
+es = single(bwthin(imresize(eg>0, [size(img,1), size(img,2)],'nearest'))); % binarized edges
+O2  = edgeOrient(es);
+[E,O]=edgesDetect(img,model); E=edgesNmsMex(E,O,2,0,1,model.opts.nThreads);
+%% First test if it's working with our binarized edge output
+o = opts;
+bbs1 = edgeBoxes(img,model,opts);
+bbs2 = edgeBoxesMex(single(es),O2,o.alpha,o.beta,o.eta,o.minScore,o.maxBoxes,...
+  o.edgeMinMag,o.edgeMergeThr,o.clusterMinMag,...
+  o.maxAspectRatio,o.minBoxArea,o.gamma,o.kappa);
+
+
+
+%%
+gt=[122 248 92 65; 193 82 71 53; 410 237 101 81; 204 160 114 95; ...
+  9 185 86 90; 389 93 120 117; 253 103 107 57; 81 140 91 63];
+if(0), gt='Please select an object box.'; disp(gt); figure(1); imshow(I);
+  title(gt); [~,gt]=imRectRot('rotate',0); gt=gt.getPos(); end
+gt(:,5)=0; [gtRes,dtRes]=bbGt('evalRes',gt,double(bbs1),.7);
+figure(1); bbGt('showRes',img,gtRes,dtRes(dtRes(:,6)==1,:));
+title('green=matched gt  red=missed gt  dashed-green=matched detect');
+
+[gtRes,dtRes]=bbGt('evalRes',gt,double(bbs2),.7);
+figure(2); bbGt('showRes',img,gtRes,dtRes(dtRes(:,6)==1,:));
+title('green=matched gt  red=missed gt  dashed-green=matched detect');

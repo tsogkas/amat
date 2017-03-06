@@ -18,7 +18,7 @@ enc = imageEncoding(img,scales);
 % Compute disk cost based on image reconstruction heuristic
 diskCost = reconstructionCost(enc,scales);
 
-% Compute reedy approximation of the weighted set cover for the AMAT.
+% Compute greedy approximation of the weighted set cover for the AMAT.
 % profile on;
 mat = setCover(img,enc,diskCost,scales,ws,vistop);
 % profile off; profile viewer;
@@ -39,18 +39,16 @@ function mat = setCover(img,enc,diskCost,scales,ws,vistop)
 % 
 % TODO: is there a way to first sort scores and then pick the next one in
 %       queue, to avoid min(diskCostEffective(:)) in each iteration?
-% TODO: should conv2(...,'same') be replaced with conv2(...,'valid')?
 
 % Initializations
 [H,W,C,R]          = size(enc);
-zeroLabNormalized  = rgb2labNormalized(zeros(H,W,C));
-mat.enc            = enc;
+zeroLabNormalized  = rgb2labNormalized(zeros(H,W,C,'single'));
 mat.input          = reshape(img, H*W, C);
 mat.reconstruction = reshape(zeroLabNormalized,H*W,C);
 mat.axis           = zeroLabNormalized;
-mat.radius         = zeros(H,W);
-mat.depth          = zeros(H,W); % #disks points(x,y) is covered by
-mat.price          = zeros(H,W); % error contributed by each point
+mat.radius         = zeros(H,W,'single');
+mat.depth          = zeros(H,W,'single'); % #disks points(x,y) is covered by
+mat.price          = zeros(H,W,'single'); % error contributed by each point
 mat.covered        = false(H,W); 
 % Flag border pixels that cannot be accessed by filters.
 r = scales(1);
@@ -86,7 +84,7 @@ while ~all(mat.covered(:))
     D = (x-xc).^2 + (y-yc).^2 <= scales(rc)^2; % points covered by the selected disk
     newPixelsCovered  = D & ~mat.covered;      % NEW pixels that are covered by D
     if ~any(newPixelsCovered(:))
-        warning('Stopping: Zero new pixels covered by selected disk.')
+        warning('Stopping: selected disk covers zero (0) new pixels.')
         break; 
     end
     

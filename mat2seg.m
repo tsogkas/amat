@@ -53,8 +53,7 @@ if minCoverage < 1
     cumAreaSorted = cumsum(areaSorted)/(H*W);
     numSegmentsKeep = find(cumAreaSorted >= minCoverage, 1);
     if isempty(numSegmentsKeep)
-        error('No segments satisfy given requirements!')
-    elseif cumAreaSorted(numSegmentsKeep) < minCoverage
+        numSegmentsKeep = numel(cumAreaSorted);
         warning('%.1f%% coverage achieved (<%.1f%%)',...
             cumAreaSorted(numSegmentsKeep)*100,minCoverage*100)
     end
