@@ -23,3 +23,6 @@ paths.spbmil.output    = fullfile(paths.spbmil.root, 'output');
 paths.spbmil.models    = fullfile(paths.spbmil.output, 'models');
 paths.spbmil.spectral  = fullfile(paths.spbmil.output, 'spectral');
 paths.spbmil.plots     = fullfile(paths.spbmil.output, 'plots');
+
+% edges
+paths.edges.root       = fullfile(paths.amat.root,'external','dollar-edges');

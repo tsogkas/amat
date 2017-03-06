@@ -16,9 +16,9 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 - Find alternative way of MAT refinement that preserves the _exact_ covers from 
 	individual branches. 
 - Compare with grouping with *Making Better Use of Edges via Perceptual Grouping* paper.
-- Don't forget when resizing the MAT, to also multiply radius map with appropriate factor.	
 
 ### low priority ----------------------------------------------------------
+- Don't forget when resizing the MAT, to also multiply radius map with appropriate factor.	
 - Fix bug with large circular segments appearing because of pixels at high scales that 
 	are not merged in the proper group.
 - try replacing `reconstructionError` from summing all errors to returning the maximum
