@@ -6,8 +6,10 @@ opts = {'dataset',      'BSDS500',...
         'set',          'val',...   % 'val' or 'test'
         'visualize',    false,...
         'parpoolSize',  feature('numcores'),...% set to 0 to run serially
-        'edgeDepth',    3,...       % threshold used to get edges from mat
-        'minCoverage',  0.9,...     % threshold used to keep more important segments
+        'edgeDepth',    0,...       % threshold used to get edges from mat
+        'cannyThresh',  0,...       % threshold used to get edges from seg
+        'minCoverage',  1,...     % threshold used to keep more important segments
+        'minSegment',   0,...       % threshold used to keep more important segments
         'nThresh',      30,...      % #thresholds used for computing p-r
         'maxDist',      0.01        % controls max distance of an accurately 
        };                           % detected point from groundtruth.
@@ -46,7 +48,7 @@ for m=1:numel(models)
     models{m}.(opts.dataset).(opts.set).opts = opts;
     models{m} = rmfield(models{m},'stats');
     % And store results
-    modelPath = fullfile(paths.amat.models, models{m}.name);
+    modelPath = fullfile(paths.amat.models, opts2fileName(models{m},opts));
     model = models{m}; save(modelPath, 'model')
 end
 
@@ -71,15 +73,18 @@ scores = zeros(opts.nImages, 4); % optimal P,R,F,T for each image
 modelName = lower(model.name);
 ticStart = tic;
 % parfor (i=1:opts.nImages, opts.parpoolSize)
-for i=1:opts.nImages % keep that just for debugging
+for i=3:opts.nImages % keep that just for debugging
     % Load image and groundtruth data from disk
     [~,iid,~] = fileparts(imageList(i).name);
     tmp = load(fullfile(opts.gtPath,[iid '.mat' ])); tmp = tmp.groundTruth;
     gt  = false([size(tmp{1}.Boundaries), numel(tmp)]);
     for s=1:numel(tmp), gt(:,:,s) = tmp{s}.Boundaries; end
-    img = imread(fullfile(opts.imPath,imageList(i).name));
     
-    epb = amatEdges(img,opts.minCoverage);
+    % Compute edges from 
+    epb = amatEdges(['bsds500-' imageList(i).name], opts);
+    if size(epb,1) ~= size(gt,1) || size(epb,2) ~= size(gt,2)
+        epb = imresize(epb,[size(gt,1),size(gt,2)],'nearest');
+    end
     [cntP(i,:), sumP(i,:), cntR(i,:), sumR(i,:),scores(i,:)] = ...
         computeImageStats(epb,gt,opts);
     
@@ -96,15 +101,18 @@ model.stats.sumR = sumR;
 model.stats.scores = scores;
 
 % -------------------------------------------------------------------------
-function epb = amatEdges(img,minCoverage)
+function epb = amatEdges(img,opts)
 % -------------------------------------------------------------------------
-[H,W,~] = size(img);
-img = imresize(img,0.5,'bilinear');
-img = L0Smoothing(img);
 mat = amat(img);
-seg = mat2seg(mat,minCoverage);
-epb = seg2edges(seg)>0;
-epb = imresize(epb,[H,W],'nearest');
+if opts.edgeDepth > 0
+    epb = mat.depth <= opts.edgeDepth;
+elseif opts.cannyThresh > 0
+    seg = mat2seg(mat, opts.minCoverage, opts.minCoverage);
+    epb = seg2edges(seg, opts.cannyThresh);
+else
+    seg = mat2seg(mat, opts.minCoverage, opts.minSegment);
+    epb = seg2edges(seg)>0;
+end
 
 % -------------------------------------------------------------------------
 function [cntP,sumP,cntR,sumR,scores] = computeImageStats(pb,gt,opts)
@@ -223,3 +231,23 @@ if exist(fullfile(paths.amat.models, model),'file') || ...
 else
     model = struct('name',model); 
 end
+
+% -------------------------------------------------------------------------
+function fileName = opts2fileName(model,opts)
+% -------------------------------------------------------------------------
+fileName = model.name;
+if opts.edgeDepth > 0
+    fileName = [fileName '-edgeDepth=' num2str(opts.edgeDepth)];
+else
+    if opts.minCoverage < 1
+        fileName = [fileName '-minCoverage=' num2str(opts.minCoverage)];
+    end
+    if opts.minSegment > 0
+        fileName = [fileName '-minSegment=' num2str(opts.minSegment)];
+    end
+    if opts.cannyThresh > 0
+        fileName = [fileName '-cannyThresh=' num2str(opts.cannyThresh)];
+    end
+end
+fileName = [fileName '.mat'];
+

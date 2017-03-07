@@ -16,6 +16,8 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 - Find alternative way of MAT refinement that preserves the _exact_ covers from 
 	individual branches. 
 - Compare with grouping with *Making Better Use of Edges via Perceptual Grouping* paper.
+- Check out UCM by arbelaez.
+- Set model filename in all experiments so that it reflects the chosen parameters.
 
 ### low priority ----------------------------------------------------------
 - Don't forget when resizing the MAT, to also multiply radius map with appropriate factor.	

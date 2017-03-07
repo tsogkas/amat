@@ -5,13 +5,12 @@ if nargin < 2, minCoverage = 1; end
 if nargin < 3, minSegment  = 0; end
 assert(isscalar(minCoverage) && minCoverage > 0 && minCoverage <= 1, ...
     'minCoverage must be a scalar in (0,1]')
-assert(isscalar(minSegment) && minCoverage <= 1, ...
-    'minSegment must be a scalar in [0,1]')
+assert(isscalar(minSegment), 'minSegment must be scalar')
 
 % Using this function assumes you have already grouped the medial points
 % into branches. A "refined" MAT (using function refineMAT()) is not
 % necessary, although it might lead to better results.
-if ~isfield(mat,'branches')
+if ~isfield(mat,'branches') || isempty(mat.branches)
     mat.branches = groupMedialPoints(mat);
 end
 
@@ -43,7 +42,17 @@ segments = bsxfun(@times, segments, reshape(1:numBranches,1,1,[]));
 
 % Discard small segments
 if minSegment > 0
-    small = areaSorted/(H*W) < minSegment;
+    if minSegment < 1   % ratio of the min segment area over image area
+        small = areaSorted/(H*W) < minSegment;
+    elseif minSegment < H*W  % #pixels of min segment
+        small = areaSorted < minSegment;
+    else
+        error('minSegment is larger than the size of the image')
+    end 
+    % If no segment satisfies the contraint, just use the largest segment
+    if numel(small) == numel(areaSorted)
+        small(1) = false;
+    end
     segments(:,:,small) = [];
     areaSorted(small)   = [];
 end
