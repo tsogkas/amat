@@ -39,6 +39,7 @@
 \def\matlab{MATLAB}
 \def\matconvnet{MatConvNet}
 
+% Chapters, Sections, Figures, Equations
 \newcommand{\refchap}[1]{Chapter~\ref{#1}}
 \newcommand{\refsec}[1]{Section~\ref{#1}}
 \newcommand{\reffig}[1]{Figure~\ref{#1}}
@@ -56,5 +57,10 @@
 \newcommand{\inprod}[1]{{\left< \, #1 \, \right>}}
 \newcommand{\R}{\mathbb{R}}
 \def\abs{\operatorname{abs}}
-\def\argmax{\operatornamewithlimits{arg\,max}}
-\def\argmin{\operatornamewithlimits{arg\,min}}
+\DeclareMathOperator*{\argmin}{argmin}
+\DeclareMathOperator*{\argmax}{argmax}
+\newcommand{\D}[2]{D_{\vec{#1},#2}} % (p,r)-disk
+\newcommand{\Di}[3]{D_{\vec{#1}_#3,#2_#3}} % (p,r)-disk with subscript
+\newcommand{\Dg}[2]{\tilde{D}_{\vec{#1},#2}} % (p,r)-disk decoding
+\newcommand{\Dgi}[3]{\tilde{D}_{\vec{#1}_#3,#2_#3}} % (p,r)-disk decoding
+\newcommand{\norm}[1]{\left \lVert #1 \right \rVert} % norm

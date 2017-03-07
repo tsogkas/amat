@@ -9,6 +9,38 @@ elseif ~isvector(scales)
     error('''scales'' must be a vector of disk radii or a scalar (#scales)')
 end
 
+% If the AMAT has been precomputed, try to load it from mat-file.
+if ischar(img)
+    % We assume that img is a string of the form:
+    % [dataset separator imageid ext], where dataset can be one of bsds500 and
+    % voc2007, separator can be e.g. '-' or '_', imageid is usually a number id
+    % and ext is the file extension (typically .jpg or .png).
+    paths = setPaths();
+    [~,iid,ext] = fileparts(img);
+    dataset = lower(iid(1:7));
+    iid = iid(9:end);
+    amatPath = fullfile(paths.amat.precomputed, dataset, ['amat_' iid '.mat']);
+    if exist(amatPath, 'file')
+        mat = load(amatPath); mat = mat.mat;
+        % Return loaded mat ONLY if its parameters match the specified ones
+        if mat.ws == ws && isequal(mat.scales, scales)
+            mat.visualize = @()visualize(mat);
+            return
+        end
+    else % read the image file, smooth it, and compute AMAT
+        warning('Precomputed AMAT was not found. Computing from scratch...')
+        switch dataset
+            case 'voc2007'
+                imgDir = fullfile(paths.voc2007,'VOC2007','JPEGImages');
+            case 'bsds500'
+                imgDir = paths.bsds500im;
+            otherwise, error('Dataset not supported')
+        end
+        img = imread(fullfile(imgDir, [iid ext]));
+        img = L0Smoothing(imresize(img, 0.5,'bilinear'));
+    end
+end
+
 % Convert to CIE La*b* color space
 img = rgb2labNormalized(im2double(img));
 
@@ -159,6 +191,8 @@ subplot(224); imshow(mat.radius,[]); title('A-MAT radii')
 drawnow;
 end
 
+end
+
 % -------------------------------------------------------------------------
 function visualize(mat)
 % -------------------------------------------------------------------------
@@ -167,9 +201,6 @@ subplot(222); imshow(mat.radius,[]);        title('Radii');
 subplot(223); imshow(mat.input);            title('Original image');
 subplot(224); imshow(mat.reconstruction);   title('Reconstructed image');
 end
-
-end
-
 
 % -------------------------------------------------------------------------
 function enc = imageEncoding(img,scales)
@@ -263,3 +294,4 @@ if C > 1
     cost = squeeze(cost);                 
 end
 end
+
