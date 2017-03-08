@@ -46,7 +46,6 @@ Our code will be made publicly available.
 \stavros{Say that we don't use learning}
 \stavros{Cite: Medial Spheres for Shape Approximation
 Svetlana Stolpner, Paul Kry and Kaleem Siddiqi}
-
 \end{abstract}
 
 %%%%%%%%% BODY TEXT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -135,6 +134,7 @@ Nevertheless, we can assume that in most cases an image is composed of many smal
 This is a concept on which most superpixel algorithms are built on: group pixels 
 into non-overlapping patches that capture image redundancies, while respecting perceptually meaningful region boundaries~\cite{shi2000normalized,levinshtein2009turbopixels,achanta2012slic}. 
 
+\stavros{boldface encodings and decodings}
 \paragraph{Notation:} Before proceeding with the details of our formulation, we list the notation used throughout our paper.
 We use capital italics for single elements and capital calligraphic letters to denote sets. A disk of radius $r$,
 centered at point $\p{}$ is denoted as $D(\p{},r)=D_{\p{},r}$. 
@@ -224,7 +224,7 @@ Selecting a high value for $w_s$ will lead to a sparser solution with higher tot
 whereas a low value for $w_s$ will aim for a higher reconstruction quality, by utilizing more, smaller disks
 to cover $I$.
 
-\paragraph{Choice of approximation algorithm}
+\paragraph{Greedy approximation algorithm}
 There are many choices for a polynomial-time-approximate-solution (PTAS) algorithms for the vanilla set cover
 and its geometric variants.
 Some rely on solving the dual \emph{hitting set problem}~\cite{bronnimann1995almost}.
@@ -238,17 +238,15 @@ The steps of our method are described in Algorithm~\ref{alg:greedy}
 \caption{AMAT greedy algorithm.}
 \label{alg:greedy}
 	\begin{algorithmic}[1]
-		\Procedure{AMAT}{$I,\set{R},f,g$} \Comment{Image $I$ has $N$ pixels and domain.}
-		\State Initialize solution as $M_0 = \{(\p{1},r_1),\ldots,(\p{N},r_N)\}$.
-		\State Compute $f\left( D_I(\p{},r) \right),\  \forall D_I(\p{},r) \in I$.
-		\ForAll{$\p{i},\p{j} \in ,\ r_i,r_j \in $}  \Comment{Remove non-maximal disks.}
-			\If{$e\left( f\left( D_I(\p{i},r_i) \right), f\left( D_I(\p{j},r_j) \right) \right) < \epsilon$ 
-			and $r_i < r_j$} 
-				$M_0 \gets M_0-\{(\p{i},r_i)\}$.
-			\EndIf
-		\EndFor
-		\State $M = \argmin_{(\p{},r)\in M_0}{d\left( \bigcup_{i=1}^n \bar D_I(\p{i},r_i), I \right)}$ \Comment{Select subset that optimizes reconstruction quality.}
-		\EndProcedure
+	\Statex \textbf{Input:} $X,I=\{\p{1},\ldots,\p{N}\},\set{R}=\{r_1,\ldots,r_R\},f,g$.
+	\Statex \textbf{Output:} $M$
+	\State Initialization: $M = \emptyset,X=\emptyset$.
+	\State Compute $f_{\p{},r},\, g_{\p{},r} = g \circ f_{\p{},r},\,\, \forall \p{} \in I, \forall r \in \set{R}$.
+	\While{$X \subset I$}
+		\State $c_{\p{},r}^e = \frac{c_{\p{},r}}{|D_{\p{},r} \setminus X|}+\frac{w_s}{r},\,\, \forall \p{} \in I, \forall r \in \set{R}$.		
+		\State $M\leftarrow M\cup{(\p{}^{*},r^{*},f_{\p{}^{*},r^{*}})},  \newline
+				X \leftarrow X\cup D_{\p{}^{*},r^{*}}, \quad (\p{}^{*},r^{*}) = \argmin_{\p{},r}{c_{\p{},r}^e}$.		
+	\EndWhile
 	\end{algorithmic}
 \end{algorithm}
 We start by computing the costs $c_{ij}$ for all possible disks $D_{ij}$.
@@ -259,13 +257,44 @@ removing the area $D_{ij}$ from the pixels that have to be covered.
 This process is repeated until all image pixels have been covered by at least one disk.
 
  
-\subsection{Extending AMAT to Textured Images}\label{sec:texture}
-\begin{itemize}
-\item $L_0$ Smoothing
-\item GANs (if that works)
-\end{itemize}
-
 \subsection{Implementation Details}\label{sec:implementation}
+In this section we discuss implementation details of our approach, as well as design and parameter choices.
+\stavros{Perhaps add subsubsection about the choice of encoding and decoding functions}
+\subsubsection*{Choice of functions encoding and decoding functions}
+\subsubsection*{Heuristic disk cost}
+The greedy algorithm described in~\refsec{sec:amat-wgsc} requires assigning a cost to all possible disks $D_{ij}$.
+Choosing an appropriate type of cost function is crucial towards obtaining a final MAT that both encompasses the 
+disk maximality criterion, leading to a sparse solution, and faithfully reproduces the input image.
+Since our objective is a high quality of image reconstruction, $c_{ij}$ should be directly proportional
+to the reconstruction error of the local image patch.
+Given our choice of functions $f,g$, using a criterion such as MSE or PSNR will not work.
+These metrics are well known to perform poorly in representing perceptual similarity of images~\cite{girod1993what,wang2009mean}.
+For example, \reffig{fig:heuristic} shows that naively selecting a disk with a low MSE score does not guarantee that it 
+does not cross image boundaries.
+Instead, we would rather select disks whose encodings are representative of \emph{all} disks that are fully enclosed
+in their area. 
+First, we convert the RGB input image to the CIELAB color space which is more suitable for measuring perceptual distances,
+and perform all our computations in that space.
+We define the cost for a disk $D_{\p{i},r_j}$ as follows:
+\begin{equation}
+c_{ij} = \sum_k \sum_l \norm{\mathbf{f}_{ij} - \mathbf{f}_{kl} }^2, \forall k,l: D_{kl} \subset D_{ij}
+\label{eq:diskcost}
+\end{equation}
+Intuitively, a low cost $c_{ij}$ implies that the encoding $\mathbf{f}_{ij}$ is representative of \emph{all}
+the disks that are fully contained in $D_{ij}$, hence $D_{ij}$ is not crossing any region boundaries.
+
+Computing $c_{ij}$ can be very demanding as it requires to also compute mean value encodings for all
+
+
+\begin{figure}
+\caption{Figure showing the intuition behind our heuristic for disk error computation, and the failure of MSE}
+\label{fig:heuristic}
+\end{figure}
+
+
+\subsubsection*{Dealing with textured images}
+\subsubsection*{Reconstructing the image from AMAT}
+\subsubsection*{Parameter values}
 
 \subsection{Grouping Medial Points to Branches}\label{sec:grouping}
 
@@ -289,7 +318,6 @@ tailored for this task. WE ARE NOT EXPECTING SOTA PERFORMANCE.
 
 \subsection{Object Proposals}\label{sec:object-proposals}
 
-\subsection{Implementation Details}
 
 % ==========================================================
 \section{Discussion}\label{sec:discussion}
