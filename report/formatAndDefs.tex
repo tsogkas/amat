@@ -3,10 +3,8 @@
 \usepackage{times}
 \usepackage{epsfig}
 \usepackage{graphicx}
-\usepackage{amsmath}
-\usepackage{amssymb}
-\usepackage{algorithm}
-\usepackage[noend]{algorithmic}
+\usepackage{amsmath,amssymb}
+\usepackage{algorithm,algpseudocode}
 \usepackage{subfig}
 
 % Include other packages here, before hyperref.
@@ -59,8 +57,5 @@
 \def\abs{\operatorname{abs}}
 \DeclareMathOperator*{\argmin}{argmin}
 \DeclareMathOperator*{\argmax}{argmax}
-\newcommand{\D}[2]{D_{\vec{#1},#2}} % (p,r)-disk
-\newcommand{\Di}[3]{D_{\vec{#1}_#3,#2_#3}} % (p,r)-disk with subscript
-\newcommand{\Dg}[2]{\tilde{D}_{\vec{#1},#2}} % (p,r)-disk decoding
-\newcommand{\Dgi}[3]{\tilde{D}_{\vec{#1}_#3,#2_#3}} % (p,r)-disk decoding
+\newcommand{\p}[1]{\vec{p}_{#1}} 	 % point with subscript
 \newcommand{\norm}[1]{\left \lVert #1 \right \rVert} % norm

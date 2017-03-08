@@ -19,26 +19,34 @@ if ischar(img)
     [~,iid,ext] = fileparts(img);
     dataset = lower(iid(1:7));
     iid = iid(9:end);
-    amatPath = fullfile(paths.amat.precomputed, dataset, ['amat_' iid '.mat']);
+    % Allow the option of passing the absolute path of the precomputed AMAT
+    if exist(img,'file')
+        amatPath = img;
+    else  % otherwise use the default location for the respective dataset
+        amatPath = fullfile(paths.amat.precomputed, dataset, ['amat_' iid '.mat']);
+    end
+    % Try to load the stored AMAT
     if exist(amatPath, 'file')
         mat = load(amatPath); mat = mat.mat;
         % Return loaded mat ONLY if its parameters match the specified ones
         if mat.ws == ws && isequal(mat.scales, scales)
             mat.visualize = @()visualize(mat);
             return
+        else
+            warning('Stored AMAT does not match the specified parameters.')
         end
-    else % read the image file, smooth it, and compute AMAT
-        warning('Precomputed AMAT was not found. Computing from scratch...')
-        switch dataset
-            case 'voc2007'
-                imgDir = fullfile(paths.voc2007,'VOC2007','JPEGImages');
-            case 'bsds500'
-                imgDir = paths.bsds500im;
-            otherwise, error('Dataset not supported')
-        end
-        img = imread(fullfile(imgDir, [iid ext]));
-        img = L0Smoothing(imresize(img, 0.5,'bilinear'));
     end
+    % If you reach this point it means that the desired AMAT was not found.
+    warning('Precomputed AMAT was not found. Computing from scratch...')
+    switch dataset
+        case 'voc2007'
+            imgDir = fullfile(paths.voc2007,'VOC2007','JPEGImages');
+        case 'bsds500'
+            imgDir = paths.bsds500im;
+        otherwise, error('Dataset not supported')
+    end
+    img = imread(fullfile(imgDir, [iid ext]));
+    img = L0Smoothing(imresize(img, 0.5,'bilinear'));
 end
 
 % Convert to CIE La*b* color space
