@@ -1,5 +1,4 @@
 \documentclass[10pt,twocolumn,letterpaper]{article}
-
 \include{formatAndDefs}
 
 % \iccvfinalcopy % *** Uncomment this line for the final submission
@@ -38,7 +37,7 @@ We also measure the quality of the reconstructed images from the same dataset,
 obtained by inverting their computed AMAT. 
 Finally, we show that edge maps extracted as a by-product of our method
 can be integrated in popular object proposal pipelines, thereby boosting performance.
-Our code will be made publicly available.
+Our code will be made publicly available. 
 
 
 
@@ -49,9 +48,9 @@ Svetlana Stolpner, Paul Kry and Kaleem Siddiqi}
 \end{abstract}
 
 %%%%%%%%% BODY TEXT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% ==========================================================
+% ====================================================================================================================
 \section{Introduction}\label{sec:introduction}
-% ==========================================================
+% ====================================================================================================================
 \begin{itemize}
 \item MAT, perceptual grouping, symmetry.
 \item application in which MAT has been used (shape matching, shape retrieval etc)
@@ -63,9 +62,9 @@ If there is enough space we can show example of image reconstruction and other p
 \label{fig:teaser}
 \end{figure}
 
-% ==========================================================
+% ====================================================================================================================
 \section{Related Work}\label{sec:related}
-% ==========================================================
+% ====================================================================================================================
 \subsubsection*{MAT for binary shapes}
 \begin{itemize}
 \item Blum's Medial axis transform
@@ -75,13 +74,13 @@ If there is enough space we can show example of image reconstruction and other p
 \begin{itemize}
 \item Levinstein's work
 \item MIL-based symmetry detection
-\item Random-forest variant by Alloimonos' student
+\item Random-forest variant by Ching L. Teo
 \item CNN-variant 
 \end{itemize}
 
-% ==========================================================
+% ====================================================================================================================
 \section{Background}\label{sec:background}
-% ==========================================================
+% ====================================================================================================================
 \stavros{Probably move this section to~\refsec{sec:method}}
 To make the paper self-contained, we include a brief review of two basic concepts that our work is based on.
 
@@ -112,12 +111,17 @@ total cost $C$; the total cost is simply the sum of costs of individual elements
 WGSC is a strongly NP-hard problem for which polynomial-time approximate solutions (PTAS) exist.
 Perhaps the simplest and most straightforward is the greedy algorithm described in~\cite{vazirani2013approximation}. 
 \stavros{We will include pseudocode for the algorithm applied in our own problem}
-The interested reader can find more details on WGSC and related algorithms in~\cite{mustafa2015quasi,varadarajan2010weighted,har2012weighted,chan2012weighted}.
+The interested reader can find more details on WGSC and related algorithms 
+in~\cite{mustafa2015quasi,varadarajan2010weighted,har2012weighted,chan2012weighted}.
 
 
-% ==========================================================
+
+
+
+
+% ====================================================================================================================
 \section{Method}\label{sec:method}
-% ==========================================================
+% ====================================================================================================================
 \subsection{Problem Definition}\label{sec:definition}
 Our definition of a medial axis transform for color images is inspired by the invertibility property of the binary MAT. 
 Given a medial point $\p{i}$ and its associated scale $r_i$, we can reconstruct part of the shape by 
@@ -132,7 +136,8 @@ Moreover, whereas binary images are composed of uniform areas of zeros (0) and o
 real images obey complicated color and texture distributions. 
 Nevertheless, we can assume that in most cases an image is composed of many small regions of relatively uniform appearance. 
 This is a concept on which most superpixel algorithms are built on: group pixels 
-into non-overlapping patches that capture image redundancies, while respecting perceptually meaningful region boundaries~\cite{shi2000normalized,levinshtein2009turbopixels,achanta2012slic}. 
+into non-overlapping patches that capture image redundancies, while respecting perceptually meaningful region 
+boundaries~\cite{shi2000normalized,levinshtein2009turbopixels,achanta2012slic}. 
 
 \stavros{boldface encodings and decodings}
 \paragraph{Notation:} Before proceeding with the details of our formulation, we list the notation used throughout our paper.
@@ -179,7 +184,7 @@ so as to minimize~\refeq{eq:minimization} can result in \emph{overlapping} disks
 which are non-overlapping. 
 
 \begin{figure}[ht]
-\caption{Image of google logo, showing how we use disks to cover the input image, and how disks that cross region boundaries result
+\caption{Image of Google logo, showing how we use disks to cover the input image, and how disks that cross region boundaries result
 in high reconstruction costs.}
 \label{fig:google}
 \end{figure}
@@ -233,7 +238,7 @@ Some rely on solving the dual \emph{hitting set problem}~\cite{bronnimann1995alm
 Since this is a first attempt on applying a WGSC approach to compute the MAT of real images, we keep things simple.
 We use the greedy approximation algorithm for the set cover, described in~\cite{vazirani2013approximation},
 adapted for the weighted case.
-The steps of our method are described in Algorithm~\ref{alg:greedy}
+The steps of our method are described in~\refalg{alg:greedy}
 \begin{algorithm}
 \caption{AMAT greedy algorithm.}
 \label{alg:greedy}
@@ -261,7 +266,7 @@ This process is repeated until all image pixels have been covered by at least on
 In this section we discuss implementation details of our approach, as well as design and parameter choices.
 \stavros{Perhaps add subsubsection about the choice of encoding and decoding functions}
 \subsubsection*{Choice of functions encoding and decoding functions}
-\subsubsection*{Heuristic disk cost}
+\subsubsection*{Disk cost computation}
 The greedy algorithm described in~\refsec{sec:amat-wgsc} requires assigning a cost to all possible disks $D_{ij}$.
 Choosing an appropriate type of cost function is crucial towards obtaining a final MAT that both encompasses the 
 disk maximality criterion, leading to a sparse solution, and faithfully reproduces the input image.
@@ -283,8 +288,15 @@ c_{ij} = \sum_k \sum_l \norm{\mathbf{f}_{ij} - \mathbf{f}_{kl} }^2, \forall k,l:
 Intuitively, a low cost $c_{ij}$ implies that the encoding $\mathbf{f}_{ij}$ is representative of \emph{all}
 the disks that are fully contained in $D_{ij}$, hence $D_{ij}$ is not crossing any region boundaries.
 
-Computing $c_{ij}$ can be very demanding as it requires to also compute mean value encodings for all
-
+Computing $c_{ij}$ can be very demanding as it requires to also compute encoding differences for all
+contained disks in $D_{ij}$. If $r_j$ is large, this number can grow very quickly.
+However, we can significantly reduce computation time by i) using convolutions to compute the sums in~\refeq{eq:diskcost}
+and ii) minimizing redundant computations by using cumulative sums over \emph{circular} areas inst2ead of disks.
+An alternative approach that can provide a significant speedup is using rectangular or square shapes as the
+shape elements we use to cover the image domain.
+Using square filters allows us to compute sums within regions with a fixed number of operations per position on an integral
+image~\cite{viola2001rapid,arbelaez2011contour}, reducing complexity by an order of magnitude.
+Further technical details can be found in the supplemental material.
 
 \begin{figure}
 \caption{Figure showing the intuition behind our heuristic for disk error computation, and the failure of MSE}
@@ -292,23 +304,169 @@ Computing $c_{ij}$ can be very demanding as it requires to also compute mean val
 \end{figure}
 
 
+\stavros{Maybe merge subsections about texture, image reconstruction and discussion about $g$ and its capacity together}
 \subsubsection*{Dealing with textured images}
+The main motivation behind the choice of simple functions $f,g$, such as the ones described in~\refsec{sec:definition}, was simplicity and 
+computational efficiency.
+Such functions also allow us to inject certain desired characteristics to the regions depicted by medial points in the AMAT solution.
+for instance, appearance uniformity and alignment with boundaries.
+However, natural images often contain high-frequency textures or noise and noise, which can lead to the accumulation of large errors 
+in~\refeq{eq:diskcost}, and promote the use of disks that do not correspond to \emph{perceptually} coherent regions. 
+Simple image filtering techniques (for example with a gaussian kernel) can reduce noise but they also degrade image boundaries and
+merge dissimilar regions.
+
+To alleviate this problem, we ``simplify'' the input image before extracting the AMAT, using a method that smooths high frequency
+regions, while preserving important edges~\cite{xu2011image}.
+In practice, this preprocessing produces an image that is very similar, perceptually, to the original, 
+but without the high-frequency textures that can cause the greedy algorithm to fail in placing disks at the desired locations.
+
 \subsubsection*{Reconstructing the image from AMAT}
+\begin{figure}
+\caption{Show the effect of smoothing and perhaps show comparison between different values of $w_s$}
+\end{figure}
+
 \subsubsection*{Parameter values}
+For the smoothing algorithm we use the default values $\lambda=2\cdot10^{-4}$ and $\kappa=2$ that 
+the authors suggest for natural images~\cite{xu2011image}.
+Regarding the scale cost term described in~\refsec{sec:amat-wgsc}, we found that $w_s=10^{-4}$ is a value that 
+gives a good balance between reconstruction quality and sparsity of the generated medial axis.
+$\set{D}$ comprises disks at $40$ different scales in total, with radii $r\in[2,41]$.
+
 
 \subsection{Grouping Medial Points to Branches}\label{sec:grouping}
+The scale and appearance associated with each medial point belonging in the AMAT, provides a useful
+description that can be used to group points belonging in the same region, into \emph{medial branches}.
+The beneficial effects of grouping in low-level vision tasks have been
+observed in previous works~\cite{felzenszwalb2006min,zhu2007untangling,kokkinos2010highly}.
+In our case, grouping pixels into branches can help us both refine the final medial axis, 
+by aggregating consensus from neighboring points, and reduce complexity 
+by allowing us to manipulate sets of points jointly.
 
-% ==========================================================
+We group detected medial points using an hierarchical scheme that starts at fine scales and
+progressively merges together nearby points at coarser scales.
+Our grouping criterion relies in proximity in \emph{scale-space} and \emph{appearance}.
+Intuitively, points that are very close in the image, have higher probability of belonging in the
+same contour.
+At the same time, points that lie close to one another but have very different scales should 
+probably not be grouped together, since we expect that the scale of neighboring points on the same
+curve should change \emph{gradually}.
+Finally, two points should not be merged if their encoding appearance vectors are very dissimilar,
+as this indicates that they belong to different regions, regardless of their proximity in scale-space.
+
+We combine these ideas into the clustering scheme described in~\refalg{alg:grouping}.
+We initialize branches as the connected components of the AMAT output.
+Starting at a scale $r_j$, we consider one branch at a time, and examine all other
+branches within a neighborhood of size $r_j \times r_j$ and a scale neighborhood $[r_{j-3},r_j]$.
+If two branches coexist in this scale-space neighborhood and their average encodings are similar,
+they are merged.
+The grouping algorithm terminates when all scales have been considered.
+
+\begin{algorithm}
+\caption{Point grouping algorithm.}
+\label{alg:grouping}
+	\begin{algorithmic}[1]
+	\Statex \textbf{Input:} $\set{R}=\{ r_1,\ldots.r_R \}, \newline M=\{ (\p{i},r_{\p{i}},\mathbf{f}_{\p{i},r_{\p{i}}}) \}, \, i=\in[1,m]$.
+	\Statex \textbf{Output:} $B= \{ \mathbf{b}_1,\ldots,\mathbf{b}_k \} = \newline \{ (\p{l_{11}},\ldots,\p{l_{1i}}), \ldots, (\p{l_{k1}},\ldots,\p{l_{kj}}) \},\, l_{ij}\in[1,m]$.
+	\State Initialization: $B \leftarrow cc(M)$. \Comment{Connected components}
+	\ForAll{scales $r_i$}
+		\ForAll{branches $\mathbf{b}_j$}
+		\EndFor
+	\EndFor
+	\end{algorithmic}
+\end{algorithm}
+\stavros{Keep the pseudocode only if space permits}
+
+
+\subsubsection*{Medial branch simplification}
+Even though the medial points returned by our algorithm mostly correspond to region centerlines,
+there are imperfections in the form of noisy responses or point ``lumps'', instead of thin contours.
+Such imperfections are expected since the greedy algorithm generates only an approximate solution,
+to the minimization problem in~\refeq{eq:minimization}. 
+In addition, because of the use of a discrete grid, the placement of disks 
+in the image domain does not always result in their centers spanning a continuous curve, which leads to
+isolated medial points.
+
+Grouping MAT points into branches makes it possible to process each branch individually, in an attempt
+to correct these flaws post hoc.
+We perform simple morphological operations (dilation and thinning) 
+on the points of each branch to merge neighboring and isolated pixels together, while removing 
+redundant responses. 
+We also adjust the scales of the medial points after thinning, to ensure that the medial disks corresponding 
+to the simplified structure span the same image area.
+Because grouped branches correspond to relatively homogeneous regions, we expect that reconstruction
+results after simplification will not change much.
+The results of this simplification process are illustrated in~\reffig{fig:reconstruction}.
+With a negligible drop in reconstruction quality, we are able to achieve a dramatic reduction
+in the number of medial points, and produce much cleaner medial axes.
+\stavros{Do not forget to include average compression rates}
+
+
+
+
+
+
+
+% ====================================================================================================================
 \section{Experiments}\label{sec:experiments}
-% ==========================================================
-\subsection{Image Reconstruction (BSDS500)}
+% ====================================================================================================================
+In this section we report experimental results.
+Based on the AMAT definition and the criterion we use to assess its quality, there are two main tasks which we 
+use to evaluate the performance of our method. 
+The first one is medial point detection accuracy, where we are interested in successfully localizing medial points
+in an image.
+The second is image reconstruction quality, where the task is to generate an accurate reconstruction of the input,
+given its computed AMAT.
+However, apart from these applications that are directly related to the AMAT problem, there are additional 
+interesting implications pertaining to the tasks of edge detection and segmentation.
+We discuss and investigate these implications in separate subsections.
+
+
+\subsection{Medial Point Detection (BMAX500)}\label{sec:experiments:detection}
+For the task of medial point detection we use a built on the BSDS500~\cite{martin2001database,arbelaez2011contour}.
+We want to emphasize the difference of the problem we are attacking, compared to local symmetry
+and skeleton detection pursued in previous works.
+In~\cite{tsogkas2012learning} the authors focus on detecting medial axes of locally symmetric, elongated structures,
+and they build a dataset containing only annotations of structures that fit this description.
+As a result, a large portion of the segments in BSDS500 are not annotated and not used in performance evaluation.
+In~\cite{shen2016object}, on the other hand, the authors are explicitly interested in extracting \emph{object}
+skeleton, ignoring completely background structures.
+
+In our work we do not make such distinctions. Since our ultimate goal is to obtain a sparse image representation
+that carries enough information to reconstruct the input image, we treat all parts of the image equally.
+Actually, if our algorithm returned medial axes that summarized image regions at the level of objects, 
+it would not be possible to invert the AMAT and provide a satisfactory image reconstruction, as objects tend to
+be composed of multiple distinct regions with dissimilar appearance statistics.
+This is the reason we choose the BSDS500 as a basis for constructing medial axes annotations.
+BSDS500 contains multiple segmentations of different granularities for each image, offering higher probability of
+capturing segments at finer scales, which is much more relevant to the problem we are trying to solve.
+
+Following a similar approach to the one used in~\cite{tsogkas2012learning,shen2016object}, 
+we individually process \emph{all} segments in a given segmentation, applying a skeletonization 
+algorithm~\cite{telea2002augmented} on their binary masks to extract \emph{segment skeletons}.
+The medial axis groundtruth for the image is formed by taking the union of all the segment skeletons, and this
+process is repeated for all available segmentations for each image (usually 5-7).
+We call this new medial axis dataset, the Berkeley Medial AXes (BMAX500) dataset.
+
+To conduct a fair comparison, we retrain the MIL-based algorithm from~\cite{tsogkas2012learning} on this new set 
+of annotations.
+We also tried to retrain the CNN model used in~\cite{shen2016object}, but the outputs we obtained were too noisy, 
+and not of any practical use.
+We hypothesize that the reason for that is the lack of consensus among the multiple groundtruth maps that are
+available for each image, which lead to convergence problems for the network; this has been previously
+reported in~\cite{xie2015holistically}.
+In our scenario, however, it is impossible to enforce ground truth consensus, because the position discrepancies
+for medial axes extracted from different annotations are very high.
+We evaluate performance using standard precision, recall and f-measure metrics, 
+which we list in~\reftab{tab:experiments:detection}.
+
+
+
+
+\subsection{Image Reconstruction (BSDS500)}\label{sec:experiments:reconstruction}
+We now turn out
 Experiments on image reconstruction using standard metrics (MSE, PSNR, and metrics using CNN feature similarity.
 
-\subsection{Medial Point Detection (BMAX500)}\label{sec:medial-point-detection}
-Recover all medial axes of the BSDS500. Compare with other skeletonization algorithms, such
-as the CNN based method, and my previous MIL-based method
-
-\subsection{Boundary Detection (BSDS500)}\label{sec:boundary-detection}
+\subsection{Boundary Detection (BSDS500)}\label{sec:experiments:edges}
 Medial axes to boundaries. 
 MIL: compute an approximate scale based on the scale with maximum probability and try to recover boundaries.
 CNN: same as above, this was already done in that paper for estimating segmentation masks using scale information.
@@ -316,16 +474,22 @@ We can compare the boundary recovery results as well.
 EDGE DETECTORS: Standard edge detection algorithms (Dollar, HED, Canny, gPB etc: compare with algorithms specifically
 tailored for this task. WE ARE NOT EXPECTING SOTA PERFORMANCE.
 
-\subsection{Object Proposals}\label{sec:object-proposals}
+\subsection{Object Proposals}\label{sec:experiments:proposals}
 
 
-% ==========================================================
+
+
+
+
+
+
+% ====================================================================================================================
 \section{Discussion}\label{sec:discussion}
-% ==========================================================
+% ====================================================================================================================
 
 {\small
 \bibliographystyle{ieee}
-\bibliography{iccv2017}
+\bibliography{iccv2017.bib}
 }
 
 \end{document}
