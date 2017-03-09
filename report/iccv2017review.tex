@@ -66,8 +66,28 @@ If there is enough space we can show example of image reconstruction and other p
 \section{Related Work}\label{sec:related}
 % ====================================================================================================================
 \subsubsection*{MAT for binary shapes}
+Blum introduced the concept of the medial axis transform, or skeleton, for two-dimensional shapes,
+in  his seminal works~\cite{blum1967transformation,blum1973biological}.
+Since then, many other researchers have developed algorithms for more reliable
+and more efficient medial axis extraction, its extension to 3D shapes, and its application
+to computer vision tasks.
+
+Siddiqi \etal define \emph{shocks} as the singularities of a curve evolution process acting on the boundaries of
+a shape, and they organize them into a directed, acyclic shock graph~\cite{siddiqi1999shock}.
+Shock graphs were successfully used in shape matching~\cite{siddiqi1999shock}, recognition~\cite{sebastian2001recognition},
+and database indexing~\cite{sebastian2002shock}.
+\emph{Bone graphs} offer improved stability and a more intuitive representation of an object's parts, compared to
+skeletons and shock graphs, by identifying and analyzing ligature structures.
+
+In recent years, the value of the binary MAT has been more appreciated by the graphics community.
+
+
+
+
+
+
+
 \begin{itemize}
-\item Blum's Medial axis transform
 \item Other works on extracting skeletons for 2D and 3D shapes (shock graphs,bone graphs,scale axis transform,check out other graphics works)
 \end{itemize}
 \subsubsection*{MAT for natural images}
@@ -86,12 +106,12 @@ To make the paper self-contained, we include a brief review of two basic concept
 
 \subsubsection*{Medial Axis Transform}
 Consider a two-dimensional binary shape, $O$, in the image plane, and its boundary $\Theta_O$.
-The \emph{medial axis} of $O$ is the set of points $\vec{p}$ that lie midway between two sections of 
-its boundary. The points $\vec{p}$ are the centers of maximally inscribed (medial) disks, bitangent to $\Theta_O$
-in the interior of the shape. The radius $r(\vec{p})$ of the disk is the distance between $\vec{p}$ and 
+The \emph{medial axis} of $O$ is the set of points $\p{}$ that lie midway between two sections of 
+its boundary. The points $\p{}$ are the centers of maximally inscribed (medial) disks, bitangent to $\Theta_O$
+in the interior of the shape. The radius $r(\p{})$ of the disk is the distance between $\p{}$ and 
 the points where the disk touches $\Theta_O$, and is called the \emph{medial radius}.
 Based on the above definitions, the \emph{medial axis transform} is the process of 
-mapping $O$ to the set of tuples $(\vec{p},r(\vec{p})) \in \mathbb{R}^2 \times \mathbb{R}$.
+mapping $O$ to the set of tuples $(\p{},r(\p{})) \in \mathbb{R}^2 \times \mathbb{R}$.
 Given these pairs, we can reconstruct the object as a union of overlapping disks that sweep-out 
 its interior. 
 
@@ -105,7 +125,7 @@ A common choice for these sets are intersections of $\set{X}$ with simple shape 
 
 Now assume that each set in $\set{D}$ is associated with a non-negative weight or \emph{cost} $c_i$.
 Solving the WGSC problem amounts to finding a sub-collection $\bar{\set{D}} \in \set{D}$ that covers the entire $\set{X}$
-(all $n$ elements of $\set{X}$ are contained in at least one set in $\bar{\set{D}}$), while having the minimum
+(all $N$ elements of $\set{X}$ are contained in at least one set in $\bar{\set{D}}$), while having the minimum
 total cost $C$; the total cost is simply the sum of costs of individual elements in $\bar{\set{D}}$.
 
 WGSC is a strongly NP-hard problem for which polynomial-time approximate solutions (PTAS) exist.
@@ -421,7 +441,7 @@ interesting implications pertaining to the tasks of edge detection and segmentat
 We discuss and investigate these implications in separate subsections.
 
 
-\subsection{Medial Point Detection (BMAX500)}\label{sec:experiments:detection}
+\subsection{Medial Point Detection}\label{sec:experiments:detection}
 For the task of medial point detection we use a built on the BSDS500~\cite{martin2001database,arbelaez2011contour}.
 We want to emphasize the difference of the problem we are attacking, compared to local symmetry
 and skeleton detection pursued in previous works.
@@ -460,19 +480,36 @@ We evaluate performance using standard precision, recall and f-measure metrics,
 which we list in~\reftab{tab:experiments:detection}.
 
 
+\subsection{Image Reconstruction}\label{sec:experiments:reconstruction}
+We now assess the quality of reconstructions we obtain by ``inverting'' the extracted AMAT.
+For this task we consider again the BSDS500 dataset, although any other dataset could be used, 
+as we only need the raw images to evaluate performance.
+
+\stavros{We will add discussion about how to obtain the reconstruction in a previous section}
+We compare with a baseline reconstruction algorithm based on the MIL approach 
+of~\cite{tsogkas2012learning} (after retraining on BMAX500).
+Their method produces a map of medial point strength at 13 scales and 8 orientations, for each pixel.
+A single confidence value for each point is derived through a noisy-or operation,
+which does away with scale and orientation information.
+As a surrogate, in our experiments we associate each point with the scale/orientation combination
+that has the highest medial points probability.
+The scheme we use to create a baseline reconstruction using the MIL-based approach is the following:
+We start by sorting the medial point scores in a decreasing order and pick the one with the highest score.
+The points under the rectangular region at the surrogate scale and orientation are then marked as covered,
+and the process is repeated until the whole image is marked as covered.
+Point encodings are, similarly to our own method, the mean color values within the rectangular area, 
+and local reconstructions are constructed by computing the average of overlapping encodings.
+
+We consider three standard evaluation metrics for image similarity: MSE, PSNR, and SSIM.
+We also examine an additional similarity criterion that has gained popularity recently, 
+in the context of convolutional neural networks.
+Specifically, we measure how close the reconstructed image is to the original,
+``in the eyes'' of a CNN, by computing the $L_2$ norms of feature maps at various layers. \stavros{say which layers}
+All results are reported in~\reftab{tab:experiments:reconstruction}.
 
 
-\subsection{Image Reconstruction (BSDS500)}\label{sec:experiments:reconstruction}
-We now turn out
-Experiments on image reconstruction using standard metrics (MSE, PSNR, and metrics using CNN feature similarity.
+\subsection{Boundary Detection}\label{sec:experiments:edges}
 
-\subsection{Boundary Detection (BSDS500)}\label{sec:experiments:edges}
-Medial axes to boundaries. 
-MIL: compute an approximate scale based on the scale with maximum probability and try to recover boundaries.
-CNN: same as above, this was already done in that paper for estimating segmentation masks using scale information.
-We can compare the boundary recovery results as well.
-EDGE DETECTORS: Standard edge detection algorithms (Dollar, HED, Canny, gPB etc: compare with algorithms specifically
-tailored for this task. WE ARE NOT EXPECTING SOTA PERFORMANCE.
 
 \subsection{Object Proposals}\label{sec:experiments:proposals}
 
