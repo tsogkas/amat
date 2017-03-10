@@ -40,11 +40,9 @@ can be integrated in popular object proposal pipelines, thereby boosting perform
 Our code will be made publicly available. 
 
 
-
+\stavros{Should we change that with Color-MAT (CMAT)?}
 \stavros{sell more the graph approach?}
 \stavros{Say that we don't use learning}
-\stavros{Cite: Medial Spheres for Shape Approximation
-Svetlana Stolpner, Paul Kry and Kaleem Siddiqi}
 \end{abstract}
 
 %%%%%%%%% BODY TEXT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -65,57 +63,136 @@ If there is enough space we can show example of image reconstruction and other p
 % ====================================================================================================================
 \section{Related Work}\label{sec:related}
 % ====================================================================================================================
-\subsubsection*{MAT for binary shapes}
+\subsection{MAT for binary shapes}
 Blum introduced the concept of the medial axis transform, or skeleton, for two-dimensional shapes,
 in  his seminal works~\cite{blum1967transformation,blum1973biological}.
 Since then, many other researchers have developed algorithms for more reliable
 and more efficient medial axis extraction, its extension to 3D shapes, and its application
 to computer vision tasks.
 
-Siddiqi \etal define \emph{shocks} as the singularities of a curve evolution process acting on the boundaries of
+Siddiqi~\etal define \emph{shocks} as the singularities of a curve evolution process acting on the boundaries of
 a shape, and they organize them into a directed, acyclic shock graph~\cite{siddiqi1999shock}.
 Shock graphs were successfully used in shape matching~\cite{siddiqi1999shock}, recognition~\cite{sebastian2001recognition},
 and database indexing~\cite{sebastian2002shock}.
-\emph{Bone graphs} offer improved stability and a more intuitive representation of an object's parts, compared to
-skeletons and shock graphs, by identifying and analyzing ligature structures.
-
-In recent years, the value of the binary MAT has been more appreciated by the graphics community.
-
-
-
-
-
+\emph{Bone graphs}~\cite{macrini2008skeletons} offer improved stability and a more intuitive representation of an object's parts, 
+compared to skeletons and shock graphs, by identifying and analyzing ligature structures.
+Visual part correspondences are also established and used to measure part and aggregated shape similarity in~\cite{latecki2000shape}.
+The idea of object parts corresponding to endpoints of skeleton branches is further explored in~\cite{bai2008path}, where
+\emph{geodesic} paths between skeleton endpoints are used to match the respective graphs.
+More recently, Stolpner \etal deal with the problem of approximating a 3D solid via a union
+of overlapping spheres~\cite{stolpner2012medial}.
 
 
-\begin{itemize}
-\item Other works on extracting skeletons for 2D and 3D shapes (shock graphs,bone graphs,scale axis transform,check out other graphics works)
-\end{itemize}
-\subsubsection*{MAT for natural images}
-\begin{itemize}
-\item Levinstein's work
-\item MIL-based symmetry detection
-\item Random-forest variant by Ching L. Teo
-\item CNN-variant 
-\end{itemize}
+The value of MAT has been equally (if not more) appreciated by the graphics community, where object shapes 
+are routinely represented as point clouds or triangular meshes.
+Giesen~\etal~\cite{giesen2009scale} introduced the \emph{scale axis transform}, a new skeletal shape representation
+that yields a hierarchy of successively simplified skeletons, which are obtained by multiplicative scaling of the
+MAT's radii.
+Li~\etal~\cite{li2015q} use quadratic error minimization to compute an accurate linear approximation of the MAT,called \emph{Q-MAT}.
+They show experiments on medial axis simplification where they reduce the number of nodes of an initial medial mesh
+by three orders of magnitude, while preserving good surface reconstruction.
+
+
+\subsection{MAT for natural images}
+Compared to the binary setting, the number of works on medial axis detection in natural color images is rather limited.
+Levinstein \etal~\cite{levinshtein2009multiscale} attack the problem of detecting \emph{symmetric parts} in objects,
+by merging superpixels with similar appearance, and fitting ellipses to the symmetric parts' extracted masks.
+A coarse object skeleton can then be obtained by the combination of the major axes of the fitted ellipses.
+Lee \etal improve on that work by introducing a deformable disk model that can capture curved symmetry axes~\cite{lee2013detecting}.
+A different line of works poses medial point detection as a classification problem where the goal is to label image pixels
+as ``medial'' or ``not-medial'', inspired by similar methods for boundary detection~\cite{martin2004learning,arbelaez2011contour}.
+Tsogkas and Kokkinos use a multiple instance learning (MIL) framework to deal with the unknown scale and orientation 
+during training~\cite{tsogkas2012learning}, while in a more recent work, Shen \etal adapt a deep CNN with 
+side outputs~\cite{xie2015holistically} for the task of extracting \emph{object skeletons}.
+
+Our work can be regarded as lying in the intersection of previous works on binary and natural images.
+From a technical standpoint, it shares more similarities with binary methods, for instance~\cite{stolpner2012medial}
+which solves the set cover problem for volumes in the 3D space.
+Nevertheless, it can be applied on real images, with no assumption of an image segmentation,
+but it also has fundamental differences with respect to other algorithms for color inputs.
+Our method does not involve learning, and does not make any assumptions that constrain the type of medial axes it can detect,
+as in~\cite{tsogkas2012learning,shen2016object}.
+\stavros{Should these go in the introduction or here?: "[The only criterion that drives medial point detection in our case is ...]" 
+and also talk about the fact that we encode scale and appearance information}
+
 
 % ====================================================================================================================
-\section{Background}\label{sec:background}
+\section{Method}\label{sec:method}
 % ====================================================================================================================
-\stavros{Probably move this section to~\refsec{sec:method}}
-To make the paper self-contained, we include a brief review of two basic concepts that our work is based on.
-
-\subsubsection*{Medial Axis Transform}
+\subsection{Problem Definition}\label{sec:method:definition}
 Consider a two-dimensional binary shape, $O$, in the image plane, and its boundary $\Theta_O$.
 The \emph{medial axis} of $O$ is the set of points $\p{}$ that lie midway between two sections of 
 its boundary. The points $\p{}$ are the centers of maximally inscribed (medial) disks, bitangent to $\Theta_O$
-in the interior of the shape. The radius $r(\p{})$ of the disk is the distance between $\p{}$ and 
+in the interior of the shape. The disk radius $r(\p{})$ is the distance between $\p{}$ and 
 the points where the disk touches $\Theta_O$, and is called the \emph{medial radius}.
-Based on the above definitions, the \emph{medial axis transform} is the process of 
-mapping $O$ to the set of tuples $(\p{},r(\p{})) \in \mathbb{R}^2 \times \mathbb{R}$.
+The process of mapping $O$ to the set of point-radius pairs $(\p{},r(\p{})) \in \mathbb{R}^2 \times \mathbb{R}$
+is called the \emph{medial axis transform} (MAT).
 Given these pairs, we can reconstruct the object as a union of overlapping disks that sweep-out 
-its interior. 
+its interior by ``expanding'' a value of one (1) inside the area covered by each the medial disk.
 
-\subsubsection*{Weighted Geometric Set Cover}
+We argue that a MAT for real images should satisfy a similar principle: given the MAT of an image, 
+we should be able to ``invert'' it, reconstructing \emph{the image} itself.
+There are several reasons why extending this idea to real images is a challenging task. 
+Natural images contain complex scenes and are cluttered with various objects, instead of a single foreground shape.
+Moreover, whereas binary images are composed of uniform areas of zeros (0) and ones (1), 
+real images obey complicated color and texture distributions.
+Nevertheless, we can assume that in most cases an image is composed of many small regions of relatively uniform appearance.
+This is a concept on which most superpixel algorithms are built on: group pixels 
+into non-overlapping patches that capture image redundancies, while respecting perceptually meaningful region 
+boundaries~\cite{shi2000normalized,levinshtein2009turbopixels,achanta2012slic}. 
+
+\paragraph{Notation:} Before proceeding with the details of our formulation, we list the notation used throughout our paper.
+We use capital italics for single elements and capital calligraphic letters to denote sets. A disk of radius $r$,
+centered at point $\p{}$ is denoted as $D(\p{},r)=D_{\p{},r}$. 
+For brevity, we ofter refer to such a disk as a $r$-disk or $(\p{},r)$-disk.
+We will also occasionally use $r(\p{}) = r_{\p{}}$ to refer to the radius/scale $r$, associated with point $\p{}$.
+$\set{D}$ is a collection of such disks of varying centers and radii, $\set{D}=\{ D_{\p{i},r_{\p{i}}} \},\, i\in\mathbb{N}$.
+The interesection of a $(\p{},r)$-disk with and image $I$ is a disk-shaped region of the image, and is denoted by 
+$I \cap D_{\p{},r}=D_{\p{},r}^I \subset I$. Finally, we use $\circ$ to denote function composition.
+
+\paragraph{Formulation:} Consider an RGB image $I\subset\R^2$, and a disk-shaped region $D_{\p{},r}^I \subset I$.
+Let $f:\R^2 \rightarrow \R^K$ be a function that maps $D_{\p{},r}^I$ to a vector representation $\mathbf{f}_{\p{},r}=f\circ D_{\p{},r}^I$. 
+We call this vector the \emph{encoding} of $D_{\p{},r}^I$. 
+Now let $g:\R^K \rightarrow \R^2$ be a function that maps $\mathbf{f}_{\p{},r}$ back to a disk patch $\tilde{D}_{\p{},r}^I$: 
+$\mathbf{g}_{\p{},r} = g \circ \mathbf{f}_{\p{},r} = \tilde{D}_{\p{},r}^I$. We call $g$ the \emph{decoding} function.
+In the general case, $f$ and $g$ will be \emph{lossy} mappings, which means that the reconstruction error 
+$e_{\p{},r} = \norm{ \tilde{D}_{\p{},r}^I - D_{\p{},r}^I}_2 \geq 0$. 
+
+\stavros{We could potentially use a given ``budget'' of points, $m$}
+Using the above notions, we define the MAT as the set of tuples 
+$M:\{ ( \p{1},r_{\p{1}}, f_{\p{1},r_{\p{1}}}, \ldots, ( \p{m},r_{\p{m}}, f_{\p{m},r_{\p{m}}} ) \}$, such that:
+\begin{equation}
+M = \argmin_{\p{},r}{\sum_{i=1}^m e_{\p{i},r_i}},\quad I=\bigcup_{i=1}^m D_{\p{i},r_i}^I 
+\label{eq:minimization}
+\end{equation}
+Although $f,g$ can be any arbitrary functions, in this paper we opt for simplicity:
+$f$ computes the mean of each color channel ``summarizing'' $D_{\p{},r}^I$, in a $3\times1$ vector $f_{\p{},r}$.
+Conversely, $g$ constructs an approximation $\tilde{D}_{\p{},r}^I \approx D_{\p{},r}^I$ by replicating $f_{\p{},r}$ in the
+respective disk-shaped area.
+When the $(\p{},r)$-disk is fully enclosed in a region with uniform color, the reconstruction error $e_{\p{},r}$
+is low, whereas when the disk crosses a strong image boundary, the encoding $f_{\p{},r}$ cannot accurately represent
+the underlying image region, resulting in a higher error. Since each point is associated not only with position and local
+scale information, but also with local appearance information (in the form of a color triplet), we dub our approach
+\emph{Appearance}-MAT or \emph{AMAT}.
+
+Note that the definition in~\refeq{eq:minimization} suggests conceptual similarities with superpixel representations.
+Selecting the set of tuples $\{(\p{i},r_i,\mathbf{f}_{\p{i},r_i})\},\,i=1,\ldots,m$ is equivalent to covering the input image
+with $m$ disk-shaped superpixels. Minimizing the total reconstruction error implies that these ``superdisks'' do not
+cross region boundaries, as this would incur a high reconstruction error, as shown in~\reffig{fig:google}.
+However, there are two main differences with respect to traditional superpixels.
+First, in our method we use a canonical
+superpixel shape (disks), whereas superpixels can generally assume any shape. Second, selecting points $(\p{i},r_i)$
+so as to minimize~\refeq{eq:minimization} can result in \emph{overlapping} disks, in contrast to standard, 
+non-overlapping superpixels.
+
+\begin{figure}[ht]
+\caption{Image of Google logo, showing how we use disks to cover the input image, and how disks that cross region boundaries result
+in high reconstruction costs.}
+\label{fig:google}
+\end{figure}
+
+
+\subsection{AMAT as a Geometric Set Cover Problem}\label{sec:method:amat-wgsc}
 The geometric set cover is the extension of the well studied set cover problem, in a geometric space.
 For simplicity, here we only consider the case of a two-dimensional space and we particularly focus in the 
 \emph{weighted} version of the problem, which is defined as follows:
@@ -134,83 +211,6 @@ Perhaps the simplest and most straightforward is the greedy algorithm described 
 The interested reader can find more details on WGSC and related algorithms 
 in~\cite{mustafa2015quasi,varadarajan2010weighted,har2012weighted,chan2012weighted}.
 
-
-
-
-
-
-% ====================================================================================================================
-\section{Method}\label{sec:method}
-% ====================================================================================================================
-\subsection{Problem Definition}\label{sec:definition}
-Our definition of a medial axis transform for color images is inspired by the invertibility property of the binary MAT. 
-Given a medial point $\p{i}$ and its associated scale $r_i$, we can reconstruct part of the shape by 
-``expanding'' a value of one (1) inside the area covered by the medial disk or radius $r_i$, centered at $\p{i}$.
-Repeating this process for all points lying on the medial axis, results in a reconstruction of the full shape.
-
-We argue that a MAT for real images should satisfy a similar principle: given the MAT of an image, 
-we should be able to ``invert'' it, reconstructing \emph{the image} itself.
-There are several reasons why extending this idea from binary to real images is a challenging task. 
-Natural images contain complex scenes and are cluttered with various objects, instead of a single foreground shape. 
-Moreover, whereas binary images are composed of uniform areas of zeros (0) and ones (1), 
-real images obey complicated color and texture distributions. 
-Nevertheless, we can assume that in most cases an image is composed of many small regions of relatively uniform appearance. 
-This is a concept on which most superpixel algorithms are built on: group pixels 
-into non-overlapping patches that capture image redundancies, while respecting perceptually meaningful region 
-boundaries~\cite{shi2000normalized,levinshtein2009turbopixels,achanta2012slic}. 
-
-\stavros{boldface encodings and decodings}
-\paragraph{Notation:} Before proceeding with the details of our formulation, we list the notation used throughout our paper.
-We use capital italics for single elements and capital calligraphic letters to denote sets. A disk of radius $r$,
-centered at point $\p{}$ is denoted as $D(\p{},r)=D_{\p{},r}$. 
-For brevity, we ofter refer to such a disk as a $r$-disk or $(\p{},r)$-disk.
-We will also occasionally use $r(\p{}) = r_{\p{}}$ to refer to the radius/scale $r$, associated with point $\p{}$.
-$\set{D}$ is a collection of such disks of varying centers and radii, $\set{D}=\{ D_{\p{i},r_{\p{i}}} \},\, i\in\mathbb{N}$.
-The interesection of a $(\p{},r)$-disk with and image $I$ is a disk-shaped region of the image, and is denoted by 
-$I \cap D_{\p{},r}=D_{\p{},r}^I \subset I$. Finally, we use $\circ$ to denote function composition.
-
-\paragraph{Formulation:} Consider an RGB image $I\subset\R^2$, and a disk-shaped region $D_{\p{},r}^I \subset I$.
-Let $f:\R^2 \rightarrow \R^K$ be a function that maps $D_{\p{},r}^I$ to a vector representation $f_{\p{},r}=f\circ D_{\p{},r}^I$. 
-We call this representation the \emph{encoding} of $D_{\p{},r}^I$. 
-Now let $g:\R^K \rightarrow \R^2$ be a function that maps this encoding back to a disk patch $\tilde{D}_{\p{},r}^I$: 
-$g_{\p{},r} = g \circ f_{\p{},r} = \tilde{D}_{\p{},r}^I$. We call $g$ the \emph{decoding} function.
-In the general case, $f$ and $g$ will be \emph{lossy} mappings, which means that the reconstruction error 
-$e_{\p{},r} = \norm{ \tilde{D}_{\p{},r}^I - D_{\p{},r}^I}_2 \geq 0$. 
-
-Using the above notions, we define the MAT as the set of tuples 
-$M:\{ ( \p{1},r_{\p{1}}, f_{\p{1},r_{\p{1}}}, \ldots, ( \p{m},r_{\p{m}}, f_{\p{m},r_{\p{m}}} ) \}$, such that:
-\begin{equation}
-M = \argmin_{\p{},r}{\sum_{i=1}^m e_{\p{i},r_i}},\quad I=\bigcup_{i=1}^m D_{\p{i},r_i}^I 
-\label{eq:minimization}
-\end{equation}
-Although $f,g$ can be any arbitrary functions, in this paper we opt for simplicity:
-$f$ computes the mean of each color channel ``summarizing'' $D_{\p{},r}^I$, in a $3\times1$ vector $f_{\p{},r}$.
-Conversely, $g$ constructs an approximation $\tilde{D}_{\p{},r}^I \approx D_{\p{},r}^I$ by replicating $f_{\p{},r}$ in the
-respective disk-shaped area.
-When the $(\p{},r)$-disk is fully enclosed in a region with uniform color, the reconstruction error $e_{\p{},r}$
-is low, whereas when the disk crosses a strong image boundary, the encoding $f_{\p{},r}$ cannot accurately represent
-the underlying image region, resulting in a higher error. Since each point is associated not only with position and local
-scale information, but also with local appearance information (in the form of a color triplet), we dub our approach
-\emph{Appearance}-MAT or \emph{AMAT}. \stavros{Should we change that with Color-MAT (CMAT)?}
-
-Note that the definition in~\refeq{eq:minimization} suggests conceptual similarities with superpixel representations.
-Selecting the set of tuples $\{(\p{i},r_i,f_{\p{i},r_i})\},\,i=1,\ldots,m$ is equivalent to covering the input image
-with $m$ disk-shaped superpixels. Minimizing the total reconstruction error implies that these ``superdisks'' do not
-cross region boundaries, as this would incur a high reconstruction error, as shown in~\reffig{fig:google}.
-However, there are two main differences with respect to traditional superpixels.
-First, in our method we use a canonical
-superpixel shape (disks), whereas superpixels can generally assume any shape. Second, selecting points $(\p{i},r_i)$
-so as to minimize~\refeq{eq:minimization} can result in \emph{overlapping} disks, which is in contrast to standard superpixels
-which are non-overlapping. 
-
-\begin{figure}[ht]
-\caption{Image of Google logo, showing how we use disks to cover the input image, and how disks that cross region boundaries result
-in high reconstruction costs.}
-\label{fig:google}
-\end{figure}
-
-
-\subsection{AMAT as a Geometric Set Cover Problem}\label{sec:amat-wgsc}
 We now show how our formulation of the medial axis transform described in~\refsec{sec:method} lends itself naturally to a 
 weighted geometric set cover (WGSC) interpretation.
 The input image $I\subset\R^2$ is our universe of $N$ points.
