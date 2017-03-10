@@ -42,7 +42,14 @@ if ischar(img)
         case 'voc2007'
             imgDir = fullfile(paths.voc2007,'VOC2007','JPEGImages');
         case 'bsds500'
-            imgDir = paths.bsds500im;
+            if exist(fullfile(paths.bsds500im, 'train', [iid ext]), 'file')
+                set = 'train';
+            elseif exist(fullfile(paths.bsds500im, 'val', [iid ext]), 'file')
+                set = 'val';
+            else
+                set = 'test';
+            end
+            imgDir = fullfile(paths.bsds500im, set);
         otherwise, error('Dataset not supported')
     end
     img = imread(fullfile(imgDir, [iid ext]));

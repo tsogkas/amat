@@ -40,6 +40,7 @@ can be integrated in popular object proposal pipelines, thereby boosting perform
 Our code will be made publicly available. 
 
 
+\stavros{Look for more human vision references}
 \stavros{Should we change that with Color-MAT (CMAT)?}
 \stavros{sell more the graph approach?}
 \stavros{Say that we don't use learning}
@@ -49,16 +50,56 @@ Our code will be made publicly available.
 % ====================================================================================================================
 \section{Introduction}\label{sec:introduction}
 % ====================================================================================================================
-\begin{itemize}
-\item MAT, perceptual grouping, symmetry.
-\item application in which MAT has been used (shape matching, shape retrieval etc)
-\end{itemize}
-
 \begin{figure}[!t]
-\caption{Teaser figure showing example of binary MAT and our extension to color images.
-If there is enough space we can show example of image reconstruction and other potential applications.}
+\centering
+\subfloat[Input image]{\includegraphics[width=0.47\linewidth]{teaser_img.pdf}}
+\subfloat[Binary MAT]{\includegraphics[width=0.47\linewidth]{teaser_mat.pdf}\label{fig:teaser:mat}} \\
+\subfloat[Appearance-MAT]{\includegraphics[width=0.47\linewidth]{teaser_amat.pdf}}
+\subfloat[Reconstructed image]{\includegraphics[width=0.47\linewidth]{teaser_recon.pdf}}
+\caption{\textbf{Top:} Input image and segmentation from BSDS500 with overlayed medial axes for each segment (green)
+ and a subset of medial disks (red). Using the radius information carried by the MAT, we can reconstruct the
+ input segments. \textbf{Bottom:} Similarly, the Appearance-MAT carries enough information to reconstruct the \emph{input image}.}
 \label{fig:teaser}
 \end{figure}
+
+
+Symmetry is a ubiquitous cue in the natural world, with a well-established role in human vision.
+Humans instinctively recognize and use symmetry to analyze complex scenes, as it facilitates the encoding of shapes and
+their discrimination and recall from memory~\cite{barlow1979versatility,royer1981detection,wagemans1998parallel}.
+In the context of computer vision \emph{local} symmetry is of particular interest, 
+because of its increased robustness to viewpoint changes and its close relationship to salient structures, such as
+object parts.
+This intuition is fundamental in many milestones in object representation theory, including generalized
+cylinders~\cite{binford1971visual}, superquadrics~\cite{barr1981superquadrics}, 
+geons~\cite{biederman1987recognition}, shock graphs~\cite{siddiqi1999shock}.
+
+Fundamental notions of local symmetry were introduced by Blum in the context 
+of binary shapes~\cite{blum1967transformation,blum1973biological}.
+The medial axis transform (MAT) is a powerful shape abstraction that has been successfully
+used in shape summarization, matching and retrieval. Despite the MAT's
+long history, the lack of an adequate definition and evaluation criterion that can accommodate
+color and texture have prevented its widespread use for tasks involving natural images.
+In this paper we propose a new formulation of the
+MAT for natural images as a weighted geometric set cover (WGSC) problem, and we use a greedy 
+approximation algorithm to solve it.
+Our method, called Appearance-MAT (AMAT), makes the following contributions: 
+i) it extends previous methods which were limited to detecting medial axes locations 
+in natural images, by associating  each medial point with a local scale; 
+ii) inspired by the invertibility property of the 
+original MAT for binary images, it also associates each medial point with a local encoding
+which allows us to invert the AMAT, faithfully reconstructing the input image; 
+iii) this additional information allows us to group individual points into medial branches,
+which correspond to meaningful image regions, supporting both image segmentation and boundary
+ownership assignment.
+
+We perform experiments in medial point detection on a new dataset of medial axes, called
+Berkeley-Medial AXes (BMAX500) based on the popular BSDS500 dataset. 
+We also measure the quality of the reconstructed images from the same dataset,
+obtained by inverting their computed AMAT. 
+Finally, we show that edge maps extracted as a by-product of our method
+can be integrated in popular object proposal pipelines, thereby boosting performance.
+Our code will be made publicly available. 
+
 
 % ====================================================================================================================
 \section{Related Work}\label{sec:related}
@@ -96,19 +137,19 @@ by three orders of magnitude, while preserving good surface reconstruction.
 \subsection{MAT for natural images}
 Compared to the binary setting, the number of works on medial axis detection in natural color images is rather limited.
 Levinstein \etal~\cite{levinshtein2009multiscale} attack the problem of detecting \emph{symmetric parts} in objects,
-by merging superpixels with similar appearance, and fitting ellipses to the symmetric parts' extracted masks.
-A coarse object skeleton can then be obtained by the combination of the major axes of the fitted ellipses.
-Lee \etal improve on that work by introducing a deformable disk model that can capture curved symmetry axes~\cite{lee2013detecting}.
+by merging superpixels with similar appearance, and fitting ellipses to the part masks.
+A coarse object skeleton can then be retrieved by combining the major axes of the fitted ellipses.
+Lee \etal extend that work by introducing a deformable disk model that can capture curved symmetry axes~\cite{lee2013detecting}.
 A different line of works poses medial point detection as a classification problem where the goal is to label image pixels
 as ``medial'' or ``not-medial'', inspired by similar methods for boundary detection~\cite{martin2004learning,arbelaez2011contour}.
 Tsogkas and Kokkinos use a multiple instance learning (MIL) framework to deal with the unknown scale and orientation 
-during training~\cite{tsogkas2012learning}, while in a more recent work, Shen \etal adapt a deep CNN with 
+during training~\cite{tsogkas2012learning}, while, in a more recent work, Shen \etal adapt a deep CNN with 
 side outputs~\cite{xie2015holistically} for the task of extracting \emph{object skeletons}.
 
 Our work can be regarded as lying in the intersection of previous works on binary and natural images.
 From a technical standpoint, it shares more similarities with binary methods, for instance~\cite{stolpner2012medial}
 which solves the set cover problem for volumes in the 3D space.
-Nevertheless, it can be applied on real images, with no assumption of an image segmentation,
+Nevertheless, it can be applied on real images, with no assumption of a prior image segmentation,
 but it also has fundamental differences with respect to other algorithms for color inputs.
 Our method does not involve learning, and does not make any assumptions that constrain the type of medial axes it can detect,
 as in~\cite{tsogkas2012learning,shen2016object}.
@@ -118,7 +159,7 @@ and also talk about the fact that we encode scale and appearance information}
 
 % ====================================================================================================================
 \section{Method}\label{sec:method}
-% ====================================================================================================================
+% ===================================================================================================================
 \subsection{Problem Definition}\label{sec:method:definition}
 Consider a two-dimensional binary shape, $O$, in the image plane, and its boundary $\Theta_O$.
 The \emph{medial axis} of $O$ is the set of points $\p{}$ that lie midway between two sections of 
