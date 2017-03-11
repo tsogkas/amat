@@ -22,6 +22,8 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 	that are covered by each disk.
 
 ### low priority ----------------------------------------------------------
+- Chnage the `mat.visualize()` function to show the reconstruction as it forms, instead
+	of showing the covered areas as black pixels.
 - Don't forget when resizing the MAT, to also multiply radius map with appropriate factor.	
 - Fix bug with large circular segments appearing because of pixels at high scales that 
 	are not merged in the proper group.

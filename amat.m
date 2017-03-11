@@ -22,7 +22,14 @@ if ischar(img)
     % Allow the option of passing the absolute path of the precomputed AMAT
     if exist(img,'file')
         amatPath = img;
-    else  % otherwise use the default location for the respective dataset
+    % try to create path from inputs
+    elseif exist(fullfile(paths.amat.precomputed, dataset, ...
+            ['scales=[' num2str(scales) ']-ws=' num2str(ws)], ...
+            ['amat_' iid '.mat']),'file')
+        amatPath = fullfile(paths.amat.precomputed, dataset, ...
+            ['scales=[' num2str(scales) ']-ws=' num2str(ws)], ['amat_' iid '.mat']);
+    % otherwise use the default location for the respective dataset
+    else 
         amatPath = fullfile(paths.amat.precomputed, dataset, ['amat_' iid '.mat']);
     end
     % Try to load the stored AMAT
