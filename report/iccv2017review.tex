@@ -41,9 +41,6 @@ Our code will be made publicly available.
 
 \stavros{Use ratio of compression over reconstruction quality as additional criterion}
 \stavros{Look for more human vision references}
-\stavros{Should we change that with Color-MAT (CMAT)?}
-\stavros{sell more the graph approach?}
-\stavros{Say that we don't use learning}
 \end{abstract}
 
 %%%%%%%%% BODY TEXT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -221,7 +218,7 @@ $M:\{ ( \p{1},r_{\p{1}}, \f{\p{1},r_{\p{1}}}, \ldots, ( \p{m},r_{\p{m}}, \f{\p{m
 M = \argmin_{\p{},r}{\sum_{i=1}^m e_{\p{i},r_i}},\quad I=\bigcup_{i=1}^m D_{\p{i},r_i}^I 
 \label{eq:minimization}
 \end{equation}
-\paragraph{Encoding and decoding functions:} \stavros{figure out where to place the discussion about f,g and g's capacity}
+\paragraph{Encoding and decoding functions:} \stavros{figure out where to put the discussion on f,g and g's capacity}
 Although $f,g$ can take any form, in this paper we opt for simplicity:
 $f$ computes the mean of each color channel ``summarizing'' $D_{\p{},r}^I$, in a $3\times1$ vector $\f{\p{},r}$.
 Conversely, $g$ constructs an approximation $\tilde{D}_{\p{},r}^I \approx D_{\p{},r}^I$ by replicating $\f{\p{},r}$ in the
@@ -252,7 +249,7 @@ The disk lying among the yellow,green and white regions is
 }
 \label{fig:google}
 \end{figure}
-
+\stavros{add disk that is exceeding region boundaries but has a small mse error}
 
 \subsection{AMAT as a Geometric Set Cover Problem}\label{sec:method:wgsc}
 The geometric set cover is the extension of the well studied set cover problem, in a geometric space.
@@ -278,7 +275,7 @@ For practical reasons, we only consider $r$-disks with $r$ chosen from a finite 
 The $r$-disks, $r\in\set{R}$ can be placed at any position $\p{}=(x,y)\in I$ such that $D_{\p{},r}$ is fully contained in $I$.
 We also assign a cost $c_{\p{i},r_j} = c_{ij}$ to each possible $(\p{i},r_j)$-disk, $i\in[1,N],\, j\in[1,R]$.
 This cost is directly related to the reconstruction cost 
-$e_{\p{i},r_j}=\norm{D_{\p{i},r_i}^I - \tilde{D}_{\p{i},r_j}^I}_2^2 = e_{ij}$, given the functions $f,g$.
+$e_{\p{i},r_j} = e_{ij}$, given the functions $f,g$.
 Note that for brevity, we drop the subscripts $\p{i},r_j$ and simply use $ij$ to refer to a $(\p{i},r_j)$-disk.
 We provide more details regarding computation of $e_{ij}$ in~\refsec{sec:method:implementation}.
 
@@ -288,22 +285,23 @@ A trivial solution would be to select each pixel as a disk of radius $r=1$, in w
 $M:\{ (\p{1},r_{\p{1}},f_{\p{1},r_{\p{1}}}), \ldots, ( \p{N},r_{\p{N}},f_{\p{N},r_{\p{N}}} ) \}$,
 and $\sum_{i=1}^N e_{\p{i},r_i} = 0$; each pixel can be perfectly represented by its mean value.
 Such a solution is of no practical usefulness. 
-\stavros{We could potentially use a given ``budget'' of points, $m$}
 Staying true to the spirit of the medial axis transform, we seek a solution that is \emph{sparse}
 (low number of medial points $m$), while being able to adequately reconstruct the input image.
-In the original MAT, sparsity is implicitly is induced through the disk maximality criterion:
+One possible way top do this would be to agree on a fixed `budget'' of points, and look for the 
+optimal solution given this this value for $m$.
+In the original MAT, sparsity is implicitly induced through the disk maximality criterion:
 a point belongs to the medial axis if it is the center of the largest disk that touches 
 the shape boundary at exactly two points, thus ensuring that the disk remains completely in the 
 interior of the shape.
 
 Extending the maximality principle to the case of natural images is not straightforward.
-Contrary to the case of binary shapes, the notion of the boundary in real images is not strictly defined.
+Contrary to binary shapes, the notion of the boundary in real images is not robustly defined.
 Furthermore, relying on the output of a boundary extraction algorithm would make our method very sensitive
 to boundary detection errors, from which it would be difficult to recover.
-For these reasons we choose to regularize the minimization criterion in~\refeq{eq:minimization} in a alternative way. 
-We add a scale-dependent cost term $s_j = \frac{w_s}{r_j}$ to the costs $c_{ij}$, with $s_j$ 
+For these reasons we choose to regularize the minimization criterion in~\refeq{eq:minimization} in an alternative way. 
+We add a scale-dependent term $s_j = \frac{w_s}{r_j}$ to the costs $c_{ij}$, with $s_j$ 
 being inversely proportional to the radius $r_j$.
-In this way, we favor the selection of larger disks at each point, as long as $s_j$ is not ``too'' large
+This way, we favor the selection of larger disks at each point, as long as $s_j$ is not ``too'' large
 with respect to the error incurred by picking $D_{\p{},r_{j+1}}$ instead of $D_{\p{},r_j}$.
 Selecting a high value for $w_s$ will lead to a sparser solution with higher total reconstruction error $E$,
 whereas a low value for $w_s$ will aim for a higher reconstruction quality, by utilizing more, smaller disks
@@ -326,7 +324,7 @@ The steps of our method are described in~\refalg{alg:greedy}
 	\begin{algorithmic}[1]
 	\Statex \textbf{Input:} $X,I=\{\p{1},\ldots,\p{N}\},\set{R}=\{r_1,\ldots,r_R\},f,g$.
 	\Statex \textbf{Output:} $M$
-	\State Initialization: $M = \emptyset,X=\emptyset$.
+	\State Initialization: $M \leftarrow \emptyset,X \leftarrow \emptyset$.
 	\State Compute $f_{\p{},r},\, g_{\p{},r} = g \circ f_{\p{},r},\,\, \forall \p{} \in I, \forall r \in \set{R}$.
 	\While{$X \subset I$}
 		\State $c_{\p{},r}^e = \frac{c_{\p{},r}}{|D_{\p{},r} \setminus X|}+\frac{w_s}{r},\,\, \forall \p{} \in I, \forall r \in \set{R}$.		
@@ -343,8 +341,8 @@ removing the area $D_{ij}$ from the pixels that have to be covered.
 This process is repeated until all image pixels have been covered by at least one disk.
 
 \subsection{Grouping Medial Points to Branches}\label{sec:method:grouping}
-The scale and appearance associated with each medial point belonging in the AMAT, provides a useful
-description that can be used to group points belonging in the same region, into \emph{medial branches}.
+The scale and appearance associated with each medial point provide a useful
+description that can be used to group points belonging in the same region into \emph{medial branches}.
 The beneficial effects of grouping in low-level vision tasks have been
 observed in previous works~\cite{felzenszwalb2006min,zhu2007untangling,kokkinos2010highly}.
 In our case, grouping pixels into branches can help us both refine the final medial axis, 
@@ -404,7 +402,7 @@ We also adjust the scales of the medial points after thinning, to ensure that th
 to the simplified structure span the same image area.
 Because grouped branches correspond to relatively homogeneous regions, we expect that reconstruction
 results after simplification will not change much.
-Examples of simplified medial axes are illustrated in~\reffig{fig:reconstruction}.
+Examples of simplified medial axes are illustrated in~\reffig{fig:detection}.
 With a negligible drop in reconstruction quality, we are able to achieve a dramatic reduction
 in the number of medial points, and produce much cleaner medial axes.
 \stavros{Do not forget to include average compression rates}
@@ -413,9 +411,7 @@ in the number of medial points, and produce much cleaner medial axes.
 % =============================================================================================
 \section{Implementation Details}\label{sec:method:implementation}
 % =============================================================================================
-In this section we discuss implementation details of our approach, as well as design and parameter choices.
-
-\subsection{Disk Cost Computation}
+\subsection{Disk Cost Computation}\label{sec:method:diskcost}
 The greedy algorithm described in~\refsec{sec:method:wgsc} requires assigning a cost to all possible disks $D_{ij}$.
 Choosing an appropriate type of cost function is crucial towards obtaining a final MAT that both incorporates
 the use of maximal disks, leading to a sparse solution, and faithfully reproduces the input image.
@@ -423,7 +419,7 @@ Since our objective is high image reconstruction quality, $c_{ij}$ should be dir
 to the reconstruction error of the local image patch.
 Given our choice of functions $f,g$, using a criterion such as MSE or PSNR will not work.
 These metrics are well known to perform poorly in representing perceptual similarity of images~\cite{girod1993what,wang2009mean}.
-For example, \reffig{fig:heuristic} shows that naively selecting a disk with a low MSE score does not guarantee that it 
+For example, \reffig{fig:google} shows that naively selecting a disk with a low MSE score does not guarantee that it 
 does not cross image boundaries.
 Instead, we would rather select disks whose encodings are representative of \emph{all} disks that are fully enclosed
 in their area. 
@@ -449,7 +445,7 @@ image~\cite{viola2001rapid,arbelaez2011contour}, reducing complexity by an order
 We leave this as a future extension and include further details for our current implementation in the supplemental material.
 
 
-\subsection{Dealing with textured images}
+\subsection{Dealing with textured images}\label{sec:method:texture}
 The main motivation behind the choice of simple functions $f,g$, such as the ones described in~\refsec{sec:method:definition}, was simplicity and 
 computational efficiency.
 Such functions also allow us to inject certain desired characteristics to the regions depicted by medial points in the AMAT solution.
@@ -464,7 +460,7 @@ regions, while preserving important edges~\cite{xu2011image}.
 In practice, this preprocessing produces an image that is very similar, perceptually, to the original, 
 but without high-frequency textures that can cause the greedy algorithm to fail by placing disks at undesired locations.
 
-\subsection{Reconstructing the image from AMAT}
+\subsection{Reconstructing the image from AMAT}\label{sec:method:reconstructing}
 Generating the reconstruction of a single disk-shaped region, $\tilde{D}_{\p{},r}^I$, is trivially achieved by
 replicating $\f{\p{},r}$.
 However, since medial disks are overlapping, most pixels in the image domain will be covered by multiple disks,
@@ -478,8 +474,6 @@ We then use the average $\f{}$ of all disks covering a point $\p{i}$ with depth 
 \end{equation}
 
 
-
-
 \begin{figure*}
 \def\img_id{41004}
 \def\imgw{0.245}
@@ -491,7 +485,7 @@ We then use the average $\f{}$ of all disks covering a point $\p{i}$ with depth 
 \label{fig:smoothing}
 \end{figure*}
 
-\subsection{Parameter values}
+\subsection{Parameter values}\label{sec:method:parameter}
 For the smoothing algorithm we use the default values $\lambda=2\cdot10^{-4}$ and $\kappa=2$ that 
 the authors suggest for natural images~\cite{xu2011image}.
 Regarding the scale cost term described in~\refsec{sec:method:wgsc}, we found that $w_s=10^{-4}$ is a value that 
@@ -552,10 +546,30 @@ reported in~\cite{xie2015holistically}.
 Unlike~\cite{xie2015holistically}, in our case it is impossible to enforce ground truth consensus,
 because the position discrepancies for medial axes extracted from different annotations are very high.
 We evaluate performance using the standard precision, recall and f-measure metrics, 
-which we list in~\reftab{tab:experiments:detection}.
-Note that our algorithm does not return a probability-like skeleton map, so we cannot 
-plot precision-recall curves by varying a score threshold.
+which we list in~\reftab{tab:detection}.
+Note that our algorithm does not return a skeleton probability map, so we cannot 
+plot PR-curves by varying a score threshold.
 
+\begin{table}
+\centering
+\begin{tabular}{|c|c|c|c|}
+\hline
+Method	&	Precision	&	Recall	&	F-measure \\
+\hline
+MIL~\cite{tsogkas2012learning}	&	-	& - 	& 	0.48 \\
+\hline
+AMAT	&	-&	-&	\bf{0.53} \\
+\hline
+\end{tabular}
+\caption{Results on medial point detection in BMAX500.}
+\label{tab:detection}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\caption{Medial point detection results}
+\label{fig:detection}
+\end{figure}
 
 
 \subsection{Image Reconstruction}\label{sec:experiments:reconstruction}
@@ -582,7 +596,28 @@ We also examine an additional similarity criterion that has gained popularity re
 in the context of convolutional neural networks.
 Specifically, we measure how close the reconstructed image is to the original,
 ``in the eyes'' of a CNN, by computing the $L_2$ norms of feature maps at various layers. \stavros{say which layers}
-All results are reported in~\reftab{tab:experiments:reconstruction}.
+All results are reported in~\reftab{tab:reconstruction}.
+
+\begin{table}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+Metric	&	MSE		&	PSNR	&	SSIM 	&	conv3	&	conv5	&	fc7	\\
+\hline
+MIL~\cite{tsogkas2012learning}	&	-	& - 	& 	- 	&	-	&	-	&	-	\\
+\hline
+AMAT	&	-	&	-	&	-	&	-	&	-	&	- 	\\
+\hline
+\end{tabular}
+\caption{Image reconstruction quality in BSDS500.}
+\label{tab:reconstruction}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\caption{Image reconstruction results}
+\label{fig:reconstruction}
+\end{figure}
 
 
 \subsection{Boundary Detection}\label{sec:experiments:edges}
@@ -597,6 +632,14 @@ All results are reported in~\reftab{tab:experiments:reconstruction}.
 % ====================================================================================================================
 \section{Discussion}\label{sec:discussion}
 % ====================================================================================================================
+We have proposed a new approach for computing and evaluating the quality of the medial axis transform in 
+natural images, called Appearance-MAT or AMAT.
+Our work bridges the gap between MAT methods for binary shapes and MAT medial axis/local symmetry detection methods
+for real images.
+By framing AMAT as a weighted set cover problem, we provide both a well-defined setting and an algorithm for 
+detecting medial axes in natural images.
+
+
 
 {\small
 \bibliographystyle{ieee}
