@@ -81,7 +81,8 @@ o=getPrmDflt(varargin,dfs,1); if(nargin==0), bbs=o; return; end
 f=o.name; if(~isempty(f) && exist(f,'file')), bbs=1; return; end
 if iscell(I)
     n=length(I); bbs=cell(n,1);
-    for i=1:n, bbs{i}=edgeBoxesImg(I{i},model,o); end;
+%     for i=1:n, bbs{i}=edgeBoxesImg(I{i},model,o); end;  % keep this for debugging
+    parfor i=1:n, bbs{i}=edgeBoxesImg(I{i},model,o); end;
 elseif isnumeric(I) && size(I,3) == 3
     bbs=edgeBoxesImg(I,model,o);
 elseif isnumeric(I) && size(I,3) > 3
@@ -106,10 +107,10 @@ switch o.method
         E=edgesNmsMex(E,O,2,0,1,model.opts.nThreads);
     case 'amat-edges'
         E = edgesFromAMAT(I,iid);
-        E = bwmorph(E>0,'thin',inf);
+        E = single(bwmorph(E>0,'thin',inf));
         O = edgeOrient(E,4);
     case 'amat-edges-grouped'
-        E = edgesFromAMAT(I,iid);
+        E = single(edgesFromAMAT(I,iid));
         warning('Not implemented yet');
     case 'amat-axes'
         warning('Not implemented yet');
@@ -120,14 +121,7 @@ bbs=edgeBoxesMex(E,O,o.alpha,o.beta,o.eta,o.minScore,o.maxBoxes,...
   o.maxAspectRatio,o.minBoxArea,o.gamma,o.kappa);
 
 function E = edgesFromAMAT(I,iid)
-paths = setPaths();
 [H,W,~] = size(I);
-smoothed = L0Smoothing(imresize(I,0.5,'bilinear'));
-matPath = fullfile(paths.amat.precomputed,'voc2007',['amat_' iid '.mat']);
-if ~isempty(iid) && exist(matPath,'file')
-    mat = load(matPath); mat = mat.mat;
-else
-    mat = amat(smoothed);
-end
+mat = amat(['voc2007-' iid]);
 seg = mat2seg(mat,0.9);
 E = imresize(seg2edges(seg),[H,W],'nearest');

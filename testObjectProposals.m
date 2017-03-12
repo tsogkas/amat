@@ -12,14 +12,14 @@ opts = parseVarargin(opts,varargin,'struct');
 
 % Setup paths
 paths  = setPaths;
-imgDir = fullfile(paths.voc2007, 'VOC2007/JPEGImages/');
+% imgDir = fullfile(paths.voc2007, 'VOC2007/JPEGImages/');
 imgList=fullfile(paths.voc2007, ['VOC2007/ImageSets/Main/' opts.set '.txt']);
 addpath(genpath(fullfile(paths.voc2007, 'VOCcode')));
 mkdir(paths.amat.boxes);
 
-% get list of image ids
-if(~exist(imgList,'file')), error('ids file not found'); end
-f=fopen(imgList); ids=textscan(f,'%s %*s'); ids=ids{1}; fclose(f);
+% % get list of image ids
+% if(~exist(imgList,'file')), error('ids file not found'); end
+% f=fopen(imgList); ids=textscan(f,'%s %*s'); ids=ids{1}; fclose(f);
 
 % Load VOC2007 groundtruth boxes
 data=boxesData('resDir',[paths.amat.boxes filesep],...
@@ -48,5 +48,5 @@ switch method
 end
 ebopts.name=fullfile(paths.amat.boxes, [nm '-' opts.set '.mat']);
 edgeBoxes(data.imgs,model,ebopts); ebopts.name=[];
-boxesEval('data',data,'names',nm,'thrs',.7,'show',2);
-boxesEval('data',data,'names',nm,'thrs',.5:.05:1,'cnts',1000,'show',3);
+boxesEval('data',data,'names',nm,'resDir',paths.amat.boxes,'thrs',.7,'show',2);
+boxesEval('data',data,'names',nm,'resDir',paths.amat.boxes,'thrs',.5:.05:1,'cnts',1000,'show',3);

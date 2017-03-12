@@ -78,6 +78,8 @@ depth = mat2mask(radius,mat.scales);
 r   = radius(newpts);
 R   = numel(mat.scales);
 enc = reshape(permute(imageEncoding(rgb2labNormalized(mat.input),mat.scales),[1 2 4 3]), [], C);
+rind= containers.Map(mat.scales,1:numel(mat.scales));
+for i=1:numel(r), r(i) = rind(r(i)); end % map scales to scale indexes
 idx = sub2ind([H,W,R], y(:),x(:),r(:));
 newaxis = reshape(rgb2labNormalized(zeros(H,W,C)),H*W,C);
 newaxis(newpts,:) = enc(idx,:); % remember that encodings are in LAB!

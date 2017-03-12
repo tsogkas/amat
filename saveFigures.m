@@ -53,4 +53,9 @@ imwrite(imresize(mat.reconstruction,[H,W]),fullfile(figPath, [iid '_recon' num2s
 ws = 1e-1; mat = amat(imgName,2:41,ws);
 imwrite(imresize(mat.reconstruction,[H,W]),fullfile(figPath, [iid '_recon' num2str(ws) '.jpg']))
 
+%% Medial point detection PR-curves
+models = {'human','amat','model-1000-color-nor-balanced-train'};
+fig = plotPrecisionRecall(models);
+export_fig(fullfile(figPath, 'pr.pdf'),'-transparent',fig);
 
+%% Medial point detection qualitative results
