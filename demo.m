@@ -18,9 +18,9 @@ matleopardSmoothed = amat(smoothed);
 
 %% deer
 deer = imresize(imread('/home/tsogkas/datasets/BSDS500/images/train/41004.jpg'),0.5,'bilinear');
-% matdeer = amat(deer);
-deerSmoothed = L0Smoothing(deer);
-matdeer = amat(deerSmoothed);
+matdeer = amat('bsds500-41004');
+% deerSmoothed = L0Smoothing(deer);
+% matdeer = amat(deerSmoothed);
 
 %% totems
 totem = imresize(imread('/home/tsogkas/datasets/BSDS500/images/val/101085.jpg'),0.5,'bilinear');
@@ -72,7 +72,7 @@ figure; imshow(label2rgb(e));
 %% Test refineMAT()
 mat = mattotem;
 mat.branches = groupMedialPoints(mat);
-matrefined = refineMAT(mat);
+% matrefined = refineMAT(mat);
 % The group labels are already sorted and first label is zero (background)
 %%
 numBranches = max(mat.branches(:)); 

@@ -20,6 +20,11 @@ switch method
                 'dilation, iso-dilation, skeleton, afmm-skeleton.'])
 end
 
+% Create disk filters 
+diskf = cell(1,numel(mat.scales)); 
+for r=1:numel(diskf), diskf{r} = double(disk(mat.scales(r))); end
+rind = containers.Map(mat.scales,1:numel(mat.scales));
+
 % The group labels are already sorted and first label is zero (background)
 numBranches = max(mat.branches(:)); 
 [H,W,C]   = size(mat.input);
@@ -39,16 +44,45 @@ for i=1:numBranches
     else
         branchNew = bwmorph(process(cover),'thin',inf);
     end
+    % Make sure that new points are far enough from the image border
+%     [y,x] = find(branchNew);
+%     tooClose = (y <= (mat.scales(1)+1)) | (x <= (mat.scales(1)+1)) ...
+%         | (H-y) < mat.scales(1) | (W-x) < mat.scales(1); 
+%     branchNew(sub2ind([H,W], y(tooClose),x(tooClose))) = 0;
+%     y(y <= mat.scales(1)+1) = mat.scales(1)+1;
+%     x(x <= mat.scales(1)+1) = mat.scales(1)+1;
+%     y(H-y < mat.scales(1)) = H-mat.scales(1);
+%     x(W-x < mat.scales(1)) = W-mat.scales(1);
+%     branchNew(sub2ind([H,W], y(tooClose),x(tooClose))) = true;
+
+%     distBranch = bwdist(bwperim(cover)).*double(cover);
+%     [distBranchOldSorted,idxSorted] = sort(distBranch(branchOld),'descend');
+%     [~,idxScale] = min(abs(bsxfun(@minus,distBranchOldSorted,mat.scales)),[],2);
+%     [y,x] = find(branchOld); y = y(idxSorted); x = x(idxSorted);
+%     coverNew = false(size(cover)); 
+%     k=1;
+%     while k <= numel(y) && ~all(coverNew(cover))
+%         r = mat.scales(idxScale(k));
+%         coverNew(y(k)-r:y(k)+r,x(k)-r:x(k)+r) = ...
+%             coverNew(y(k)-r:y(k)+r,x(k)-r:x(k)+r) | diskf{rind(r)};
+%         k = k+1;
+%     end
+    
+    
     % Compute new radii as distance transform on reconstructed cover.
-    radiusNew = bwdist(bwperim(cover)) .* double(branchNew);
+    radiusNew = bwdist(bwperim(cover)).* double(branchNew);
     % Find closest radii in the subset of the acceptable scale values.
     valid = radiusNew > 0;
     [~,idx] = min(abs(bsxfun(@minus,radiusNew(valid),mat.scales)),[],2);
     radiusNew(valid) = mat.scales(idx);
-    while ~all(cover(logical(mat2mask(radiusNew,mat.scales))))
-        idx = min(idx+1, numel(mat.scales));
-        radiusNew(valid) = mat.scales(idx);
-    end
+%     figure; plotDisks(branchOld,radiusOld > 0, radiusOld .* double(radiusOld > 0));
+%     figure; plotDisks(branchNew,radiusNew > 0, radiusNew .* double(radiusNew > 0));
+%     [y,x] = find(valid);
+%     rmax  = max(mat.scales(1), min(min(y-1,H-y),min(x-1,W-x)));
+%     while ~all(cover(logical(mat2mask(radiusNew,mat.scales))))
+%         idx = min(idx+1, numel(mat.scales));
+%         radiusNew(valid) = min(rmax, mat.scales(idx)');
+%     end
     % Assign values in global label and radius map.
     branches(valid) = i;
     radius(valid) = radiusNew(valid);
