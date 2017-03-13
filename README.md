@@ -15,9 +15,6 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 	3. replace edges with our medial branches.
 - Find alternative way of MAT refinement that preserves the _exact_ covers from 
 	individual branches. 
-- Compare with grouping with *Making Better Use of Edges via Perceptual Grouping* paper.
-- Check out UCM by arbelaez.
-- Set model filename in all experiments so that it reflects the chosen parameters.
 - Change the scale-dependent cost term so that it compensates for the #disks 
 	that are covered by each disk.
 
