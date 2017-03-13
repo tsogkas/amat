@@ -15,9 +15,9 @@
 %%%%%%%%% ABSTRACT
 \begin{abstract}
 The medial axis transform (MAT) is a powerful shape abstraction that has been successfully
-used in shape summarization, matching and retrieval. Despite the MAT's
-long history, the lack of an adequate definition and evaluation criterion that can accommodate
-color and texture have prevented its widespread use for tasks involving natural images.
+used in shape summarization, matching and retrieval. 
+Despite the MAT's long history, the lack of an adequate definition and evaluation criterion 
+that can accommodate color and texture have prevented its widespread use for tasks involving natural images.
 In this paper we propose a new formulation of the
 MAT for natural images as a weighted geometric set cover (WGSC) problem, and we use a greedy 
 approximation algorithm to solve it.
@@ -27,16 +27,16 @@ by associating  each medial point with a local scale;
 ii) inspired by the invertibility property of the 
 original MAT for binary images, it also associates each medial point with a local encoding
 which allows us to invert the AMAT, faithfully reconstructing the input image; 
-iii) this additional information allows us to group individual points into medial branches,
+iii) this additional information enables grouping individual points into medial branches,
 which correspond to meaningful image regions, supporting both image segmentation and boundary
 ownership assignment.
 We perform experiments in medial point detection on a new dataset of medial axes, called
-Berkeley-Medial AXes (BMAX500) based on the popular BSDS500 dataset.
+Berkeley-Medial AXes (BMAX500), based on the popular BSDS500 dataset.
 We also measure the quality of the reconstructed images from the same dataset,
 obtained by inverting their computed AMAT. 
 Finally, we show that edge maps extracted as a by-product of our method
 can be integrated in popular object proposal pipelines, thereby boosting performance.
-Our code will be made publicly available. 
+Our code will be made publicly available.
 \end{abstract}
 
 
@@ -73,28 +73,34 @@ geons~\cite{biederman1987recognition}, and shock graphs~\cite{siddiqi1999shock}.
 
 Fundamental notions of local symmetry were introduced decades ago by Blum in the context 
 of binary shapes~\cite{blum1967transformation,blum1973biological}.
-The medial axis transform (MAT) is a powerful shape abstraction that has been successfully
-used in shape summarization, recognition, matching and retrieval. 
+The medial axis transform (MAT) is a powerful abstraction of 2D and 3D shapes 
+that has been successfully used in shape recognition, matching and retrieval. 
+One of its most important traits is that it provides a very compact representation that can
+be used to accurately reconstruct the input shape~\cite{tam2003shape,<li2015q}; 
+this makes the MAT very useful for reducing complexity and computational demands for various algorithms.
+
 Despite the MAT's long history, the lack of a clear definition and evaluation criterion 
 that accommodates color and texture have prevented its widespread use for tasks involving natural images.
-In this paper we propose a new formulation of the MAT for natural images as a 
+Previous works have mostly attacked the problem of \emph{medial point detection}: 
+determining \emph{locations} of medial points but not their exact scale~\cite{tsogkas2012learning,shen2016object}.
+The type of medial axes considered is also constrained to make the problem more concrete.
+\cite{tsogkas2012learning} only considers medial axes of elongated structures, while~\cite{shen2016object} 
+focuses on detecting \emph{object} skeletons, ignoring medial axes of background structures.
+These methods also lack another key characteristic of the MAT: medial point locations alone do not provide sufficient
+information to reconstruct the input.
+
+In this paper we frame the MAT for natural images as a 
 weighted geometric set cover (WGSC) problem, and we use a greedy approximation algorithm to solve it.
 Our method, called \emph{Appearance-MAT (AMAT)}, makes several contributions.
-First, we propose a novel definition of the MAT for real images that encompasses key features of its 
-binary counterpart. Our definition is centered around the invertibility property of the MAT, and elicits 
+First, AMAT encompasses all the fundamental features of its  binary counterpart. 
+Our definition is centered around the invertibility property of the MAT, and elicits 
 a straightforward criterion for quality assessment, in terms of the quality of the input image reconstructions
 obtained by inverting their AMAT.
 It is worth noting that our method does not does not introduce any constraints on the
 type of medial structures it can detect.
-This is in stark contrast to~\cite{tsogkas2012learning}, which only considers medial axes of elongated structures,
-and~\cite{shen2016object} which focuses only on detecting \emph{object} skeletons, ignoring medial axes of 
-background structures.
-Unlike these methods, it does not use machine learning either, which liberates us from the need of gathering
-ground truth annotations.
-
-Second, we extend previous methods for natural images which typically return only skeleton 
-locations and a respective confidence score~\cite{tsogkas2012learning,shen2016object}.
-Our proposed algorithm associates each medial point with \emph{scale} as well as local \emph{appearance} information
+%It does not use machine learning either, which liberates us from the need of gathering
+%ground-truth annotations.
+Second, our algorithm associates each medial point with \emph{scale} as well as local \emph{appearance} information
 that can be used to faithfully reconstruct the input, making it a ``complete'' MAT.
 Third, this additional information can be further used to group individual points into medial branches,
 another missing feature from previous works.
@@ -201,7 +207,7 @@ This is a concept on which most superpixel algorithms rely on for breaking up an
 into non-overlapping patches, while respecting perceptually meaningful region 
 boundaries~\cite{shi2000normalized,levinshtein2009turbopixels,achanta2012slic}. 
 
-\paragraph{Notation:} Before proceeding with our formulation, we list the notation used throughout our paper.
+\paragraph{Notation:} Before proceeding with our formulation, we list the notation used throughout the paper.
 We use capital italics for single elements and capital calligraphic letters to denote sets. A disk of radius $r$,
 centered at point $\p{}$ is denoted as $D(\p{},r)=D_{\p{},r}$. 
 For brevity, we ofter refer to such a disk as a $r$-disk or $(\p{},r)$-disk.
@@ -317,7 +323,6 @@ and its geometric variants.
 Since this is the first attempt on applying a WGSC approach to compute the MAT of real images, we keep things simple
 and use the greedy algorithm described in~\cite{vazirani2013approximation}, adapted for the weighted case.
 The steps of our method are described in~\refalg{alg:greedy}
-\stavros{align pseudocode (using algorithm2e?)}
 \begin{algorithm}[t]
 \caption{AMAT greedy algorithm.}
 \label{alg:greedy}
@@ -327,9 +332,10 @@ The steps of our method are described in~\refalg{alg:greedy}
 	\State Initialization: $M \leftarrow \emptyset,X \leftarrow \emptyset$.
 	\State Compute $f_{\p{},r},\, g_{\p{},r} = g \circ f_{\p{},r},\,\, \forall \p{} \in I, \forall r \in \set{R}$.
 	\While{$X \subset I$}
-		\State $c_{\p{},r}^e = \frac{c_{\p{},r}}{|D_{\p{},r} \setminus X|}+\frac{w_s}{r},\,\, \forall \p{} \in I, \forall r \in \set{R}$.		
-		\State $M\leftarrow M\cup{(\p{}^{*},r^{*},f_{\p{}^{*},r^{*}})},  \newline
-				X \leftarrow X\cup D_{\p{}^{*},r^{*}}, \quad (\p{}^{*},r^{*}) = \argmin_{\p{},r}{c_{\p{},r}^e}$.		
+		\State $c_{\p{},r}^e = \frac{c_{\p{},r}}{|D_{\p{},r} \setminus X|}+\frac{w_s}{r},\,\, \forall \p{} \in I, \forall r \in \set{R}$.
+		\State $(\p{}^{*},r^{*}) = \argmin_{\p{},r}{c_{\p{},r}^e}$.		
+		\State $M\leftarrow M\cup{(\p{}^{*},r^{*},f_{\p{}^{*},r^{*}})}$.
+		\State $X \leftarrow X\cup D_{\p{}^{*},r^{*}}$ 
 	\EndWhile
 	\end{algorithmic}
 \end{algorithm}

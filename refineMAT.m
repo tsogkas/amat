@@ -45,6 +45,10 @@ for i=1:numBranches
     valid = radiusNew > 0;
     [~,idx] = min(abs(bsxfun(@minus,radiusNew(valid),mat.scales)),[],2);
     radiusNew(valid) = mat.scales(idx);
+    while ~all(cover(logical(mat2mask(radiusNew,mat.scales))))
+        idx = min(idx+1, numel(mat.scales));
+        radiusNew(valid) = mat.scales(idx);
+    end
     % Assign values in global label and radius map.
     branches(valid) = i;
     radius(valid) = radiusNew(valid);

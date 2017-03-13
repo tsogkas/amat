@@ -25,7 +25,7 @@ matdeer = amat(deerSmoothed);
 %% totems
 totem = imresize(imread('/home/tsogkas/datasets/BSDS500/images/val/101085.jpg'),0.5,'bilinear');
 totemSmoothed = L0Smoothing(totem);
-mattotem = amat(totemSmoothed,40,1e-4);
+mattotem = amat('bsds500-101085',40,1e-4);
 
 %% bird
 bird = imresize(imread('/home/tsogkas/datasets/BSDS500/images/val/42049.jpg'),0.5,'bilinear');
@@ -72,11 +72,17 @@ figure; imshow(label2rgb(e));
 %% Test refineMAT()
 mat = mattotem;
 mat.branches = groupMedialPoints(mat);
-% matrefined = refineMAT(mat);
+matrefined = refineMAT(mat);
 % The group labels are already sorted and first label is zero (background)
 %%
 numBranches = max(mat.branches(:)); 
 branchOld   = bsxfun(@eq, mat.branches, reshape(1:numBranches,1,1,[]));
+% Example using the first segment.
+% bo = branchOld(:,:,1);
+% br = double(bo) .* mat.radius;
+% bn = bwthin(imdilate(bo,strel('disk',3)));
+% figure; plotDisks(mat2mask(bo,mat.scales), br); 
+
 % sort branches
 dilated     = false(size(branchOld));
 isodilated  = false(size(branchOld));
@@ -146,7 +152,6 @@ bbs1 = edgeBoxes(img,model,opts);
 bbs2 = edgeBoxesMex(single(es),O2,o.alpha,o.beta,o.eta,o.minScore,o.maxBoxes,...
   o.edgeMinMag,o.edgeMergeThr,o.clusterMinMag,...
   o.maxAspectRatio,o.minBoxArea,o.gamma,o.kappa);
-
 
 
 %%
