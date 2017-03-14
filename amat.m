@@ -19,6 +19,7 @@ if ischar(img)
     [~,iid,ext] = fileparts(img);
     dataset = lower(iid(1:7));
     iid = iid(9:end);
+    if isempty(ext), ext = '.jpg'; end
     % Allow the option of passing the absolute path of the precomputed AMAT
     if exist(img,'file')
         amatPath = img;
