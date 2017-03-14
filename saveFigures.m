@@ -59,3 +59,41 @@ fig = plotPrecisionRecall(models);
 export_fig(fullfile(figPath, 'pr.pdf'),'-transparent',fig);
 
 %% Medial point detection qualitative results
+paths = setPaths();
+iids = {'3096','54082','85048','295087'};
+c = 0.4; zerocolor = [c c c];
+for i=1:numel(iids)
+    iid = iids{i};
+    ex  = BMAX500.val(strcmp(iid,{BMAX500.val(:).iid}));
+    for s=1:size(ex.seg,3)
+        ex.pts(:,:,s) = bwmorph(ex.pts(:,:,s), 'thin',inf);
+    end
+    ex.pts = imresizeCrisp(ex.pts, 0.5);
+    smoothedResized = imresize(L0Smoothing(ex.img),0.5);
+    imgResized = imresize(ex.img, 0.5);
+    mat = amat(smoothedResized);
+    mat.branches = groupMedialPoints(mat);
+    matrefined = refineMAT(mat);
+    imwrite(imgResized, fullfile(figPath, [iid '_resized.jpg']))
+    imwrite(smoothedResized, fullfile(figPath, [iid '_smoothed_resized.jpg']))
+    fig = imshow(label2rgb(mat.branches, parula(max(mat.branches(:))), zerocolor,'shuffle'));
+    export_fig(fullfile(figPath, [iid '_branches.pdf']), '-transparent', fig)
+    fig = imshow(label2rgb(matrefined.branches, parula(max(matrefined.branches(:))), zerocolor,'shuffle'));
+    export_fig(fullfile(figPath, [iid '_simplified_branches.pdf']), '-transparent', fig)
+    fig = imshow(ex.pts(:,:,1));
+end
+
+%% Image reconstruction results
+paths = setPaths()
+iids = {};
+for i=1:numel(iids)
+    iids = iids{i};
+    ex = BMAX500.val(strcmp(iid,{BMAX500.val(:).iid}));
+    smoothedResized = imresize(L0Smoothing(ex.img),0.5);
+    imgResized = imresize(ex.img, 0.5);
+    mat = amat(smoothedResized);
+    mat.branches = groupMedialPoints(mat);
+    mat = refineMAT(mat);
+    recmat = reshape(inpaint_nans(double(mat.reconstruction)), size(ex.img,1), size(ex.img,2), []);
+    
+end
