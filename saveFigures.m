@@ -59,10 +59,9 @@ fig = plotPrecisionRecall(models);
 export_fig(fullfile(figPath, 'pr.pdf'),'-transparent',fig);
 
 %% Medial point detection qualitative results
-paths = setPaths();
-iids = {'3096','54082','85048','295087'};
+iids = {'3096','54082','85048','295087','42049','101087','86016','145086','302008','253055'};
 c = 0.4; zerocolor = [c c c];
-for i=1:numel(iids)
+parfor i=1:numel(iids)
     iid = iids{i};
     ex  = BMAX500.val(strcmp(iid,{BMAX500.val(:).iid}));
     for s=1:size(ex.seg,3)
@@ -74,26 +73,78 @@ for i=1:numel(iids)
     mat = amat(smoothedResized);
     mat.branches = groupMedialPoints(mat);
     matrefined = refineMAT(mat);
+    [~,idxSeg] = max(max(reshape(ex.seg,[],size(ex.seg,3)),[],1));
     imwrite(imgResized, fullfile(figPath, [iid '_resized.jpg']))
     imwrite(smoothedResized, fullfile(figPath, [iid '_smoothed_resized.jpg']))
-    fig = imshow(label2rgb(mat.branches, parula(max(mat.branches(:))), zerocolor,'shuffle'));
+    fig = figure; imshow(label2rgb(mat.branches, parula(max(mat.branches(:))), zerocolor,'shuffle'));
     export_fig(fullfile(figPath, [iid '_branches.pdf']), '-transparent', fig)
-    fig = imshow(label2rgb(matrefined.branches, parula(max(matrefined.branches(:))), zerocolor,'shuffle'));
-    export_fig(fullfile(figPath, [iid '_simplified_branches.pdf']), '-transparent', fig)
-    fig = imshow(ex.pts(:,:,1));
+    fig = figure; imshow(label2rgb(matrefined.branches, parula(max(matrefined.branches(:))), zerocolor,'shuffle'));
+    export_fig(fullfile(figPath, [iid '_branches_simplified.pdf']), '-transparent', fig)
+    fig = figure; imshow(ex.pts(:,:,idxSeg)); 
+    export_fig(fullfile(figPath, [iid '_gt_skel.pdf']), '-transparent', fig)
+    fig = figure; imshow(matrefined.axis)
+    export_fig(fullfile(figPath, [iid '_axes_simplified.pdf']), '-transparent', fig)
 end
+    
 
 %% Image reconstruction results
-paths = setPaths()
-iids = {};
-for i=1:numel(iids)
-    iids = iids{i};
+iids = {'3096','54082','85048','295087','42049','101087','86016','145086','302008','253055'};
+parfor i=1:numel(iids)
+    iid = iids{i};
     ex = BMAX500.val(strcmp(iid,{BMAX500.val(:).iid}));
     smoothedResized = imresize(L0Smoothing(ex.img),0.5);
     imgResized = imresize(ex.img, 0.5);
+    segResized = imresize(ex.seg, 0.5, 'nearest');
     mat = amat(smoothedResized);
     mat.branches = groupMedialPoints(mat);
-    mat = refineMAT(mat);
-    recmat = reshape(inpaint_nans(double(mat.reconstruction)), size(ex.img,1), size(ex.img,2), []);
-    
+    matrefined = refineMAT(mat);
+    recmat = reshape(inpaint_nans(double(matrefined.reconstruction)), size(imgResized,1), size(imgResized,2), []);
+    recgtseg = seg2reconstruction(imgResized,segResized);
+    recmil = spbmil2reconstruction(imgResized);
+    idxBest = 1;
+    SSIM = ssim(double(recgtseg(:,:,:,1)), im2double(imgResized));
+    % Find best segmentation
+    for s=2:size(recgtseg,4)
+        newssim = ssim(double(recgtseg(:,:,:,s)), im2double(imgResized));
+        if newssim > SSIM
+            SSIM = newssim; 
+            idxBest = s;
+        end
+    end    
+    imwrite(imgResized, fullfile(figPath, [iid '_resized.jpg']))
+    imwrite(recmil, fullfile(figPath, [iid '_rec_mil.png']))
+    imwrite(recgtseg(:,:,:,idxBest), fullfile(figPath, [iid '_rec_gtseg.png']))
+    imwrite(recmat, fullfile(figPath, [iid '_rec_amat.png']))
 end
+
+%% Compute reconstruction and compression metrics 
+set = 'val';
+% AMAT
+tmp = load('/home/tsogkas/code/amat/output/models/amat.mat'); 
+modelamat = tmp.model;
+mseamat = mean(modelamat.BSDS500.(set).stats.mse);
+psnramat = mean(modelamat.BSDS500.(set).stats.psnr);
+ssimamat = mean(modelamat.BSDS500.(set).stats.ssim);
+compamat = 1./mean(modelamat.BSDS500.(set).stats.compression);
+
+% MIL
+tmp = load('/home/tsogkas/code/amat/output/models/model-1000-color-nor-balanced-train.mat'); 
+modelmil = tmp.model;
+msemil = mean(modelmil.BSDS500.(set).stats.mse);
+psnrmil = mean(modelmil.BSDS500.(set).stats.psnr);
+ssimmil = mean(modelmil.BSDS500.(set).stats.ssim);
+compmil = 1./mean(modelmil.BSDS500.(set).stats.compression);
+
+% GTSET
+tmp = load('/home/tsogkas/code/amat/output/models/gtseg.mat'); 
+modelgtseg = tmp.model;
+msegtseg = mean(modelgtseg.BSDS500.(set).stats.mse);
+psnrgtseg = mean(modelgtseg.BSDS500.(set).stats.psnr);
+ssimgtseg = mean(modelgtseg.BSDS500.(set).stats.ssim);
+compgtseg = 1./mean(modelgtseg.BSDS500.(set).stats.compression);
+
+
+
+
+
+

@@ -61,11 +61,9 @@ Using the medial disk radius information, we can reconstruct the input segments.
 \label{fig:teaser}
 \end{figure}
 
-
 Symmetry is a ubiquitous property in the natural world, with a well-established role in human vision.
 Humans instinctively recognize and use symmetry to analyze complex scenes, as it facilitates the encoding of shapes and
 their discrimination and recall from memory~\cite{barlow1979versatility,royer1981detection,wagemans1998parallel}.
-\stavros{check references for importance of symmetry in human vision in the scale axis transform paper}
 In the context of computer vision, \emph{local} symmetry is of particular interest, 
 because of its robustness to viewpoint changes and its connection to salient structures, such as object parts.
 This intuition is fundamental in many milestones in object representation theory, including generalized
@@ -78,12 +76,18 @@ The MAT is a powerful abstraction of 2D and 3D shapes
 that has been successfully used in shape recognition, matching and retrieval. 
 One of its most important strengths is that it provides a very compact representation that can
 accurately reproduce the input shape. 
-This makes the MAT very useful for reducing the computational demands of various algorithms and 
-many researchers have tried to achieve a good balance
+This makes the MAT very useful for reducing the computational demands of various algorithms, 
+and many researchers have tried to achieve a good balance
 between MAT sparsity and reconstruction quality~\cite{tam2003shape,li2015q}.
 
-Despite the MAT's long history, the lack of a definition and evaluation criterion 
-that accommodates color and texture have prevented its widespread use for tasks involving natural images.
+Extending the notion of the MAT to natural images would  benefit applications that rely on
+a sparse set of highly informative keypoints, such as image registration, image retrieval, and fine-grained recognition, to name a few.
+\stavros{add citations}.
+Or efficiently guide segmentation, by enforcing region-based constraints through their medial point representatives
+~\cite{teo2015detection}.
+
+Unfortunately, the lack of a definition and evaluation criterion 
+that accommodates color and texture have prevented the widespread use of the MAT for tasks involving natural images.
 Previous works have mostly attacked the sub-problem of \emph{medial point detection}~\cite{tsogkas2012learning,shen2016object},
 which amounts to determining the \emph{locations} of points lying on medial axes 
 but not the scale of the respective medial disk.
@@ -108,7 +112,7 @@ and boundary ownership assignment.
 
 Being bottom-up in nature, our method does not assume object-level knowledge.
 It computes medial axes of both foreground and background structures, 
-yielding a compact representation that only uses $5-10\%$ of the points in the original image.
+yielding a compact representation that only uses $\sim 10\%$ of the points in the original image.
 Yet, this sparse set of points carries most of the important information in the full image
 %enough information to reconstruct the input, and
 and can replace it in algorithms for high-level tasks, 
@@ -121,8 +125,7 @@ We also measure the quality of reconstructions  obtained by inverting the AMAT o
 using  a variety of standard image quality metrics.
 We compare with two reconstruction baselines: one built on the medial point detection algorithm from~\cite{tsogkas2012learning}
 and one built from the ground-truth segmentations in BSDS500.
-Our methods outperforms the baselines in terms of reconstruction quality, while attaining a better compression and
-compression-to-quality ratio.
+Our methods significantly outperforms the baselines in terms of reconstruction quality, while attaining good compression ratio.
 
 The outline of the paper is as follows: we start by reviewing related work on medial axis extraction for binary shapes
 and natural images in~\refsec{sec:related}.
@@ -137,9 +140,9 @@ Finally, in~\refsec{sec:discussion} we conclude and discuss ideas for future dir
 \section{Related Work}\label{sec:related}
 % ====================================================================================================================
 \subsection{MAT for binary shapes}\label{sec:related:binary}
-Blum introduced the concept of the medial axis transform, or skeleton, for two-dimensional shapes,
-in  his seminal works~\cite{blum1967transformation,blum1973biological}.
-Since then, many other researchers have developed algorithms for more reliable
+Blum introduced the concept of the medial axis transform, or skeleton, for 2D shapes
+in his seminal works~\cite{blum1967transformation,blum1973biological}.
+Since then, researchers have developed algorithms for reliable
 and more efficient medial axis extraction, its extension to 3D shapes, and its application
 to computer vision tasks.
 
@@ -155,7 +158,7 @@ The idea of object parts corresponding to endpoints of skeleton branches is furt
 More recently, Stolpner \etal deal with the problem of approximating a 3D solid via a union
 of overlapping spheres~\cite{stolpner2012medial}.
 
-The value of the MAT has been equally (if not more) appreciated by the graphics community, where object shapes 
+The value of the MAT has been equally appreciated by the graphics community, where object shapes 
 are routinely represented as point clouds or triangular meshes.
 Giesen~\etal~\cite{giesen2009scale} introduced the \emph{scale axis transform}, a skeletal shape representation
 that yields a hierarchy of successively simplified skeletons, which are obtained by multiplicative scaling of the
@@ -167,16 +170,16 @@ by three orders of magnitude, while preserving good surface reconstruction.
 
 \subsection{MAT for natural images}\label{sec:related:natural}
 Compared to the binary setting, the number of works on medial axis detection for natural images is rather limited.
-Levinstein \etal~\cite{levinshtein2009multiscale} attack the problem of detecting \emph{symmetric parts} in objects
+Levinstein \etal~\cite{levinshtein2009multiscale} detect \emph{symmetric parts} of objects
 by learning to merge adjacent deformable maximal inscribed disks, modeled as superpixels.
 Learned non-accidental part attachment relations are then used to combine proximal detected parts into coarse skeletal representations.
 Lee \etal extend that work by introducing a deformable disk model that can capture curved and tapered parts, and also add
 continuity constraints to the medial point grouping process~\cite{lee2013detecting}.
-In other works medial point detection is posed as a classification problem where the goal is to label image pixels
+In other works medial point detection is posed as a classification problem where pixels are labeled
 as ``medial'' or ``not-medial'', inspired by similar methods for boundary detection~\cite{martin2004learning,arbelaez2011contour}.
-Tsogkas and Kokkinos use a multiple instance learning (MIL) framework to deal with the unknown scale and orientation 
-during training~\cite{tsogkas2012learning}, while, more recently, Shen \etal adapt a deep CNN with 
-side outputs~\cite{xie2015holistically} for the task of extracting \emph{object skeletons}~\cite{shen2016object}.
+Tsogkas and Kokkinos use multiple instance learning (MIL) to deal with the unknown scale and orientation 
+during training~\cite{tsogkas2012learning}, while Shen \etal adapt a CNN with 
+side outputs~\cite{xie2015holistically} for \emph{object skeleton} extraction~\cite{shen2016object}.
 All these approaches exploit appearance information by incorporating some sort of machine learning algorithm.
 
 Our work can be regarded as lying at the intersection of previous work on binary and natural images.
@@ -215,20 +218,19 @@ relatively uniform appearance.
 This is a concept on which most superpixel algorithms rely on for breaking up an image 
 into non-overlapping patches, while respecting perceptually meaningful region 
 boundaries~\cite{shi2000normalized,levinshtein2009turbopixels,achanta2012slic}. 
-
 \paragraph{Notation:} Before proceeding with our formulation, we list the notation used throughout the paper.
 We use capital italics for single elements and capital calligraphic letters to denote sets. A disk of radius $r$,
 centered at point $\p{}$ is denoted as $D(\p{},r)=D_{\p{},r}$. 
-For brevity, we ofter refer to such a disk as a $r$-disk or $(\p{},r)$-disk.
+For brevity, we often refer to such a disk as a $r$-disk or $(\p{},r)$-disk.
 We will also occasionally use $r(\p{}) = r_{\p{}}$ to refer to the radius/scale $r$, associated with point $\p{}$.
 $\set{D}$ is a collection of such disks of varying centers and radii, $\set{D}=\{ D_{\p{i},r_{\p{i}}} \},\, i\in\mathbb{N}$.
-The interesection of a $(\p{},r)$-disk with an image $I$ is a disk-shaped region of the image, and is denoted by 
+The intersection of a $(\p{},r)$-disk with an image $I$ is a disk-shaped region of the image, and is denoted by 
 $I \cap D_{\p{},r}=D_{\p{},r}^I \subset I$. Finally, we use $\circ$ to denote function composition.
 
-\paragraph{Formulation:} Consider an RGB image $I\subset\R^2$, and a disk-shaped region $D_{\p{},r}^I \subset I$.
-Let $f:\R^2 \rightarrow \R^K$ be a function that maps $D_{\p{},r}^I$ to a vector  $\f{\p{},r}=f\circ D_{\p{},r}^I$; 
+\paragraph{Formulation:} Consider an RGB image $I\subset\R^3$, and a disk-shaped region $D_{\p{},r}^I \subset I$.
+Let $f:\R^3 \rightarrow \R^K$ be a function that maps $D_{\p{},r}^I$ to a vector  $\f{\p{},r}=f\circ D_{\p{},r}^I$; 
 we call this vector the \emph{encoding} of $D_{\p{},r}^I$. 
-Now let $g:\R^K \rightarrow \R^2$ be a function that maps $\f{\p{},r}$ back to a disk patch $\tilde{D}_{\p{},r}^I$: 
+Now let $g:\R^K \rightarrow \R^3$ be a function that maps $\f{\p{},r}$ back to a disk patch $\tilde{D}_{\p{},r}^I$: 
 $\g{\p{},r} = g \circ \f{\p{},r} = \tilde{D}_{\p{},r}^I$. We call $g$ the \emph{decoding} function.
 In the general case, $f$ and $g$ will be \emph{lossy} mappings, which means that the reconstruction error 
 $e_{\p{},r} = \norm{ \tilde{D}_{\p{},r}^I - D_{\p{},r}^I}_2^2 \geq 0$. 
@@ -238,7 +240,7 @@ $M:\{ ( \p{1},r_{\p{1}}, \f{\p{1},r_{\p{1}}} ), \ldots, ( \p{m},r_{\p{m}}, \f{\p
 M = \argmin_{\p{},r}{\sum_{i=1}^m e_{\p{i},r_i}},\quad I=\bigcup_{i=1}^m D_{\p{i},r_i}^I 
 \label{eq:minimization}
 \end{equation}
-\refeq{eq:minimization} does not impose constraints on the number of points used, $m$;
+\refeq{eq:minimization} does not impose constraints on the number of points $m$;
 we discuss this later in the text.
 \paragraph{Encoding and decoding functions:}
 Our framework allows $f,g$ to take any form; 
@@ -247,11 +249,11 @@ In this paper we opt for simplicity:
 $f$ computes the mean of each color channel ``summarizing'' $D_{\p{},r}^I$, in a $3\times1$ vector $\f{\p{},r}$.
 Conversely, $g$ constructs an approximation $\tilde{D}_{\p{},r}^I \approx D_{\p{},r}^I$ by replicating $\f{\p{},r}$ in the
 respective disk-shaped area.
-When the $(\p{},r)$-disk is fully enclosed in a region with uniform color, the reconstruction error $e_{\p{},r}$
+When the $(\p{},r)$-disk is fully enclosed in a uniform region the reconstruction error $e_{\p{},r}$
 is low, whereas when the disk crosses a strong image boundary, the encoding $\f{\p{},r}$ cannot accurately represent
 the underlying image region, resulting in a higher error. 
-Because we augment each point by adding local appearance information in the form of $\f{\p{},r}$, 
-we dub our approach \emph{Appearance}-MAT or \emph{AMAT}.
+%Because we augment each point by adding local appearance information in the form of $\f{\p{},r}$, 
+%we dub our approach \emph{Appearance}-MAT or \emph{AMAT}.
 
 Note that the definition in~\refeq{eq:minimization} suggests conceptual similarities with superpixel representations.
 Selecting the points $\{ (\p{i},r_i,\f{\p{i},r_i}) \},\,i=1,\ldots,m$ is equivalent to covering the input image
@@ -275,10 +277,10 @@ error metric.
 
 \subsection{AMAT as a Geometric Set Cover Problem}\label{sec:method:wgsc}
 The geometric set cover is the extension of the well studied set cover problem, in a geometric space.
-For simplicity, here we only consider the case of a two-dimensional space and we particularly focus on the 
+Here we only consider the case of a two-dimensional space and we particularly focus on the 
 \emph{weighted} version of the problem, which is defined as follows:
 Consider a universe of $n$ points $\set{X} \in \R^2$ and a family of sets 
-$\set{D} = \{D_1,D_2,\ldots,D_m\} \subseteq \set{X}$. 
+$\set{D} = \{D_1,D_2,\ldots,D_k\} \subseteq \set{X}$. 
 A common choice for these sets are intersections of $\set{X}$ with simple shape primitives, such as disks or rectangles.
 
 Now assume that each set in $\set{D}$ is associated with a non-negative weight or \emph{cost} $c_i$.
@@ -384,20 +386,19 @@ If two branches coexist in this scale-space neighborhood and their average encod
 (summed along the branch curve) are similar, they are merged.
 The grouping algorithm terminates when all scales have been considered.
 
-\begin{algorithm}[t]
-\caption{Point grouping algorithm.}
-\label{alg:grouping}
-	\begin{algorithmic}[1]
-	\Statex \textbf{Input:} $\set{R}=\{ r_1,\ldots.r_R \}, \newline M=\{ (\p{i},r_{\p{i}},\mathbf{f}_{\p{i},r_{\p{i}}}) \}, \, i=\in[1,m]$.
-	\Statex \textbf{Output:} $B= \{ \mathbf{b}_1,\ldots,\mathbf{b}_k \} = \newline \{ (\p{l_{11}},\ldots,\p{l_{1i}}), \ldots, (\p{l_{k1}},\ldots,\p{l_{kj}}) \},\, l_{ij}\in[1,m]$.
-	\State Initialization: $B \leftarrow cc(M)$. \Comment{Connected components}
-	\ForAll{scales $r_i$}
-		\ForAll{branches $\mathbf{b}_j$}
-		\EndFor
-	\EndFor
-	\end{algorithmic}
-\end{algorithm}
-\stavros{Complete and keep the grouping pseudocode only if space permits}
+%\begin{algorithm}[t]
+%\caption{Point grouping algorithm.}
+%\label{alg:grouping}
+%	\begin{algorithmic}[1]
+%	\Statex \textbf{Input:} $\set{R}=\{ r_1,\ldots.r_R \}, \newline M=\{ (\p{i},r_{\p{i}},\mathbf{f}_{\p{i},r_{\p{i}}}) \}, \, i=\in[1,m]$.
+%	\Statex \textbf{Output:} $B= \{ \mathbf{b}_1,\ldots,\mathbf{b}_k \} = \newline \{ (\p{l_{11}},\ldots,\p{l_{1i}}), \ldots, (\p{l_{k1}},\ldots,\p{l_{kj}}) \},\, l_{ij}\in[1,m]$.
+%	\State Initialization: $B \leftarrow cc(M)$. \Comment{Connected components}
+%	\ForAll{scales $r_i$}
+%		\ForAll{branches $\mathbf{b}_j$}
+%		\EndFor
+%	\EndFor
+%	\end{algorithmic}
+%\end{algorithm}
 
 
 \subsection{Medial Branch Simplification}\label{sec:method:simplification}
@@ -521,7 +522,6 @@ The first one is medial point detection, where we are interested in successfully
 in an image.
 The second is image reconstruction, where the task is to generate an accurate reconstruction of the input,
 given its computed AMAT.
-~\stavros{add more tasks if we get results}
 
 \subsection{Medial Point Detection}\label{sec:experiments:detection}
 For the task of medial point detection we use a dataset built on the BSDS500~\cite{martin2001database,arbelaez2011contour}.
@@ -586,12 +586,39 @@ are considered as true positives.
 \label{fig:experiments:detection:pr}
 \end{figure}
 
-\begin{figure}[t]
+\begin{figure*}[t]
 \centering
-\caption{Medial point detection results: Input image, MIL result, refined medial axis, grouped results. 
-Include results for 3-4 images at least. This will take up space.}
+\def\imgw{0.245}
+\def\img_id{3096}
+\includegraphics[width=\imgw \textwidth]{\img_id_resized.jpg}
+%\includegraphics[width=\imgw \textwidth]{\img_id_smoothed_resized.jpg}
+\includegraphics[width=\imgw \textwidth]{\img_id_axes_simplified.pdf}
+\includegraphics[width=\imgw \textwidth]{\img_id_branches_simplified.pdf}
+\includegraphics[width=\imgw \textwidth]{\img_id_gt_skel.pdf}
+
+\def\img_id{253055}
+\includegraphics[width=\imgw \textwidth]{\img_id_resized.jpg}
+%\includegraphics[width=\imgw \textwidth]{\img_id_smoothed_resized.jpg}
+\includegraphics[width=\imgw \textwidth]{\img_id_axes_simplified.pdf}
+\includegraphics[width=\imgw \textwidth]{\img_id_branches_simplified.pdf}
+\includegraphics[width=\imgw \textwidth]{\img_id_gt_skel.pdf}
+
+\def\img_id{85048}
+\includegraphics[width=\imgw \textwidth]{\img_id_resized.jpg}
+%\includegraphics[width=\imgw \textwidth]{\img_id_smoothed_resized.jpg}
+\includegraphics[width=\imgw \textwidth]{\img_id_axes_simplified.pdf}
+\includegraphics[width=\imgw \textwidth]{\img_id_branches_simplified.pdf}
+\includegraphics[width=\imgw \textwidth]{\img_id_gt_skel.pdf}
+
+\def\img_id{295087}
+\includegraphics[width=\imgw \textwidth]{\img_id_resized.jpg}
+%\includegraphics[width=\imgw \textwidth]{\img_id_smoothed_resized.jpg}
+\includegraphics[width=\imgw \textwidth]{\img_id_axes_simplified.pdf}
+\includegraphics[width=\imgw \textwidth]{\img_id_branches_simplified.pdf}
+\includegraphics[width=\imgw \textwidth]{\img_id_gt_skel.pdf}
+\caption{From left to right: Original image, smoothed image using~\cite{xu2011image}, medial axes, grouped branches, ground-truth.}
 \label{fig:experiments:detection:examples}
-\end{figure}
+\end{figure*}
 
 
 \subsection{Image Reconstruction}\label{sec:experiments:reconstruction}
@@ -615,40 +642,61 @@ them by their mean RGB values.
 We show that an ``optimal'' sparse representation of the image, in the form of its human-annotated
 boundaries and the encodings of the enclosed regions, results in much poorer reconstruction
 quality compared to our approach.
-
 We consider three standard evaluation metrics for image similarity: MSE, PSNR, and SSIM.
 %We also examine an additional similarity criterion that has gained popularity recently, 
 %in the context of convolutional neural networks.
 %Specifically, we measure how close the reconstructed image is to the original,
 %``in the eyes'' of a CNN, by computing the $L_2$ norms of feature maps at various layers. \stavros{say which layers}
-All results are reported in~\reftab{tab:reconstruction}.
-\stavros{Use ratio of compression over reconstruction quality as additional criterion}
-\stavros{Do not forget to include average compression rates}
-
+Results are reported in~\reftab{tab:experiments:reconstruction}.
 
 
 \begin{table}
 \centering
-\begin{tabular}{|c|c|c|c|c|c|c|}
+\begin{tabular}{|c|c|c|c|c|}
 \hline
-Metric	&	MSE		&	PSNR	&	SSIM 	&	conv3	&	conv5	&	fc7	\\
+Metric	&	MSE		&	PSNR (dB)	&	SSIM	&	Compression 	\\
 \hline
-MIL~\cite{tsogkas2012learning}	&	-	& - 	& 	- 	&	-	&	-	&	-	\\
+MIL~\cite{tsogkas2012learning}	&	0.0258	& 	16.6 	& 	0.53	&	$\times20$	\\
 \hline
-GT seg &	-	& - 	& 	- 	&	-	&	-	&	-	\\
+GT seg &	0.0220	& 	17.28 	& 	0.57	&	$\times15$\\
 \hline
-AMAT	&	-	&	-	&	-	&	-	&	-	&	- 	\\
+AMAT	&	\textbf{0.0058}	&	\textbf{22.74}	&	\textbf{0.74}	&	$\times11$	\\
 \hline
 \end{tabular}
-\caption{Image reconstruction quality in BSDS500.}
-\label{tab:reconstruction}
+\caption{Image reconstruction quality in BSDS500 val set.}
+\label{tab:experiments:reconstruction}
 \end{table}
 
-\begin{figure}[t]
+\begin{figure*}[t]
 \centering
-\caption{Image reconstruction results: Input, smoothed, MIL, GT seg, AMAT}
-\label{fig:reconstruction}
-\end{figure}
+\def\imgw{0.245}
+\def\img_id{3096}
+\includegraphics[width=\imgw \textwidth]{\img_id_resized.jpg}
+\includegraphics[width=\imgw \textwidth]{\img_id_rec_mil.png}
+\includegraphics[width=\imgw \textwidth]{\img_id_rec_gtseg.png}
+\includegraphics[width=\imgw \textwidth]{\img_id_rec_amat.png}
+
+\def\img_id{145086}
+\includegraphics[width=\imgw \textwidth]{\img_id_resized.jpg}
+\includegraphics[width=\imgw \textwidth]{\img_id_rec_mil.png}
+\includegraphics[width=\imgw \textwidth]{\img_id_rec_gtseg.png}
+\includegraphics[width=\imgw \textwidth]{\img_id_rec_amat.png}
+
+\def\img_id{85048}
+\includegraphics[width=\imgw \textwidth]{\img_id_resized.jpg}
+\includegraphics[width=\imgw \textwidth]{\img_id_rec_mil.png}
+\includegraphics[width=\imgw \textwidth]{\img_id_rec_gtseg.png}
+\includegraphics[width=\imgw \textwidth]{\img_id_rec_amat.png}
+
+\def\img_id{42049}
+\includegraphics[width=\imgw \textwidth]{\img_id_resized.jpg}
+\includegraphics[width=\imgw \textwidth]{\img_id_rec_mil.png}
+\includegraphics[width=\imgw \textwidth]{\img_id_rec_gtseg.png}
+\includegraphics[width=\imgw \textwidth]{\img_id_rec_amat.png}
+
+\caption{\textbf{Image reconstruction results}.From left to right: Input, MIL, GT seg, AMAT}
+\label{fig:experiments:reconstruction}
+\end{figure*}
 
 
 \subsection{Edge Detection and Object Proposals}\label{sec:experiments:edge}
