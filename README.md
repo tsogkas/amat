@@ -12,7 +12,6 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 - Our method provides shape decomposition into part regions.
 - Image editing, painterly rendering, seeds for segmentation, potentially
 	replace interactive segmentation (check cvpr 2016 paper).
-- Cite Kimia's paper and papers on interactive segmentation, shape editing using medial points.
 - Talk about object proposals but with the additional shape decomposition of the underlying regions.
 - Vary appearance threshold in grouping scheme
  Explain notation in figure 2, fix remaining figures by inverting background color.
