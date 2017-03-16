@@ -8,6 +8,20 @@ Created by Stavros Tsogkas at the University of Toronto.
 This code is released under the MIT License (refer to the LICENSE file for details).
 
 ### TODO:
+### PAPER TEXT:
+- Our method provides shape decomposition into part regions.
+- Image editing, painterly rendering, seeds for segmentation, potentially
+	replace interactive segmentation (check cvpr 2016 paper).
+- Cite Kimia's paper and papers on interactive segmentation, shape editing using medial points.
+- Talk about object proposals but with the additional shape decomposition of the underlying regions.
+- Vary appearance threshold in grouping scheme
+ Explain notation in figure 2, fix remaining figures by inverting background color.
+- Change marker colors in figure 4.
+- Add "oracle" based on groundtruth skeletons?	
+- Remove some of sven's papers.
+- Add discussion on complexity.
+
+
 ### HIGH PRIORITY ---------------------------------------------------------
 - run the following experiments on object proposal using edge boxes on VOC2007:
 	1. replace structured edges with our own edge result.
