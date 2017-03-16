@@ -60,8 +60,8 @@ export_fig(fullfile(figPath, 'pr.pdf'),'-transparent',fig);
 
 %% Medial point detection qualitative results
 iids = {'3096','54082','85048','295087','42049','101087','86016','145086','302008','253055'};
-c = 0.4; zerocolor = [c c c];
-parfor i=1:numel(iids)
+c = 0.4; zerocolorBranches = [c c c];
+parfor i=1:1
     iid = iids{i};
     ex  = BMAX500.val(strcmp(iid,{BMAX500.val(:).iid}));
     for s=1:size(ex.seg,3)
@@ -75,13 +75,13 @@ parfor i=1:numel(iids)
     matrefined = refineMAT(mat);
     [~,idxSeg] = max(max(reshape(ex.seg,[],size(ex.seg,3)),[],1));
     imwrite(imgResized, fullfile(figPath, [iid '_resized.jpg']))
-    imwrite(smoothedResized, fullfile(figPath, [iid '_smoothed_resized.jpg']))
-    fig = figure; imshow(label2rgb(mat.branches, parula(max(mat.branches(:))), zerocolor,'shuffle'));
-    export_fig(fullfile(figPath, [iid '_branches.pdf']), '-transparent', fig)
+%     fig = figure; imshow(label2rgb(mat.branches, parula(max(mat.branches(:))), zerocolor,'shuffle'));
+%     export_fig(fullfile(figPath, [iid '_branches.pdf']), '-transparent', fig)
     fig = figure; imshow(label2rgb(matrefined.branches, parula(max(matrefined.branches(:))), zerocolor,'shuffle'));
     export_fig(fullfile(figPath, [iid '_branches_simplified.pdf']), '-transparent', fig)
-    fig = figure; imshow(ex.pts(:,:,idxSeg)); 
+    fig = figure; imshow(1-ex.pts(:,:,idxSeg)); 
     export_fig(fullfile(figPath, [iid '_gt_skel.pdf']), '-transparent', fig)
+%     ax  = matrefined.axis; ax(repmat(all(matrefined.axis==0,3),[1 1 3])) = 0;
     fig = figure; imshow(matrefined.axis)
     export_fig(fullfile(figPath, [iid '_axes_simplified.pdf']), '-transparent', fig)
 end

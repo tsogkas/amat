@@ -15,22 +15,24 @@
 %%%%%%%%% ABSTRACT
 \begin{abstract}
 The medial axis transform (MAT) is a powerful shape abstraction that has been successfully
-used in shape summarization, matching and retrieval. 
-Despite the MAT's long history, the lack of a definition and evaluation criterion 
-that accommodates color and texture have prevented its widespread use in tasks involving natural images.
-In this paper we introduce Appearance-MAT (AMAT), by framing MAT 
-for natural images as a weighted geometric set cover (WGSC) problem.
+used in shape editing, matching and retrieval. 
+Despite the MAT's long history, the lack of a definition and an evaluation criterion 
+that accommodate color and texture have prevented its widespread use in tasks involving natural images.
+In this paper we introduce Appearance-MAT (AMAT), by framing the MAT 
+of natural images as a weighted geometric set cover problem.
 We make the following contributions: 
-i) we extend previous methods for color images, which were limited to returning medial point locations only, 
+i) we extend previous medial point detection methods for color images,
 by associating each medial point with a local scale; 
 ii) inspired by the invertibility property of the binary MAT, we also associate each medial point with a local encoding
-which allows us to invert the AMAT, reconstructing the input image; 
+that allows us to invert the AMAT, reconstructing the input image; 
 iii) we describe a clustering scheme that takes advantage of the additional scale and appearance information 
-to group individual points into medial branches, which correspond to meaningful image regions.
-We perform experiments in medial point detection on
-Berkeley-Medial AXes (BMAX500), a new dataset of medial axes based on the well-known BSDS500 database.
-We also measure the quality of the reconstructed images from the same dataset,
-obtained by inverting their computed AMAT. 
+to group individual points into medial branches, providing a shape decomposition of the underlying image regions.
+In our experiments, we show \sota\ performance in medial point detection on
+Berkeley Medial AXes (BMAX500), a new dataset of medial axes based on the established BSDS500 database.
+We also measure the quality of reconstructed images from the same dataset,
+obtained by inverting their computed AMAT.
+Our approach delivers significantly better reconstruction quality \wrt to two baselines,
+using just 10\% of the image pixels. 
 Our code and annotations will be made publicly available.
 \end{abstract}
 
@@ -47,7 +49,7 @@ Our code and annotations will be made publicly available.
 \subfloat[Reconstructed image]{\includegraphics[width=0.47\linewidth]{teaser_recon.pdf}\label{fig:teaser:recon}}
 \caption{\textbf{Top:} Input image (\ref{fig:teaser:input}) and segmentation (\ref{fig:teaser:mat}) from BSDS500,
 using a different color for each ground-truth segment. 
-We overlay ground-truth medial axes extracted from each segment using~\cite{telea2002augmented} (green) and a subset of medial disks (red). 
+Medial axes extracted from each segment using~\cite{telea2002augmented} (green) and a subset of medial disks (red) are overlaid. 
 Using the medial disk radius information, we can reconstruct the input segments. 
 \textbf{Bottom:} Similarly, the Appearance-MAT (\ref{fig:teaser:amat}) carries enough information to reconstruct the 
  \emph{input image} (\ref{fig:teaser:recon}) with just $\sim 5\%$ of the pixels 
@@ -65,22 +67,25 @@ cylinders~\cite{binford1971visual}, superquadrics~\cite{barr1981superquadrics},
 geons~\cite{biederman1987recognition}, and shock graphs~\cite{siddiqi1999shock}.
 
 Fundamental notions of local symmetry were introduced decades ago by Blum in the context 
-of binary shapes with the \emph{medial axis transform (MAT)}~\cite{blum1967transformation,blum1973biological} .
-The MAT is a powerful shape abstraction 
-that has been successfully used in recognition, matching and retrieval. 
-One of its most important strengths is that it provides a very compact representation that can
-accurately reproduce the input shape. 
-This makes the MAT very useful for reducing the computational demands of various algorithms, 
+of binary shapes with the \emph{medial axis transform (MAT)}~\cite{blum1967transformation,blum1973biological}.
+The MAT is a powerful shape abstraction that has been successfully used in recognition, matching and retrieval. 
+One of its most important strengths is that it provides a very compact representation that preserves the topological
+properties of the input shape.
+This makes the MAT very useful for reducing the computational complexity of various algorithms,
+\eg for mesh editing~\cite{li2001decomposing,yoshizawa2003free} and shape manipulation~\cite{du2004medial},
 and many researchers have tried to achieve a good balance
 between MAT sparsity and reconstruction quality~\cite{tam2003shape,li2015q}.
-Extending the notion of the MAT to natural images would  benefit applications that rely on
-a sparse set of highly informative keypoints, such as image registration, image retrieval, and fine-grained recognition, to name a few.
-\stavros{add citations}.
-Or efficiently guide segmentation, by enforcing region-based constraints through their medial point representatives
-~\cite{teo2015detection}.
 
-Unfortunately, the lack of a definition and evaluation criterion 
-that accommodates color and texture have prevented the widespread use of the MAT for tasks involving natural images.
+Extending the notion of the MAT to natural images would correspondingly benefit applications that rely on
+a sparse set of highly informative keypoints/landmarks, such as registration~\cite{zhou2016estimating}, 
+retrieval~\cite{sivic2003video}, pose estimation and body tracking~\cite{shotton2013efficient},
+and structure from motion~\cite{agarwal2011building}.
+It would also assist segmentation, by enforcing region-based constraints through their medial point representatives
+~\cite{teo2015detection}; and by providing a practical alternative to manual 
+scribbles/seeds for interactive segmentation~\cite{boykov2001interactive,price2010geodesic,isack2016hedgehog,lin2016scribblesup}.
+
+Unfortunately, the lack of a definition and an evaluation criterion 
+that accommodate color and texture have prevented the widespread use of the MAT for tasks involving natural images.
 Previous works have mostly attacked the sub-problem of \emph{medial point detection}~\cite{tsogkas2012learning,shen2016object},
 which amounts to determining the \emph{locations} of points lying on medial axes 
 but not the scale of the respective medial disk.
@@ -100,17 +105,17 @@ that can be used to reconstruct the input.
 Thus, the AMAT encompasses all the fundamental features of its  binary counterpart. 
 Third, we describe a simple bottom-up grouping scheme that exploits the additional scale and appearance information to connect
 points into medial \emph{branches}.
-These branches correspond to meaningful image regions, and extracting them can support both image segmentation
-and boundary ownership assignment.
+These branches correspond to meaningful image regions, and extracting them can support image segmentation,
+and object proposal generation, while offering a shape decomposition of the underlying structure as well. 
 
 Being bottom-up in nature, our method does not assume object-level knowledge.
 It computes medial axes of both foreground and background structures, 
-yielding a compact representation that only uses $\sim 10\%$ of the points in the original image.
-Yet, this sparse set of points carries most of the important information in the full image
+yielding a compact representation that only uses $\sim 10\%$ of the image pixels.
+Yet, this sparse set of points carries most of the signal present in the full image;
 %enough information to reconstruct the input, and
-and can replace it in algorithms for high-level tasks, 
-(scene classification, image retrieval), significantly reducing their running time.
-This differs from other sparse image descriptions, \eg edge maps, which strip the input of all appearance information.
+%and can replace it in algorithms for high-level tasks, 
+%(scene classification, image retrieval), significantly reducing their running time.
+this differs from other sparse image descriptions, \eg edge maps, which strip the input of all appearance information.
 
 We perform experiments in medial point detection on a new dataset of medial axes, the 
 \emph{Berkeley-Medial AXes (BMAX500)}, which is built on the popular BSDS500 dataset, showing \sota\ performance.
@@ -118,14 +123,14 @@ We also measure the quality of reconstructions  obtained by inverting the AMAT o
 using  a variety of standard image quality metrics.
 We compare with two reconstruction baselines: one built on the medial point detection algorithm from~\cite{tsogkas2012learning}
 and one built from the ground-truth segmentations in BSDS500.
-Our method significantly outperforms the baselines in terms of reconstruction quality, while attaining good compression ratio.
+Our method significantly outperforms the baselines in terms of reconstruction quality, while attaining a $11\times$ compression ratio.
 
 The outline of the paper is as follows: we start by reviewing related work on medial axis extraction for binary shapes
 and natural images in~\refsec{sec:related}.
-In~\refsec{sec:method} we describe our approach; we define the problem, introduce notation, and highlight the connection to
-the WGSC problem.
-We also discuss the schemes for bottom-up grouping of the medial points into branches and the AMAT simplification.
-~\refsec{sec:implementation} includes implementation details and in~\refsec{sec:experiments} we present our results.
+In~\refsec{sec:method} we describe our approach.
+%we define the problem, introduce notation, and highlight the connection to the WGSC problem.
+%We also discuss the schemes for bottom-up grouping of the medial points into branches and the AMAT simplification.
+\refsec{sec:implementation} includes implementation details and in~\refsec{sec:experiments} we present our results.
 Finally, in~\refsec{sec:discussion} we conclude and discuss ideas for future directions.
 
 
@@ -189,13 +194,30 @@ are necessary for reconstructing the input.
 % ====================================================================================================================
 \section{Method}\label{sec:method}
 % ===================================================================================================================
+
+\begin{figure*}[t]
+\centering
+\def\imgw{0.245}
+\includegraphics[width=\imgw\linewidth]{google_disks.pdf}
+\includegraphics[width=\imgw\linewidth]{google_disks.pdf}
+\includegraphics[width=\imgw\linewidth]{google_disks.pdf}
+\includegraphics[width=\imgw\linewidth]{google_disks.pdf}
+\caption{$\mathbf{D_W:}$ Composing an image using overlapping disks; disk centers form the medial axis (green points).
+$\mathbf{D_G}$ lies at the intersection of three regions, so its encoding cannot accurately reconstruct the local image patch.
+$\mathbf{D_R}$ incurs a small MSE, even though it does not respect region boundaries.
+Comparing a disk's encoding $\f{B}$ to the encodings $\f{i}$ of \emph{all} contained disks provides a more robust
+error metric.}
+\label{fig:google}
+\end{figure*}
+
 \subsection{Problem Definition}\label{sec:method:definition}
 Consider a 2D binary shape, $O$, in the image plane, and its boundary $\Theta_O$.
-The \emph{medial axis} of $O$ is the set of points $\p{}$ that lie midway between two sections of 
-its boundary. The points $\p{}$ are the centers of maximally inscribed (medial) disks, bitangent to $\Theta_O$
-in the interior of the shape. The disk radius $r(\p{})$ is the distance between $\p{}$ and 
-the points where the disk touches $\Theta_O$, and is called the \emph{medial radius}.
-The process of mapping $O$ to the set of point-radius pairs $(\p{},r(\p{})) \in \mathbb{R}^2 \times \mathbb{R}$
+The \emph{medial axis} of $O$ is the set of points $\p{}$ that
+%lie midway between two sections of its boundary. The points $\p{}$ 
+are centers of the maximally inscribed (medial) disks, bitangent to $\Theta_O$
+in the interior of the shape. The disk radius $r(\p{})$, called the \emph{medial radius}, 
+is the distance between $\p{}$ and the points where the disk touches $\Theta_O$.
+The process of mapping $O$ to the set of pairs $(\p{},r(\p{})) \in \mathbb{R}^2 \times \mathbb{R}$
 is called the \emph{medial axis transform} (MAT).
 Given these pairs, we can reconstruct the object as a union of overlapping disks that sweep-out 
 its interior by ``expanding'' a value of one (1) inside the area covered by each  medial disk.
@@ -255,17 +277,6 @@ cross region boundaries, as this would incur a high reconstruction error, as sho
 However, there are two important differences:
 First, in our case a canonical shape (disk) is used, whereas superpixels can have any form. 
 Second, our disks are \emph{overlapping}, in contrast to standard, non-overlapping superpixels.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\linewidth]{google_disks.pdf}
-\caption{$\mathbf{D_W:}$ Composing an image using overlapping disks; disk centers form the medial axis (green points).
-$\mathbf{D_G}$ lies at the intersection of three regions, so its encoding cannot accurately reconstruct the local image patch.
-$\mathbf{D_R}$ incurs a small MSE, even though it does not respect region boundaries.
-Comparing a disk's encoding $\f{B}$ to the encodings $\f{i}$ of \emph{all} contained disks provides a more robust
-error metric.}
-\label{fig:google}
-\end{figure}
 
 \subsection{AMAT as a Geometric Set Cover Problem}\label{sec:method:wgsc}
 The geometric set cover is the extension of the well studied set cover problem, in a geometric space.
@@ -486,7 +497,7 @@ We then use the average $\f{}$ of all disks covering a point $\p{i}$ with depth 
 \subfloat[$w_s=10^{-4}$]{\includegraphics[width=\imgw\textwidth]{{\img_id_recon0.0001}.jpg}}\hfill
 \subfloat[$w_s=10^{-3}$]{\includegraphics[width=\imgw\textwidth]{{\img_id_recon0.001}.jpg}}\hfill
 \subfloat[$w_s=10^{-2}$]{\includegraphics[width=\imgw\textwidth]{{\img_id_recon0.01}.jpg}}\hfill
-\caption{From left to right: Input image and reconstruction results using increasingly larger scale-factor $w_s$.}
+\caption{Using a progressively larger scale-cost factor $w_s$ removes details keeping only coarse image structures.}
 \label{fig:smoothing}
 \end{figure*}
 
@@ -545,26 +556,11 @@ reported in~\cite{xie2015holistically}.
 %because the position discrepancies for medial axes extracted from different annotations are very high.
 We evaluate performance using the standard precision, recall and f-measure metrics, 
 and show results in~\reffig{fig:experiments:detection:pr}.
-Note that our algorithm does not output a skeleton probability map, so plotting 
+Note that our algorithm does not output a skeleton probability map, so plotting
 PR-curves by varying a score threshold is not applicable in our case.
 For all methods, detections within a distance of $1\%$ of the image diagonal from a ground-truth positive 
 are considered as true positives.
-
-%\begin{table}
-%\centering
-%\begin{tabular}{|c|c|c|c|}
-%\hline
-%Method	&	Precision	&	Recall	&	F-measure \\
-%\hline
-%MIL~\cite{tsogkas2012learning}	&	-	& - 	& 	0.48 \\
-%\hline
-%AMAT	&	-&	-&	\bf{0.53} \\
-%\hline
-%\end{tabular}
-%\caption{Results on medial point detection in BMAX500.}
-%\label{tab:detection}
-%\end{table}
-%\stavros{replace this table with plot, add human performance}
+We show qualitative results of the medial axes and the grouped branches in~\reffig{fig:experiments:detection:examples}.
 
 \begin{figure}
 \centering
@@ -603,7 +599,9 @@ are considered as true positives.
 \includegraphics[width=\imgw \textwidth]{\img_id_axes_simplified.pdf}
 \includegraphics[width=\imgw \textwidth]{\img_id_branches_simplified.pdf}
 \includegraphics[width=\imgw \textwidth]{\img_id_gt_skel.pdf}
-\caption{From left to right: Original image, smoothed image using~\cite{xu2011image}, medial axes, grouped branches, ground-truth.}
+\caption{\textbf{Medial axes}. From left to right: Input image, AMAT medial axes, medial branches (color-coded), ground-truth skeletons.
+Axis color indicates the appearance in the respective medial region, and black is used for non-medial points. 
+View in color and magnified.}
 \label{fig:experiments:detection:examples}
 \end{figure*}
 
@@ -636,7 +634,8 @@ We consider three standard evaluation metrics for image similarity: MSE, PSNR, a
 %in the context of convolutional neural networks.
 %Specifically, we measure how close the reconstructed image is to the original,
 %``in the eyes'' of a CNN, by computing the $L_2$ norms of feature maps at various layers. \stavros{say which layers}
-Results are reported in~\reftab{tab:experiments:reconstruction}.
+Results are reported in~\reftab{tab:experiments:reconstruction} and visual examples are shown
+in~\reffig{fig:experiments:reconstruction}.
 
 
 \begin{table}
@@ -645,11 +644,11 @@ Results are reported in~\reftab{tab:experiments:reconstruction}.
 \hline
 Metric	&	MSE		&	PSNR (dB)	&	SSIM	&	Compression 	\\
 \hline
-MIL~\cite{tsogkas2012learning}	&	0.0258	& 	16.6 	& 	0.53	&	$\times20$	\\
+MIL~\cite{tsogkas2012learning}	&	0.0258	& 	16.6 	& 	0.53	&	$20\times$	\\
 \hline
-GT seg &	0.0220	& 	17.28 	& 	0.57	&	$\times15$\\
+GT seg &	0.0220	& 	17.28 	& 	0.57	&	$15\times$\\
 \hline
-AMAT	&	\textbf{0.0058}	&	\textbf{22.74}	&	\textbf{0.74}	&	$\times11$	\\
+AMAT	&	\textbf{0.0058}	&	\textbf{22.74}	&	\textbf{0.74}	&	$11\times$	\\
 \hline
 \end{tabular}
 \caption{Image reconstruction quality in BSDS500 val set.}
@@ -683,7 +682,7 @@ AMAT	&	\textbf{0.0058}	&	\textbf{22.74}	&	\textbf{0.74}	&	$\times11$	\\
 \includegraphics[width=\imgw \textwidth]{\img_id_rec_gtseg.png}
 \includegraphics[width=\imgw \textwidth]{\img_id_rec_amat.png}
 
-\caption{\textbf{Image reconstruction results}.From left to right: Input, MIL, GT seg, AMAT}
+\caption{\textbf{Image reconstruction}. From left to right: Input image, MIL~\cite{tsogkas2012learning}, ground-truth segmentation, AMAT.}
 \label{fig:experiments:reconstruction}
 \end{figure*}
 
@@ -692,14 +691,17 @@ AMAT	&	\textbf{0.0058}	&	\textbf{22.74}	&	\textbf{0.74}	&	$\times11$	\\
 % ====================================================================================================================
 \section{Discussion}\label{sec:discussion}
 % ====================================================================================================================
-We have proposed a new approach for computing and evaluating the quality of the medial axis transform in 
-natural images, called Appearance-MAT or AMAT.
-Our work bridges the gap between MAT methods for binary shapes and MAT medial axis/local symmetry detection methods
-for real images.
-By framing AMAT as a weighted set cover problem, we provide both a well-defined setting and an algorithm for 
-detecting medial axes in natural images.
-\stavros{Add more according to results}
-\stavros{Future work: different encoding/decoding functions, adding texture, }
+We have proposed the first definition for the medial axis transform in natural images and described and algorithm for
+computing it and evaluating its quality.
+Our approach, called Appearance-MAT, or simply AMAT, bridges the gap between MAT methods for binary shapes and 
+medial axis/local symmetry detection methods for real images.
+We demonstrate \sota\ performance in medial point detection and show that we can produce a high-quality 
+reconstruction of the input image using as few as $10\%$ of its pixels. 
+A limitation of our framework is that it cannot deal with high frequency textures.
+Using more powerful encoding/decoding functions $f,g$ could offer a solution to this problem.
+Furthermore, the output of our algorithm offers a good starting set of salient regions, represented by 
+their medial branches, which can be further merged to form object proposals.
+We intend to explore these research directions in future work.
 
 
 {\small
