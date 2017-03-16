@@ -27,8 +27,14 @@ fig  = figure; imshow(imresize(mat.reconstruction,[H,W],'bilinear'));
 export_fig(fullfile(figPath, 'teaser_recon.pdf'),'-transparent',fig);
 
 %% Google logo and reconstruction errors
-img = imread('google.jpg');
-
+img = imread(fullfile(figPath, 'shape.png'));
+bnd = imdilate(bwperim(img), strel('disk',5)); bnd(border(bnd,5)) = 0;
+bnd = cat(3,bnd, zeros([size(bnd,1) size(bnd,2) 2]));
+img = im2double(repmat(img,[1 1 3]));
+dark = img/2;
+comp = max(dark,bnd);
+fig = figure; imshow(comp)
+export_fig(fullfile(figPath, 'binary_shape.pdf'),'-transparent',fig);
 
 %% Smoothing
 iid = '101085'; set = 'val';

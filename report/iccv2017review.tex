@@ -50,10 +50,10 @@ Our code and annotations will be made publicly available.
 \caption{\textbf{Top:} Input image (\ref{fig:teaser:input}) and segmentation (\ref{fig:teaser:mat}) from BSDS500,
 using a different color for each ground-truth segment. 
 Medial axes extracted from each segment using~\cite{telea2002augmented} (green) and a subset of medial disks (red) are overlaid. 
-Using the medial disk radius information, we can reconstruct the input segments. 
-\textbf{Bottom:} Similarly, the Appearance-MAT (\ref{fig:teaser:amat}) carries enough information to reconstruct the 
+A segment can be reconstructed given its medial axis. 
+\textbf{Bottom:} Similarly, the AMAT (\ref{fig:teaser:amat}) carries enough information to reconstruct the 
  \emph{input image} (\ref{fig:teaser:recon}) with just $\sim 5\%$ of the pixels 
- (we use white color for non-medial points in~\ref{fig:teaser:amat}).}
+ (unused points in~\ref{fig:teaser:amat} are shown in white).}
 \label{fig:teaser}
 \end{figure}
 
@@ -89,7 +89,7 @@ that accommodate color and texture have prevented the widespread use of the MAT 
 Previous works have mostly attacked the sub-problem of \emph{medial point detection}~\cite{tsogkas2012learning,shen2016object},
 which amounts to determining the \emph{locations} of points lying on medial axes 
 but not the scale of the respective medial disk.
-The type of axes considered is also constrained to make the problem more concrete:
+The type of axes considered was also constrained to make the problem more concrete:
 \cite{tsogkas2012learning} only considers elongated structures, lying on both foreground objects and background; 
 ~\cite{shen2016object} instead focuses on \emph{object skeletons}, ignoring background structures.
 These methods also lack a key characteristic of the MAT: medial point locations alone do not provide sufficient
@@ -197,16 +197,13 @@ are necessary for reconstructing the input.
 
 \begin{figure*}[t]
 \centering
-\def\imgw{0.245}
-\includegraphics[width=\imgw\linewidth]{google_disks.pdf}
-\includegraphics[width=\imgw\linewidth]{google_disks.pdf}
-\includegraphics[width=\imgw\linewidth]{google_disks.pdf}
-\includegraphics[width=\imgw\linewidth]{google_disks.pdf}
-\caption{$\mathbf{D_W:}$ Composing an image using overlapping disks; disk centers form the medial axis (green points).
-$\mathbf{D_G}$ lies at the intersection of three regions, so its encoding cannot accurately reconstruct the local image patch.
-$\mathbf{D_R}$ incurs a small MSE, even though it does not respect region boundaries.
-Comparing a disk's encoding $\f{B}$ to the encodings $\f{i}$ of \emph{all} contained disks provides a more robust
-error metric.}
+\includegraphics[width=0.3\linewidth]{binary_shape.pdf}
+\includegraphics[width=0.43\linewidth]{google.pdf}\hfill
+\includegraphics[width=0.22\linewidth]{google_disks.pdf}
+\caption{\textbf{Left:} We can reconstruct a binary shape by expanding a value of "1" within the area of all medial disks.
+\textbf{Middle:} Disks that cross region boundaries have a high reconstruction error.
+\textbf{Right:} $D_{ij}$ incurs a low MSE, even though it does not respect region boundaries.
+Using~\refeq{eq:diskcost} to compare encodings of \emph{all} contained disks provides a more robust error metric.}
 \label{fig:google}
 \end{figure*}
 
@@ -319,9 +316,9 @@ However, choosing an acceptable $m$ can be a nuisance, as its value can vary sig
 
 In the original MAT sparsity is implicitly induced through the use of maximal disks,
 touching the shape boundary at two points or more.
-Extending the maximality principle to real images is not straightforward;
+Extending the maximality principle to real images is not straightforward
 because color and texture boundaries are not robustly defined.
-Relying on the output of an edge extraction algorithm is not an option either,
+Relying on the output of an edge extraction algorithm is not a viable option either,
 as it would make our method sensitive to errors from which it would be impossible to recover.
 
 We choose to regularize the minimization criterion in~\refeq{eq:minimization} in an alternative way. 
@@ -419,11 +416,9 @@ on the points of each branch to merge neighboring and isolated pixels together, 
 redundant responses. 
 We also adjust the scales of the medial points after thinning, to ensure that the medial disks corresponding 
 to the simplified structure span the same image area.
-Because grouped branches correspond to relatively homogeneous regions, we expect that reconstruction
-results after simplification will not change much.
+Because grouped branches correspond to relatively homogeneous regions, reconstruction
+results after simplification are practically identical.
 Examples of simplified medial axes are illustrated in~\reffig{fig:experiments:detection:examples}.
-With a negligible drop in reconstruction quality, we are able to achieve a dramatic reduction
-in the number of medial points, and produce much cleaner medial axes.
 
 
 % =============================================================================================
@@ -600,8 +595,7 @@ We show qualitative results of the medial axes and the grouped branches in~\reff
 \includegraphics[width=\imgw \textwidth]{\img_id_branches_simplified.pdf}
 \includegraphics[width=\imgw \textwidth]{\img_id_gt_skel.pdf}
 \caption{\textbf{Medial axes}. From left to right: Input image, AMAT medial axes, medial branches (color-coded), ground-truth skeletons.
-Axis color indicates the appearance in the respective medial region, and black is used for non-medial points. 
-View in color and magnified.}
+Axis color indicates the appearance in the respective medial region, and black is used for unused points.}
 \label{fig:experiments:detection:examples}
 \end{figure*}
 
@@ -634,6 +628,11 @@ We consider three standard evaluation metrics for image similarity: MSE, PSNR, a
 %in the context of convolutional neural networks.
 %Specifically, we measure how close the reconstructed image is to the original,
 %``in the eyes'' of a CNN, by computing the $L_2$ norms of feature maps at various layers. \stavros{say which layers}
+Because MIL is not built to reason about the optimal scale and orientation, and the filters used are rectangles,
+reconstructions tend to be very blurred.
+On the other hand, people tend to favor \emph{perceptual} coherence instead of appearance coherence
+when they segment an image.
+As a result, reconstructions based on human
 Results are reported in~\reftab{tab:experiments:reconstruction} and visual examples are shown
 in~\reffig{fig:experiments:reconstruction}.
 
@@ -691,7 +690,7 @@ AMAT	&	\textbf{0.0058}	&	\textbf{22.74}	&	\textbf{0.74}	&	$11\times$	\\
 % ====================================================================================================================
 \section{Discussion}\label{sec:discussion}
 % ====================================================================================================================
-We have proposed the first definition for the medial axis transform in natural images and described and algorithm for
+We have proposed the first definition of a medial axis transform for natural images, and described an algorithm for
 computing it and evaluating its quality.
 Our approach, called Appearance-MAT, or simply AMAT, bridges the gap between MAT methods for binary shapes and 
 medial axis/local symmetry detection methods for real images.
@@ -699,7 +698,7 @@ We demonstrate \sota\ performance in medial point detection and show that we can
 reconstruction of the input image using as few as $10\%$ of its pixels. 
 A limitation of our framework is that it cannot deal with high frequency textures.
 Using more powerful encoding/decoding functions $f,g$ could offer a solution to this problem.
-Furthermore, the output of our algorithm offers a good starting set of salient regions, represented by 
+Furthermore, the output of our algorithm offers a set of salient regions, represented by 
 their medial branches, which can be further merged to form object proposals.
 We intend to explore these research directions in future work.
 
