@@ -47,13 +47,21 @@ end
 function model = reconstructDataset(model,imageList,opts,paths)
 % -------------------------------------------------------------------------
 switch lower(model)
-    case {'amat','gtseg'}
-        model = struct('name',model);
+    case {'amat','gtseg','gtskel'}
+        if exist(fullfile(paths.amat.models,model),'file') || ...
+           exist(fullfile(paths.amat.models,[model '.mat']),'file')
+            model = load(fullfile(paths.amat.models,model)); model = model.model;
+        else
+            model = struct('name',model);
+        end
     otherwise % load MIL or CNN model
         model = loadModelFromMatFile(model,paths);
 end
 
 % Initialize stats
+if isfield(model, opts.dataset) && isfield(model.(opts.dataset), opts.set)
+    model.stats = model.(opts.dataset).(opts.set).stats;
+end
 opts.nImages = numel(imageList);
 MSE  = zeros(opts.nImages,1);
 PSNR = zeros(opts.nImages,1);
@@ -63,8 +71,8 @@ COMP = zeros(opts.nImages,1);
 % Evaluate models on test images and compute approximate reconstructions --
 modelName = lower(model.name);
 ticStart = tic;
-parfor (i=1:opts.nImages, opts.parpoolSize)
-% for i=1:opts.nImages
+% parfor (i=1:opts.nImages, opts.parpoolSize)
+for i=1:opts.nImages
     if isfield(imageList(i), 'isdir')
         img = imread(fullfile(opts.imPath,imageList(i).name));
         [~,iid] = fileparts(imageList(i).name);
@@ -74,6 +82,8 @@ parfor (i=1:opts.nImages, opts.parpoolSize)
     else 
         img = imageList(i).img;
         seg = imageList(i).seg;
+        skel= imageList(i).pts;
+        rad = imageList(i).rad;
     end
     
     % Subsample image for efficiency
@@ -84,6 +94,9 @@ parfor (i=1:opts.nImages, opts.parpoolSize)
             [rec,COMP(i)] = reconstructionAMAT(imresize(L0Smoothing(img),0.5));
         case 'gtseg'
             [rec,COMP(i)] = reconstructionGTSEG(imgResized, imresize(seg,0.5,'nearest'));
+        case 'gtskel'
+            [rec,COMP(i)] = reconstructionGTSKEL(imgResized, ...
+                imresizeCrisp(skel,0.5),imresizeCrisp(rad,0.5)*0.5);
         case 'deepskel'
             [rec,COMP(i)] = reconstructionDeepSkel(model,imgResized);
         otherwise % MIL
@@ -214,11 +227,87 @@ for i=1:numSegs
         rec(:,:,:,i) = rec(:,:,:,i) + meanSegment; 
     end
 end
+comp = nnzPixels / (size(img,1)*size(img,2));
 % Select segmentation with maximum compression and return respective rec
-[comp,idx] = min(nnzPixels / (size(img,1)*size(img,2)));
-rec = rec(:,:,:,idx);
+% [comp,idx] = min(comp);
+% rec = rec(:,:,:,idx);
+
+% Select segmentation with maximum best reconstruction quality and return respective rec
+idxBest = 1; 
+SSIM = ssim(rec(:,:,:,1), img);
+% Find best segmentation
+for s=2:size(rec,4)
+    newssim = ssim(rec(:,:,:,s), img);
+    if newssim > SSIM
+        SSIM = newssim;
+        idxBest = s;
+    end
+end
+rec  = rec(:,:,:,idxBest);
+comp = comp(idxBest);
 
 
+% -------------------------------------------------------------------------
+function [rec,comp] = reconstructionGTSKEL(img,pts,rad)
+% -------------------------------------------------------------------------
+% Baseline reconstruction statistics using "oracle" segmentations from BSDS
+% Create disk filters 
+scales = 2:41;
+diskf = cell(1,numel(scales)); 
+for r=1:numel(diskf), diskf{r} = double(disk(scales(r))); end
+rind = containers.Map(scales,1:numel(scales));
+
+[H,W,C]   = size(img);
+img       = im2double(img);
+numSkels  = size(pts,3);
+nnzPixels = zeros(numSkels,1);
+rec       = zeros(H,W,C,numSkels);
+for i=1:numSkels
+    skel = bwthin(pts(:,:,i));
+    skel(border(skel,scales(1))) = 0;
+    rads = double(skel) .* double(rad(:,:,i));
+    % Adjust scales and skeletons
+    valid = rads > 0;
+    [~,idxScales] = min(abs(bsxfun(@minus,rads(valid),scales)),[],2);
+    rads(valid) = scales(idxScales);
+    % Compute reconstruction
+    depth = zeros(size(skel));
+    [yc,xc] = find(rads);
+    for p=1:numel(yc)
+        x = xc(p); y = yc(p); r = rads(y,x); 
+        % Because of resizing, r sometimes gets out of bound
+        r = min(r,min(x-1,y-1)); r = min(r, min(H-y, W-x));
+        dfilt = diskf{rind(r)};
+        patch = bsxfun(@times, img(y,x,:), dfilt);
+        mval  = sum(sum(patch))/nnz(dfilt);
+        patch = bsxfun(@times, mval, dfilt);
+        rec((y-r):(y+r),(x-r):(x+r),:,i) = ...
+            rec((y-r):(y+r),(x-r):(x+r),:,i) + patch;
+        depth((y-r):(y+r),(x-r):(x+r)) = ...
+            depth((y-r):(y+r),(x-r):(x+r)) + dfilt;
+    end
+    rec(:,:,:,i) = bsxfun(@rdivide, rec(:,:,:,i), depth); 
+    rec(:,:,:,i) = reshape(inpaint_nans(rec(:,:,:,i)), H,W,[]);
+    nnzPixels(i) = nnz(skel);
+end
+comp = nnzPixels / (size(img,1)*size(img,2));
+% Select segmentation with maximum compression and return respective rec
+% [comp,idx] = min(comp);
+% rec = rec(:,:,:,idx);
+
+% Select segmentation with maximum best reconstruction quality and return respective rec
+idxBest = 1; 
+SSIM = ssim(rec(:,:,:,1), img);
+% Find best segmentation
+for s=2:size(rec,4)
+    newssim = ssim(rec(:,:,:,s), img);
+    if newssim > SSIM
+        SSIM = newssim;
+        idxBest = s;
+    end
+end
+rec  = rec(:,:,:,idxBest);
+comp = comp(idxBest);
 
 % -------------------------------------------------------------------------
 function model = loadModelFromMatFile(model,paths)
