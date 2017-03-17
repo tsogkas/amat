@@ -206,9 +206,9 @@ are necessary for reconstructing the input.
 \includegraphics[width=0.43\linewidth]{google.pdf}\hfill
 \includegraphics[width=0.22\linewidth]{google_disks.pdf}
 \caption{\textbf{Left:} We can reconstruct a binary shape by expanding a value of "1" within the area of all medial disks.
-\textbf{Middle:} Disks that cross region boundaries have a high reconstruction error.
-\textbf{Right:} $D_{ij}$ incurs a low MSE, even though it does not respect region boundaries.
-Accumulating errors of \emph{all} contained disks provides a more robust error metric.}
+\textbf{Middle:} Disks are represented by their mean RGB value; disks that cross region boundaries have a high reconstruction error.
+\textbf{Right:} $D_{ij}$ has a low mean squared error, even though it does not respect region boundaries.
+Accumulating errors of \emph{all} contained disks provides a more robust error metric. See~\refsec{sec:implementation:diskcost} for more details.}
 \label{fig:method:definition}
 \end{figure*}
 
