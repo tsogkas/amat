@@ -101,26 +101,28 @@ parfor i=1:numel(iids)
     smoothedResized = imresize(L0Smoothing(ex.img),0.5);
     imgResized = imresize(ex.img, 0.5);
     segResized = imresize(ex.seg, 0.5, 'nearest');
-    mat = amat(smoothedResized);
-    mat.branches = groupMedialPoints(mat);
-    matrefined = refineMAT(mat);
-    recmat = reshape(inpaint_nans(double(matrefined.reconstruction)), size(imgResized,1), size(imgResized,2), []);
+%     mat = amat(smoothedResized);
+%     mat.branches = groupMedialPoints(mat);
+%     matrefined = refineMAT(mat);
+%     recmat = reshape(inpaint_nans(double(matrefined.reconstruction)), size(imgResized,1), size(imgResized,2), []);
     recgtseg = seg2reconstruction(imgResized,segResized);
-    recmil = spbmil2reconstruction(imgResized);
+    recgtskel= gtskel2reconstruction(imgResized, imresizeCrisp(ex.pts, 0.5), 0.5*imresizeCrisp(ex.rad, 0.5));
+%     recmil = spbmil2reconstruction(imgResized);
     idxBest = 1;
-    SSIM = ssim(double(recgtseg(:,:,:,1)), im2double(imgResized));
+    SSIM = ssim(double(recgtskel(:,:,:,1)), im2double(imgResized));
     % Find best segmentation
-    for s=2:size(recgtseg,4)
-        newssim = ssim(double(recgtseg(:,:,:,s)), im2double(imgResized));
+    for s=2:size(recgtskel,4)
+        newssim = ssim(double(recgtskel(:,:,:,s)), im2double(imgResized));
         if newssim > SSIM
             SSIM = newssim; 
             idxBest = s;
         end
     end    
-    imwrite(imgResized, fullfile(figPath, [iid '_resized.jpg']))
-    imwrite(recmil, fullfile(figPath, [iid '_rec_mil.png']))
-    imwrite(recgtseg(:,:,:,idxBest), fullfile(figPath, [iid '_rec_gtseg.png']))
-    imwrite(recmat, fullfile(figPath, [iid '_rec_amat.png']))
+%     imwrite(imgResized, fullfile(figPath, [iid '_resized.jpg']))
+%     imwrite(recmil, fullfile(figPath, [iid '_rec_mil.png']))
+%     imwrite(recgtseg(:,:,:,idxBest), fullfile(figPath, [iid '_rec_gtseg.png']))
+%     imwrite(recmat, fullfile(figPath, [iid '_rec_amat.png']))
+    imwrite(recgtskel(:,:,:,idxBest), fullfile(figPath, [iid '_rec_gtskel.png']))
 end
 
 %% Compute reconstruction and compression metrics 

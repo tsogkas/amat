@@ -9,22 +9,7 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 
 ### TODO:
 ### PAPER TEXT:
-- Figure: 
-	1. binary shape reconstruction
-	2. encodings of different disks on google logo.
-	3. Heuristic with differences of encoding and _all_ contained disks.
-	4. Compare good and bad placement of disks
-- Our method provides shape decomposition into part regions.
-- Image editing, painterly rendering, seeds for segmentation, potentially
-	replace interactive segmentation (check cvpr 2016 paper).
-- Talk about object proposals but with the additional shape decomposition of the underlying regions.
 - Vary appearance threshold in grouping scheme
- Explain notation in figure 2, fix remaining figures by inverting background color.
-- Change marker colors in figure 4.
-- Add "oracle" based on groundtruth skeletons?	
-- Remove some of sven's papers.
-- Add discussion on complexity.
-
 
 ### HIGH PRIORITY ---------------------------------------------------------
 - run the following experiments on object proposal using edge boxes on VOC2007:
