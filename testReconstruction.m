@@ -71,8 +71,8 @@ COMP = zeros(opts.nImages,1);
 % Evaluate models on test images and compute approximate reconstructions --
 modelName = lower(model.name);
 ticStart = tic;
-% parfor (i=1:opts.nImages, opts.parpoolSize)
-for i=1:opts.nImages
+parfor (i=1:opts.nImages, opts.parpoolSize)
+% for i=1:opts.nImages
     if isfield(imageList(i), 'isdir')
         img = imread(fullfile(opts.imPath,imageList(i).name));
         [~,iid] = fileparts(imageList(i).name);
@@ -227,9 +227,9 @@ for i=1:numSegs
         rec(:,:,:,i) = rec(:,:,:,i) + meanSegment; 
     end
 end
-comp = nnzPixels / (size(img,1)*size(img,2));
+comp = (size(img,1)*size(img,2)) ./ nnzPixels;
 % Select segmentation with maximum compression and return respective rec
-% [comp,idx] = min(comp);
+% [comp,idx] = max(comp);
 % rec = rec(:,:,:,idx);
 
 % Select segmentation with maximum best reconstruction quality and return respective rec
@@ -290,9 +290,9 @@ for i=1:numSkels
     rec(:,:,:,i) = reshape(inpaint_nans(rec(:,:,:,i)), H,W,[]);
     nnzPixels(i) = nnz(skel);
 end
-comp = nnzPixels / (size(img,1)*size(img,2));
+comp =  (size(img,1)*size(img,2)) ./ nnzPixels;
 % Select segmentation with maximum compression and return respective rec
-% [comp,idx] = min(comp);
+% [comp,idx] = max(comp);
 % rec = rec(:,:,:,idx);
 
 % Select segmentation with maximum best reconstruction quality and return respective rec
