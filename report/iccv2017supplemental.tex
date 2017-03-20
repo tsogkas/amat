@@ -1,0 +1,45 @@
+\documentclass[10pt,twocolumn,letterpaper]{article}
+\include{formatAndDefs}
+
+% \iccvfinalcopy % *** Uncomment this line for the final submission
+
+\def\iccvPaperID{1142} % *** Enter the ICCV Paper ID here
+\def\httilde{\mbox{\tt\raisebox{-.5ex}{\symbol{126}}}}
+
+\begin{document}
+\title{AMAT: Medial Axis Transform for Natural Images \\ Supplemental Material}
+\maketitle
+%\thispagestyle{empty}
+
+\section{Introduction}\label{sec:introduction}
+In this supplemental material we include details and qualitative results that we could not include in the main submission due to the limited space.
+\stavros{Complete depending on the material we add. Don't forget to include the video.}
+
+
+\section{Complexity Analysis and How}\label{sec:complexity}
+First, we re-define some useful quantities to make the supplemental material self-contained.
+We consider a finite set of radii $r\in \scales : \{r_1,\ldots,r_R \}$, and a disk of radius $r_j$, centered at point $\p{i}\in X^I$,
+is denoted as $D_{\p{i},r_j} = D_{ij}$.
+The most computationally demanding step in our method is the computation of the disk costs
+\begin{equation}
+c_{ij} = \sum_k \sum_l \norm{\f{ij} - \f{kl} }^2 \quad \forall k,l: D_{kl} \subset D_{ij}.
+\label{eq:diskcost}
+\end{equation}
+This quantity must be computed at all location-radius combinations, and for all the contained disks, of radii $r\in\scales$.
+
+To simplify computations, we consider the continuous case.
+
+
+
+
+\section{Qualitative Results}\label{sec:qualitative}
+
+\
+
+
+{\small
+\bibliographystyle{ieee}
+\bibliography{iccv2017.bib}
+}
+
+\end{document}
