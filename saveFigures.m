@@ -94,20 +94,21 @@ end
     
 
 %% Image reconstruction results
-iids = {'3096','54082','85048','295087','42049','101087','86016','145086','302008','253055'};
-parfor i=1:numel(iids)
+% iids = {'3096','54082','85048','295087','42049','101087','86016','145086','302008','253055'};
+iids = {'175032','175043','189080','253027','302008','291000','300091','145086','302008','101087','106024','119082','208001'};
+for i=2:numel(iids)
     iid = iids{i};
     ex = BMAX500.val(strcmp(iid,{BMAX500.val(:).iid}));
     smoothedResized = imresize(L0Smoothing(ex.img),0.5);
     imgResized = imresize(ex.img, 0.5);
     segResized = imresize(ex.seg, 0.5, 'nearest');
-%     mat = amat(smoothedResized);
-%     mat.branches = groupMedialPoints(mat);
-%     matrefined = refineMAT(mat);
-%     recmat = reshape(inpaint_nans(double(matrefined.reconstruction)), size(imgResized,1), size(imgResized,2), []);
+    mat = amat(smoothedResized);
+    mat.branches = groupMedialPoints(mat);
+    matrefined = refineMAT(mat);
+    recmat = reshape(inpaint_nans(double(matrefined.reconstruction)), size(imgResized,1), size(imgResized,2), []);
     recgtseg = seg2reconstruction(imgResized,segResized);
     recgtskel= gtskel2reconstruction(imgResized, imresizeCrisp(ex.pts, 0.5), 0.5*imresizeCrisp(ex.rad, 0.5));
-%     recmil = spbmil2reconstruction(imgResized);
+    recmil = spbmil2reconstruction(imgResized);
     idxBest = 1;
     SSIM = ssim(double(recgtskel(:,:,:,1)), im2double(imgResized));
     % Find best segmentation
@@ -118,10 +119,10 @@ parfor i=1:numel(iids)
             idxBest = s;
         end
     end    
-%     imwrite(imgResized, fullfile(figPath, [iid '_resized.jpg']))
-%     imwrite(recmil, fullfile(figPath, [iid '_rec_mil.png']))
-%     imwrite(recgtseg(:,:,:,idxBest), fullfile(figPath, [iid '_rec_gtseg.png']))
-%     imwrite(recmat, fullfile(figPath, [iid '_rec_amat.png']))
+    imwrite(imgResized, fullfile(figPath, [iid '_resized.jpg']))
+    imwrite(recmil, fullfile(figPath, [iid '_rec_mil.png']))
+    imwrite(recgtseg(:,:,:,idxBest), fullfile(figPath, [iid '_rec_gtseg.png']))
+    imwrite(recmat, fullfile(figPath, [iid '_rec_amat.png']))
     imwrite(recgtskel(:,:,:,idxBest), fullfile(figPath, [iid '_rec_gtskel.png']))
 end
 
