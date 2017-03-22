@@ -11,46 +11,84 @@
 
 \section{Introduction}\label{sec:introduction}
 In this supplemental material we include details and qualitative results that we could not include in the main submission due to the limited space.
-\stavros{Complete depending on the material we add. Don't forget to include the video.}
-
+We analytically derive the computational complexity of the disk cost computation, which is the most demanding step in our method, 
+and discuss ways of reducing it.
+We also present additional qualitative results of medial axes computed with our method, and the respective reconstructions.
+Finally, in the zip file for the supplemental material we also include a video showing the execution of the greedy algorithm on a test image.
+In the video we visualize the process of selecting disks and covering the image, as well as the medial axis construction and respective radii.
 
 \section{Complexity Analysis}\label{sec:complexity}
-First, we re-define some useful quantities to make the supplemental material self-contained.
-We consider a finite set of radii $r\in \scales : \{r_1,\ldots,r_R \}$, and a disk of radius $r_j$, centered at point $\p{i}\in X^I$,
-is denoted as $D_{\p{i},r_j} = D_{ij}$.
+First, we remind the notation for some useful quantities to make the supplemental material self-contained.
+A disk of radius $r_j\in \scales = \{r_1,\ldots,r_R\}$, 
+centered at point $\p{i}\in X^I \subset \R^2$, is denoted as $D_{\p{i},r_j} = D_{ij}$.
+We also assume that $X^I$ is a universe of $N$ points in total, corresponding to the spatial support of an input RGB image $I$.
 The most demanding step in our method is the computation of the disk costs
 \begin{equation}
 c_{ij} = \sum_k \sum_l \norm{\f{ij} - \f{kl} }^2 \quad \forall k,l: D_{kl} \subset D_{ij}.
 \label{eq:diskcost}
 \end{equation}
-This quantity must be computed at all location-radius combinations, and for all the contained disks, of radii $r\in\scales$.
+Simply computing the encodings $\f{ij}$ at all possible locations and scales has complexity $O(NR^3)$.
+However, this quantity must be computed at all location-radius combinations, and \emph{for all the contained disks} of radii $r\in\scales$.
 
 For simplicity, we make all derivations in the continuous domain, but they can be readily extended to the discrete domain.
-Let $r\in(0,R]$; given a disk of radius $r'$ at point $\p{}$, the number of all fully contained disks of radii $r<r'$ is
+Let $r,r'\in(0,R]$, with $r<r'$, and consider a disk of radius $r'$, centered at point $\p{}'$, $D_{\p{}',r'}$.
+A \emph{fully contained} disk $D_{\p{},r} \subset D_{\p{}',r'}$ can be placed anywhere inside the disk
+$(x-x_{\p{}'})^2 + (y-y_{\p{}'})^2 \leq (r'-r)^2$.
+It follows that the number of such contained disks for a given radius $r'$ is
 \begin{equation}
-N_d^{r'} = \int_{0}^{r'} 2 \pi r (r'-r) dr,\label{eq:ndr}
+N_d^{r'} = \int_{0}^{r'}  \pi (r'-r)^2 dr,\label{eq:ndr}
 \end{equation}
-and summing over all radii $r'$ we have that the total number of disks at $\p{}$ is
+and summing over all possible radii $r'\in(0,R]$ we have that the total number of disks at $\p{}$ is
 \begin{equation}
 N_d = \int_0^R N_d^{r'}dr'.\label{eq:nd}
 \end{equation}
 Putting together~\refeq{eq:ndr} and~\refeq{eq:nd} we get:
 \begin{align}
-N_d & = 2\pi \int_0^{R} \int_0^{r'} r (r'-r) dr dr' \\
-  & = 2\pi \int_0^{R} \int_0^{r'} rr'-r^2 dr dr' \\
-  & = 2\pi \int_0^{R} \left. r'\frac{r^2}{2}-\frac{r^3}{3} \right \rvert_{0}^{r'} dr' \\
-  & = 2\pi \int_0^{R} \frac{(r')^3}{6} dr' \\
-  & = 2\pi \int_0^{R} \frac{(r')^3}{6} dr' = \frac{\pi}{12} R^4
+\nonumber
+N_d & = \pi \int_0^{R} \int_0^{r'} (r'-r)^2 dr dr' \\ \nonumber
+  & = \pi \int_0^{R} \int_0^{r'} (r')^2 -2r'r + r^2 dr dr' \\ \nonumber
+  & = \pi \int_0^{R} \left. (r')^2 r - r'r^2 + \frac{r^3}{3} \right \rvert_{0}^{r'} dr' \\ 
+  & = \pi \int_0^{R}  \frac{(r')^3}{3} dr' = \pi \left. \frac{(r')^4}{12}\right \rvert_0^R  = \frac{\pi}{12} R^4. 
 \end{align}
+This is the (approximate up to a constant factor) number of contained disks and respective encodings that must be considered to compute $c_{ij}$ at
+all possible scales $r \in (0,R]$, at a single point in the image.
+Repeating this process for all $N$ points in the image domain yields a total complexity of $O(NR^4)$.
+
+\subsection{Reducing Complexity}\label{sec:complexity:reducing}
+The $O(NR^4)$ complexity derived in the previous section can reduced through a combination of the following: 
+i) rewriting~\refeq{eq:diskcost} in an equivalent form that is amenable to efficient computation using convolutions; 
+ii) using cumulative sums to avoid redundant computations.
+Since we will release our code, we do not elaborate further on i).
+
+We provide an intuitive explanation for ii):
+Suppose we denote by $\sum_{D_{ij}} \f{}$ the sum of a quantity $\f{}$ within a disk area $D_{ij}$ of radius $r_j$.
+Naively calculating this quantity for a disk of radius $r_l > r_j$ involves redundant re-computations of $\f{}$
+in the area $D_{ij} \subset D_{il}$.
+We can avoid these redundant computations, observing that 
+\begin{equation}
+\sum_{D_{ij}} \f{} = \sum_{j=1}^R \sum_{C_{ij}} \f{}. \label{eq:circlesum}
+\end{equation}
+Using the relationship in~\refeq{eq:circlesum} we reduce the complexity of computing feature encodings at all locations from
+$O(NR^3)$ to $O(NR^2)$ and the complexity of disk cost computation from $O(NR^4)$ to $O(NR^3)$.
+
+Using a shape other than disks in our approach opens up the possibility of further reducing complexity.
+For example, one can consider using rectangles or squares to approximate or replace disks, 
+as in~\cite{arbelaez2011contour,tsogkas2012learning}.
+In that scenario, pre-computing an integral image would allow us to use a fixed number of operations per image point, further
+reducing complexity of encoding and disk cost computation to $O(NR)$ and $O(NR^2)$ respectively.
+We aim to explore this in future work.
 
 
 
+%We start by rewriting~\refeq{eq:diskcost} in the following form:
+%\begin{align}
+%\nonumber
+%c_{ij} & = \sum_k \sum_l \norm{\f{ij} - \f{kl} }^2 = \sum_k \sum_l (\f{ij} - \f{kl} )^2 \\ \nonumber
+%	   & = \f{ij}^2 \sum_k \sum_l 1  + \sum_k \sum_l \f{kl}^2 -2\f{ij}\sum_k \sum_l \f{kl} \\ 
+%	   & = \f{ij}^2 N_d^{r_j}  + \sum_k \sum_l \f{kl}^2 -2\f{ij}\sum_k \sum_l \f{kl}  
+%\end{align}
+%The first term in equation
 
-
-\section{Qualitative Results}\label{sec:qualitative}
-In this section we present additional qualitative results of medial axes computed with our method, and the respective reconstructions.
-We also include a video showing the execution of the greedy algorithm on a test image.
-\stavros{Add more details about the various details shown in the video}
 
 
 \begin{figure*}[t]
