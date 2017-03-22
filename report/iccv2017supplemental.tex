@@ -19,40 +19,71 @@ In the video we visualize the process of selecting disks and covering the image,
 
 \section{Complexity Analysis}\label{sec:complexity}
 First, we remind the notation for some useful quantities to make the supplemental material self-contained.
-A disk of radius $r_j\in \scales = \{r_1,\ldots,r_R\}$, 
+A disk of radius $r_j\in \scales = \{1,\ldots,R\}$, 
 centered at point $\p{i}\in X^I \subset \R^2$, is denoted as $D_{\p{i},r_j} = D_{ij}$.
 We also assume that $X^I$ is a universe of $N$ points in total, corresponding to the spatial support of an input RGB image $I$.
-The most demanding step in our method is the computation of the disk costs
+
+\paragraph{Encodings:} Computing the encodings $\f{ij}$ at all possible locations and scales involves convolving the input image 
+with disk filters of radii $1,\ldots,R$. 
+The complexity of this step is:
+\begin{align}
+\nonumber
+O(N\cdot 1^2 + N\cdot 2^2 + \ldots + N \cdot R^2) = \\
+O(N\sum_{r=1}^R r^2) = O(NR(R+1)(2R+1)/6) = O(NR^3).
+\end{align}
+
+
+\paragraph{Disk cost:} The most demanding step in our method is the computation of the disk costs
 \begin{equation}
 c_{ij} = \sum_k \sum_l \norm{\f{ij} - \f{kl} }^2 \quad \forall k,l: D_{kl} \subset D_{ij}.
 \label{eq:diskcost}
 \end{equation}
-Simply computing the encodings $\f{ij}$ at all possible locations and scales has complexity $O(NR^3)$.
-However, this quantity must be computed at all location-radius combinations, and \emph{for all the contained disks} of radii $r\in\scales$.
-
-For simplicity, we make all derivations in the continuous domain, but they can be readily extended to the discrete domain.
-Let $r,r'\in(0,R]$, with $r<r'$, and consider a disk of radius $r'$, centered at point $\p{}'$, $D_{\p{}',r'}$.
+This quantity must be computed at all location-radius combinations, and \emph{for all the contained disks} of radii $r\in\scales$.
+Let $r,r'\in\scales$ with $r<r'$ and consider a disk of radius $r'$, centered at point $\p{}'$, $D_{\p{}',r'}$.
 A \emph{fully contained} disk $D_{\p{},r} \subset D_{\p{}',r'}$ can be placed anywhere inside the disk
-$(x-x_{\p{}'})^2 + (y-y_{\p{}'})^2 \leq (r'-r)^2$.
-It follows that the number of such contained disks for a given radius $r'$ is
-\begin{equation}
-N_d^{r'} = \int_{0}^{r'}  \pi (r'-r)^2 dr,\label{eq:ndr}
-\end{equation}
-and summing over all possible radii $r'\in(0,R]$ we have that the total number of disks at $\p{}$ is
-\begin{equation}
-N_d = \int_0^R N_d^{r'}dr'.\label{eq:nd}
-\end{equation}
-Putting together~\refeq{eq:ndr} and~\refeq{eq:nd} we get:
+$(x-x_{\p{}'})^2 + (y-y_{\p{}'})^2 < (r'-r)^2$.
+It follows that the number of such contained disks for a given radius $r'$ is approximately
 \begin{align}
-\nonumber
-N_d & = \pi \int_0^{R} \int_0^{r'} (r'-r)^2 dr dr' \\ \nonumber
-  & = \pi \int_0^{R} \int_0^{r'} (r')^2 -2r'r + r^2 dr dr' \\ \nonumber
-  & = \pi \int_0^{R} \left. (r')^2 r - r'r^2 + \frac{r^3}{3} \right \rvert_{0}^{r'} dr' \\ 
-  & = \pi \int_0^{R}  \frac{(r')^3}{3} dr' = \pi \left. \frac{(r')^4}{12}\right \rvert_0^R  = \frac{\pi}{12} R^4. 
+N_d^{r'} & = \sum_{r=1}^{r'}  \pi (r'-r)^2  = \pi \sum_{r=1}^{r'} (r')^2 -2r'r + r^2 \sim (r')^3
+\label{eq:ndr}
 \end{align}
-This is the (approximate up to a constant factor) number of contained disks and respective encodings that must be considered to compute $c_{ij}$ at
-all possible scales $r \in (0,R]$, at a single point in the image.
+and summing over all possible radii $r'\in\scales$ we have that the total number of disks at $\p{}$ is
+\begin{equation}
+N_d = \sum_{r'=1}^R N_d^{r'} = \sum_{r'=1}^R k (r')^3 = \frac{k(R(R+1))^2}{4} \sim R^4.
+\label{eq:nd}
+\end{equation}
+This is the (approximate up to a constant factor) number of contained disks and respective encodings that are used to compute $c_{ij}$ at
+all possible scales $r \in \scales$, at a single point in the image.
 Repeating this process for all $N$ points in the image domain yields a total complexity of $O(NR^4)$.
+
+%For simplicity, we make all derivations in the continuous domain, but they can be readily extended to the discrete domain.
+%Let $r,r'\in(0,R]$, with $r<r'$, and consider a disk of radius $r'$, centered at point $\p{}'$, $D_{\p{}',r'}$.
+%A \emph{fully contained} disk $D_{\p{},r} \subset D_{\p{}',r'}$ can be placed anywhere inside the disk
+%$(x-x_{\p{}'})^2 + (y-y_{\p{}'})^2 \leq (r'-r)^2$.
+%It follows that the number of such contained disks for a given radius $r'$ is
+%\begin{equation}
+%N_d^{r'} = \int_{0}^{r'}  \pi (r'-r)^2 dr,\label{eq:ndr}
+%\end{equation}
+%and summing over all possible radii $r'\in(0,R]$ we have that the total number of disks at $\p{}$ is
+%\begin{equation}
+%N_d = \int_0^R N_d^{r'}dr'.\label{eq:nd}
+%\end{equation}
+%Putting together~\refeq{eq:ndr} and~\refeq{eq:nd} we get:
+%\begin{align}
+%\nonumber
+%N_d & = \pi \int_0^{R} \int_0^{r'} (r'-r)^2 dr dr' \\ \nonumber
+%  & = \pi \int_0^{R} \int_0^{r'} (r')^2 -2r'r + r^2 dr dr' \\ \nonumber
+%  & = \pi \int_0^{R} \left. (r')^2 r - r'r^2 + \frac{r^3}{3} \right \rvert_{0}^{r'} dr' \\ 
+%  & = \pi \int_0^{R}  \frac{(r')^3}{3} dr' = \pi \left. \frac{(r')^4}{12}\right \rvert_0^R  = \frac{\pi}{12} R^4. 
+%\end{align}
+%This is the (approximate up to a constant factor) number of contained disks and respective encodings that are used to compute $c_{ij}$ at
+%all possible scales $r \in (0,R]$, at a single point in the image.
+%Repeating this process for all $N$ points in the image domain yields a total complexity of $O(NR^4)$.
+
+\paragraph{Greedy approximation algorithm:} At each step of the greedy algorithm we cover at most $O(R^2)$ pixels in $X^I$,
+but we also have to update costs for all partially and entirely covered disks, at all scales.
+The greedy algorithm has complexity $O(N\sum_{r=1}^R r^2) = O(NR^3)$.
+
 
 \subsection{Reducing Complexity}\label{sec:complexity:reducing}
 The $O(NR^4)$ complexity derived in the previous section can reduced through a combination of the following: 
@@ -62,12 +93,13 @@ Since we will release our code, we do not elaborate further on i).
 
 We provide an intuitive explanation for ii):
 Suppose we denote by $\sum_{D_{ij}} \f{}$ the sum of a quantity $\f{}$ within a disk area $D_{ij}$ of radius $r_j$.
-Naively calculating this quantity for a disk of radius $r_l > r_j$ involves redundant re-computations of $\f{}$
+Naively calculating this quantity for a disk of radius $r_l > r_j$ involves unnecessary re-computations of $\f{}$
 in the area $D_{ij} \subset D_{il}$.
 We can avoid these redundant computations, observing that 
 \begin{equation}
-\sum_{D_{ij}} \f{} = \sum_{j=1}^R \sum_{C_{ij}} \f{}. \label{eq:circlesum}
+\sum_{D_{ij}} \f{} = \sum_{j=1}^R \sum_{C_{ij}} \f{}, \label{eq:circlesum}
 \end{equation}
+where $C_{ij}$ is the \emph{circle} of radius $r_j$, centered at $\p{i}$.
 Using the relationship in~\refeq{eq:circlesum} we reduce the complexity of computing feature encodings at all locations from
 $O(NR^3)$ to $O(NR^2)$ and the complexity of disk cost computation from $O(NR^4)$ to $O(NR^3)$.
 
@@ -76,6 +108,7 @@ For example, one can consider using rectangles or squares to approximate or repl
 as in~\cite{arbelaez2011contour,tsogkas2012learning}.
 In that scenario, pre-computing an integral image would allow us to use a fixed number of operations per image point, further
 reducing complexity of encoding and disk cost computation to $O(NR)$ and $O(NR^2)$ respectively.
+Similarly, the complexity of the greedy algorithm can be reduced to $O(NR)$.
 We aim to explore this in future work.
 
 
