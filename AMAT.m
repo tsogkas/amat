@@ -1,6 +1,6 @@
 classdef AMAT < handle
     % TODO: add private flags for profiling
-    % TODO: double-check all result types (keep 'single' or switch to double?)
+    % TODO: set properties to Transient, Private etc
     properties
         scales  = 2:41  
         ws      = 1e-4      
@@ -16,16 +16,25 @@ classdef AMAT < handle
         price
         cost
         branches
-        simplified
-        covered
+        scaleIdx
+    end
+    
+    properties(Transient)
     end
     
     properties(Access=private)
     end
     
+    
+    
     methods
         function mat = AMAT(img,varargin)
             if nargin > 0
+                % Optionally copy from input AMAT object
+                if isa(img,'AMAT')
+                    mat = copyFromAMATObject(img);
+                    img = mat.input;
+                end
                 assert(size(img,3)>=2, 'Input image must be 2D or 3D array')
                 mat.initialize(img,varargin{:});
                 mat.compute();
@@ -142,7 +151,7 @@ classdef AMAT < handle
             
         end
         
-        function simplify(mat,method,param)
+        function mat = simplify(mat,method,param)
             % Default input arguments
             if nargin < 3, param  = 3; end
             if nargin < 2, method = 'dilation'; end
@@ -161,6 +170,11 @@ classdef AMAT < handle
                 otherwise
                     error(['Method not supported. Supported methods are:\n' ...
                         'dilation, iso-dilation, skeleton, afmm-skeleton.'])
+            end
+            
+            % Create a new object if there is an output
+            if nargout > 0
+                mat = copyFromAMATObject(mat);
             end
             
             % The group labels are already sorted and first label is zero (background)
@@ -215,31 +229,23 @@ classdef AMAT < handle
             % new radii are changed EVEN FOR THE POINTS THAT ARE NOT REMOVED.
             % depthAdded   = mat2mask(radius.*double(added),       mat.scales);
             % depthRemoved = mat2mask(mat.radius.*double(removed), mat.scales);
-            matdepth = mat2mask(matradius,mat.scales);
+            mat.radius = matradius;
+            mat.computeDepth();
             
             % Update MAT encodings
             [y,x] = find(newpts);
             r   = matradius(newpts);
             R   = numel(mat.scales);
-            enc = reshape(permute(imageEncoding(rgb2labNormalized(mat.input),mat.scales),[1 2 4 3]), [], C);
-            rind= containers.Map(mat.scales,1:numel(mat.scales));
-            for i=1:numel(r), r(i) = rind(r(i)); end % map scales to scale indexes
+            enc = reshape(permute(mat.encoding,[1 2 4 3]), [], C);
+            for i=1:numel(r), r(i) = mat.scaleIdx(r(i)); end % map scales to scale indexes
             idx = sub2ind([H,W,R], y(:),x(:),r(:));
             newaxis = reshape(rgb2labNormalized(zeros(H,W,C)),H*W,C);
             newaxis(newpts,:) = enc(idx,:); % remember that encodings are in LAB!
-            newaxis = labNormalized2rgb(reshape(newaxis,H,W,C));
             
-            % Update reconstruction
-            matreconstruction = mat2reconstruction(reshape(newaxis,H,W,C),...
-                matradius, matdepth, mat.scales);
+            mat.axis = labNormalized2rgb(reshape(newaxis,H,W,C));
+            mat.branches = matbranches;            
+            mat.computeReconstruction();
             
-            % Update mat fields
-            mat.radius   = matradius;
-            mat.branches = matbranches;
-            mat.axis     = newaxis;
-            mat.depth    = matdepth;
-            mat.reconstruction = matreconstruction;
-
         end
         
         function computeEncodings(mat)
@@ -275,18 +281,18 @@ classdef AMAT < handle
             
             % Initializations
             [H,W,C,R]          = size(mat.encoding);
-            zeroLabNormalized  = rgb2labNormalized(zeros(H,W,C,'single'));
+            zeroLabNormalized  = rgb2labNormalized(zeros(H,W,C));
             mat.input          = reshape(img, H*W, C);
             mat.reconstruction = reshape(zeroLabNormalized,H*W,C);
             mat.axis           = zeroLabNormalized;
-            mat.radius         = zeros(H,W,'single');
-            mat.depth          = zeros(H,W,'single'); % #disks points(x,y) is covered by
-            mat.price          = zeros(H,W,'single'); % error contributed by each point
-            mat.covered        = false(H,W);
+            mat.radius         = zeros(H,W);
+            mat.depth          = zeros(H,W); % #disks points(x,y) is covered by
+            mat.price          = zeros(H,W); % error contributed by each point
             % Flag border pixels that cannot be accessed by filters.
             r = mat.scales(1);
-            mat.covered([1:r,end-r+1:end], [1,end]) = true;
-            mat.covered([1,end], [1:r,end-r+1:end]) = true;
+            covered = false(H,W);
+            covered([1:r,end-r+1:end], [1,end]) = true;
+            covered([1,end], [1:r,end-r+1:end]) = true;
             BIG = 1e30;
             
             % Compute how many pixels are covered be each r-disk.
@@ -304,7 +310,7 @@ classdef AMAT < handle
             
             fprintf('Pixels remaining: ');
             [x,y] = meshgrid(1:W,1:H);
-            while ~all(mat.covered(:))
+            while ~all(covered(:))
                 % Find the most cost-effective disk at the current iteration
                 [minCost, indMin] = min(diskCostEffective(:));
                 if isinf(minCost),
@@ -314,7 +320,7 @@ classdef AMAT < handle
                 
                 [yc,xc,rc] = ind2sub([H,W,R], indMin);
                 D = (x-xc).^2 + (y-yc).^2 <= mat.scales(rc)^2; % points covered by the selected disk
-                newPixelsCovered  = D & ~mat.covered;      % NEW pixels that are covered by D
+                newPixelsCovered  = D & ~covered;      % NEW pixels that are covered by D
                 if ~any(newPixelsCovered(:))
                     warning('Stopping: selected disk covers zero (0) new pixels.')
                     break;
@@ -352,7 +358,7 @@ classdef AMAT < handle
                 
                 
                 if mat.vistop, visualizeProgress(mat,diskCostEffective); end
-                if ~isempty(printBreakPoints) && nnz(~mat.covered) < printBreakPoints(1)
+                if ~isempty(printBreakPoints) && nnz(~covered) < printBreakPoints(1)
                     fprintf('%d...',printBreakPoints(1))
                     printBreakPoints(1) = [];
                 end
@@ -363,8 +369,8 @@ classdef AMAT < handle
             mat.reconstruction = mat2reconstruction(mat.axis,mat.radius,mat.depth,mat.scales);
             
             function update(mat)
+                covered(newPixelsCovered) = true;
                 mat.price(newPixelsCovered) = minCost / numNewPixelsCovered(yc,xc,rc);
-                mat.covered(newPixelsCovered) = true;
                 mat.depth(D) = mat.depth(D) + 1;
                 mat.axis(yc,xc,:) = mat.encoding(yc,xc,:,rc);
                 mat.radius(yc,xc) = mat.scales(rc);    
@@ -375,12 +381,12 @@ classdef AMAT < handle
                 [yy,xx,rr] = ind2sub([H,W,R], indSorted(1:mat.vistop));
                 subplot(221); imshow(reshape(mat.input, H,W,[]));
                 viscircles([xc,yc],rc, 'Color','k','EnhanceVisibility',false); title('Selected disk');
-                subplot(222); imshow(bsxfun(@times, reshape(mat.input,H,W,[]), double(~mat.covered)));
+                subplot(222); imshow(bsxfun(@times, reshape(mat.input,H,W,[]), double(~covered)));
                 viscircles([xx,yy],rr,'Color','w','EnhanceVisibility',false,'Linewidth',0.5);
                 viscircles([xx(1),yy(1)],rr(1),'Color','b','EnhanceVisibility',false);
                 viscircles([xc,yc],rc,'Color','y','EnhanceVisibility',false);
                 title(sprintf('K: covered %d/%d, W: Top-%d disks,\nB: Top-1 disk, Y: previous disk',...
-                    nnz(mat.covered),H*W,mat.vistop))
+                    nnz(covered),H*W,mat.vistop))
                 subplot(223); imshow(mat.axis); title('A-MAT axes')
                 subplot(224); imshow(mat.radius,[]); title('A-MAT radii')
                 drawnow;
@@ -394,6 +400,116 @@ classdef AMAT < handle
             subplot(223); imshow(mat.input);            title('Original image');
             subplot(224); imshow(mat.reconstruction);   title('Reconstructed image');
         end
+        
+        function depth = computeDepth(mat,rad)
+            % rad: double, HxW radius array
+            if nargin < 2 
+                rad = mat.radius; 
+            end
+            depth = zeros(size(rad));
+            [yc,xc] = find(rad);
+            for p=1:numel(yc)
+                x = xc(p); y = yc(p); r = round(rad(y,x));
+                depth((y-r):(y+r),(x-r):(x+r)) = ...
+                    depth((y-r):(y+r),(x-r):(x+r)) + mat.filters{mat.scaleIdx(r)};
+            end
+            if nargout == 0
+                mat.depth = depth;
+            end
+        end
+        
+        function rec = computeReconstruction(mat)
+            diskf = cell(1,numel(mat.scales));
+            for r=1:numel(diskf)
+                diskf{r} = double(repmat(mat.filters{r}, [1 1 3]));
+            end
+            
+            rec = zeros(size(mat.input));
+            [yc,xc] = find(mat.radius);
+            for p=1:numel(yc)
+                x = xc(p); y = yc(p); 
+                r = round(mat.radius(y,x)); 
+                c = mat.input(y,x,:);
+                rec((y-r):(y+r),(x-r):(x+r),:) = ...
+                    rec((y-r):(y+r),(x-r):(x+r),:) + bsxfun(@times, diskf{mat.scaleIdx(r)}, c);
+            end
+            rec = bsxfun(@rdivide, rec, mat.depth);
+            mat.reconstruction = rec;
+        end
+        
+        function seg = computeSegmentation(mat,minCoverage,minSegment)
+            % TODO: maybe return segments as well
+            % Coverage is a scalar controlling how much % of the image we want to cover
+            if nargin < 2, minCoverage = 1; end
+            if nargin < 3, minSegment  = 0; end
+            assert(isscalar(minCoverage) && minCoverage > 0 && minCoverage <= 1, ...
+                'minCoverage must be a scalar in (0,1]')
+            assert(isscalar(minSegment), 'minSegment must be scalar')
+            
+            % Using this function assumes you have already grouped the medial points
+            % into branches. A "refined" MAT (using function refineMAT()) is not
+            % necessary, although it might lead to better results.
+            if isempty(mat.branches)
+                mat.group()
+            end
+            
+            % Compute the depth contribution of each branch separately.
+            [H,W] = size(mat.depth);
+            numBranches = max(mat.branches(:));
+            depthBranch = zeros(H,W,numBranches);
+            for i=1:numBranches
+                depthBranch(:,:,i) = mat.computeDepth(mat.radius .* double(mat.branches == i));
+            end
+            
+            % Segments are the areas covered by individual branches.
+            segments = double(depthBranch > 0);
+            
+            % Sort by segment "importance", which is proportional to the area covered.
+            % Because of potential grouping errors, significant areas of the image may
+            % be covered by multiple segments, so we must take into account only the
+            % *new* pixels covered by each segment, by using this hack:
+            [~, idxSorted] = sort(sum(sum(segments)), 'descend');
+            segments = segments(:,:,idxSorted);
+            sumSeg   = cumsum(segments,3);
+            segments = ((segments - sumSeg) == 0) & (sumSeg > 0);
+            [areaSorted, idxSorted] = sort(sum(sum(segments)), 'descend');
+            segments = segments(:,:,idxSorted);
+            
+            % Assign a different label to each segment. After sorting, the smaller the
+            % label, the larger the respective segment.
+            segments = bsxfun(@times, segments, reshape(1:numBranches,1,1,[]));
+            
+            % Discard small segments
+            if minSegment > 0
+                if minSegment < 1   % ratio of the min segment area over image area
+                    small = areaSorted/(H*W) < minSegment;
+                elseif minSegment < H*W  % #pixels of min segment
+                    small = areaSorted < minSegment;
+                else
+                    error('minSegment is larger than the size of the image')
+                end
+                % If no segment satisfies the contraint, just use the largest segment
+                if numel(small) == numel(areaSorted)
+                    small(1) = false;
+                end
+                segments(:,:,small) = [];
+                areaSorted(small)   = [];
+            end
+            
+            % Keep segments that cover at least (minCoverage*100) % of the image area.
+            if minCoverage < 1
+                cumAreaSorted = cumsum(areaSorted)/(H*W);
+                numSegmentsKeep = find(cumAreaSorted >= minCoverage, 1);
+                if isempty(numSegmentsKeep)
+                    numSegmentsKeep = numel(cumAreaSorted);
+                    warning('%.1f%% coverage achieved (<%.1f%%)',...
+                        cumAreaSorted(numSegmentsKeep)*100,minCoverage*100)
+                end
+                segments = segments(:,:,1:numSegmentsKeep);
+            end
+            seg = max(segments,[],3);  
+        end
+        
     end
     
     methods(Access=private)
@@ -518,6 +634,15 @@ classdef AMAT < handle
                 diskCost = squeeze(diskCost);
             end
             mat.cost = diskCost;
+        end
+        
+        function new = copyFromAMATObject(old)
+            assert(isa(old, 'AMAT'), 'Not an AMAT object')
+            new = AMAT();
+            props = properties(old);
+            for i=1:numel(props)
+                new.(props{i}) = old.(props{i});
+            end
         end
         
     end
