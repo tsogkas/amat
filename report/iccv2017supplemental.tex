@@ -10,11 +10,10 @@
 %\thispagestyle{empty}
 
 \section{Introduction}\label{sec:introduction}
-In this supplemental material we include details and qualitative results that we could not include in the main submission due to the limited space.
-We analytically derive the computational complexity of the disk cost computation, which is the most demanding step in our method, 
-and discuss ways of reducing it.
+In this supplemental material we add details and qualitative results that we were not able to include in the main submission due to the limited space.
+We analytically derive the computational complexity of the various steps of our method, and discuss ways of reducing it.
 We also present additional qualitative results of medial axes computed with our method, and the respective reconstructions.
-Finally, in the zip file for the supplemental material we also include a video showing the execution of the greedy algorithm on a test image.
+Finally, in the zip file for the supplemental material we include a video showing the execution of the greedy algorithm on a test image.
 In the video we visualize the process of selecting disks and covering the image, as well as the medial axis construction and respective radii.
 
 \section{Complexity Analysis}\label{sec:complexity}
@@ -44,10 +43,11 @@ A \emph{fully contained} disk $D_{\p{},r} \subset D_{\p{}',r'}$ can be placed an
 $(x-x_{\p{}'})^2 + (y-y_{\p{}'})^2 < (r'-r)^2$.
 It follows that the number of such contained disks for a given radius $r'$ is approximately
 \begin{align}
-N_d^{r'} & = \sum_{r=1}^{r'}  \pi (r'-r)^2  = \pi \sum_{r=1}^{r'} (r')^2 -2r'r + r^2 \sim (r')^3
+N_d^{r'} & = \sum_{r=1}^{r'}  \pi (r'-r)^2  = \pi \sum_{r=1}^{r'} (r')^2 -2r'r + r^2 = k(r')^3,
 \label{eq:ndr}
 \end{align}
-and summing over all possible radii $r'\in\scales$ we have that the total number of disks at $\p{}$ is
+where $k$ is a constant factor.
+Summing over all possible radii $r'\in\scales$ we have that the total number of disks at $\p{}$ is
 \begin{equation}
 N_d = \sum_{r'=1}^R N_d^{r'} = \sum_{r'=1}^R k (r')^3 = \frac{k(R(R+1))^2}{4} \sim R^4.
 \label{eq:nd}
@@ -92,7 +92,7 @@ ii) using cumulative sums to avoid redundant computations.
 Since we will release our code, we do not elaborate further on i).
 
 We provide an intuitive explanation for ii):
-Suppose we denote by $\sum_{D_{ij}} \f{}$ the sum of a quantity $\f{}$ within a disk area $D_{ij}$ of radius $r_j$.
+Suppose we use $\sum_{D_{ij}} \f{}$ to denote the sum of a quantity $\f{}$ within a disk area $D_{ij}$ of radius $r_j$.
 Naively calculating this quantity for a disk of radius $r_l > r_j$ involves unnecessary re-computations of $\f{}$
 in the area $D_{ij} \subset D_{il}$.
 We can avoid these redundant computations, observing that 
@@ -103,7 +103,7 @@ where $C_{ij}$ is the \emph{circle} of radius $r_j$, centered at $\p{i}$.
 Using the relationship in~\refeq{eq:circlesum} we reduce the complexity of computing feature encodings at all locations from
 $O(NR^3)$ to $O(NR^2)$ and the complexity of disk cost computation from $O(NR^4)$ to $O(NR^3)$.
 
-Using a shape other than disks in our approach opens up the possibility of further reducing complexity.
+Using a shape other than disks in our approach allows us to reduce complexity even more.
 For example, one can consider using rectangles or squares to approximate or replace disks, 
 as in~\cite{arbelaez2011contour,tsogkas2012learning}.
 In that scenario, pre-computing an integral image would allow us to use a fixed number of operations per image point, further
