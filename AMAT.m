@@ -1,5 +1,6 @@
 classdef AMAT < handle
     % TODO: add private flags for profiling
+    % TODO: double-check all result types (keep 'single' or switch to double?)
     properties
         scales  = 2:41  
         ws      = 1e-4      
@@ -9,7 +10,7 @@ classdef AMAT < handle
         input
         reconstruction
         encoding
-        axes
+        axis
         radius
         depth
         price
@@ -28,9 +29,6 @@ classdef AMAT < handle
                 assert(size(img,3)>=2, 'Input image must be 2D or 3D array')
                 mat.initialize(img,varargin{:});
                 mat.compute();
-                % Only add these when they are efficient enough
-                %mat.group();
-                %mat.simplify();
             end
         end
         
@@ -41,10 +39,207 @@ classdef AMAT < handle
             mat.setCover();
         end
         
-        function group(mat)
+        function group(mat,marginFactor,colortol)
+            if nargin < 2, marginFactor = 1; end
+            if nargin < 3, colortol = 0.05; end
+            
+            % Compute individual radius maps and connected components
+            R = numel(mat.scales);
+            for r=R:-1:1
+                cc(r) = bwconncomp(mat.radius == mat.scales(r));
+            end
+            
+            % Initialize mask and maxLabel
+            [H,W,C] = size(mat.input);
+            mask = false(H,W);  % proximity mask
+            maxLabel = 1;       % initialize maxLabel
+            % Convert to Lab and reshape axis encodings for convenience
+            if colortol
+                mataxis = reshape(rgb2labNormalized(mat.axis), H*W,C);
+            end
+            
+            % For all scales
+            for r=1:R
+                cc(r).labels = zeros(1, cc(r).NumObjects); % zero for non-examined ccs
+                margin = ceil(marginFactor*r)+1;
+                % For all connected components at the same scale
+                for i=1:cc(r).NumObjects;
+                    % Create proximity mask in rectangle around cc for efficiency
+                    mask(:) = false; mask(cc(r).PixelIdxList{i}) = true;
+                    idxcc = cc(r).PixelIdxList{i};
+                    [y,x] = ind2sub([H,W], idxcc);
+                    xmin = max(1,min(x)-margin); xmax = min(W,max(x)+margin);
+                    ymin = max(1,min(y)-margin); ymax = min(H,max(y)+margin);
+                    mask(ymin:ymax,xmin:xmax) = bwdist(mask(ymin:ymax,xmin:xmax)) <= margin;
+                    
+                    % The cc is assigned a new label, unless it has already been merged
+                    if cc(r).labels(i) == 0
+                        cc(r).labels(i) = maxLabel;
+                    end
+                    
+                    % Find groups at smaller scales that can potentially be merged
+                    mergedLabels = cc(r).labels(i);
+                    for rr=(r-1):-1:max(1,r-4)
+                        for j=1:cc(rr).NumObjects
+                            if ~any(mergedLabels == cc(rr).labels(j)) && merge(cc(rr).PixelIdxList{j})
+                                mergedLabels = [mergedLabels, cc(rr).labels(j)];
+                            end
+                        end
+                    end
+                    
+                    % Merge labels (use the smallest label as the common label)
+                    commonLabel = min(mergedLabels);
+                    for rr=1:r
+                        cc(rr).labels(ismember(cc(rr).labels, mergedLabels)) = commonLabel;
+                    end
+                    
+                    % Merge ccs at the same scale
+                    for j=(i+1):cc(r).NumObjects
+                        if merge(cc(r).PixelIdxList{j})
+                            cc(r).labels(j) = cc(r).labels(i);
+                        end
+                    end
+                    
+                    % If the component has not been merged, increase maxLabel
+                    if cc(r).labels(i) == maxLabel
+                        maxLabel = maxLabel + 1;
+                    end
+                end
+            end
+            
+            % Construct label map
+            matbranches = zeros(H,W);
+            for r=1:R
+                for i=1:cc(r).NumObjects
+                    matbranches(cc(r).PixelIdxList{i}) = cc(r).labels(i);
+                end
+            end
+            
+            % Adjust labels. We do not need to explicitly remove the zero labels
+            % because cc.labels() does not include any zero (0) labels.
+            oldLabels = unique(cat(2, cc(:).labels));
+            newLabels = 1:numel(oldLabels);
+            for i=1:numel(oldLabels)
+                matbranches(matbranches == oldLabels(i)) = newLabels(i);
+            end
+            mat.branches = matbranches;
+            
+            % Nested functions --------------------------------------------
+            function res = merge(idx)
+                res = isCloseSpace(idx);
+                if colortol, res = res && isCloseColor(idx); end
+            end
+            
+            function res = isCloseSpace(idx)
+                res = any(mask(idx));
+            end
+            
+            function res = isCloseColor(idx)
+                res = norm( mean(mataxis(idxcc,:),1)-...
+                    mean(mataxis(idx,:),1) ) < colortol;
+            end
+            
+            
         end
         
-        function simplify(mat)
+        function simplify(mat,method,param)
+            % Default input arguments
+            if nargin < 3, param  = 3; end
+            if nargin < 2, method = 'dilation'; end
+            
+            % Post-processing function
+            switch method
+                case 'dilation'
+                    SE = strel('disk',param);
+                    process = @(x) imdilate(x,SE);
+                case 'iso-dilation'
+                    process = @(x) bwdist(x) <= param;
+                case 'skeleton'
+                    process = @(x) bwmorph(x,'skel',inf);
+                case 'afmm-skeleton'
+                    process = @(x) skeleton(x)>=param;
+                otherwise
+                    error(['Method not supported. Supported methods are:\n' ...
+                        'dilation, iso-dilation, skeleton, afmm-skeleton.'])
+            end
+            
+            % The group labels are already sorted and first label is zero (background)
+            numBranches = max(mat.branches(:));
+            [H,W,C]     = size(mat.input);
+            matbranches = zeros(H,W);
+            matradius   = zeros(H,W);
+            for i=1:numBranches
+                % Old branch points, radii, and respective cover.
+                branchOld = mat.branches == i;
+                radiusOld = branchOld .* double(mat.radius);
+                cover     = mat2mask(radiusOld, mat.scales)>0;
+                % Apply post-processing and thinning to selected branch.
+                % Crop the necessary region for more efficiency.
+                % Dilation and iso-dilation are applied on the branch points, whereas
+                % skeletonization is applied on the cover mask.
+                if strcmp(method,'dilation') || strcmp(method,'iso-dilation')
+                    branchNew = bwmorph(process(branchOld),'thin',inf);
+                else
+                    branchNew = bwmorph(process(cover),'thin',inf);
+                end
+                
+                % Compute new radii as distance transform on reconstructed cover.
+                radiusNew = bwdist(bwperim(cover)).* double(branchNew);
+                % Find closest radii in the subset of the acceptable scale values.
+                valid = radiusNew > 0;
+                [~,idx] = min(abs(bsxfun(@minus,radiusNew(valid),mat.scales)),[],2);
+                radiusNew(valid) = mat.scales(idx);
+                % Assign values in global label and radius map.
+                matbranches(valid) = i;
+                matradius(valid) = radiusNew(valid);
+            end
+            assert(all(matbranches(matbranches>0) & matradius(matbranches>0)))
+            assert(all(ismember(matradius(matradius>0), mat.scales)))
+            
+            % Make sure there are no gaps among branch labels
+            newLabels = unique(matbranches); newLabels(1) = []; % first group is zero
+            for i=1:numel(newLabels)
+                matbranches(matbranches == newLabels(i)) = i;
+            end
+            
+            % Find which pixels have been removed and which have been added
+            oldpts  = any(mat.axis,3);
+            newpts  = matbranches > 0;
+            removed = oldpts & ~newpts;
+            added   = newpts & ~oldpts;
+            
+            % Update depth
+            % NOTE: there is a discrepancy between
+            % mat2mask(double(newpts).*radius,mat.scales) and
+            % mat.depth + depthAdded - depthRemoved. This is probably because when the
+            % new radii are changed EVEN FOR THE POINTS THAT ARE NOT REMOVED.
+            % depthAdded   = mat2mask(radius.*double(added),       mat.scales);
+            % depthRemoved = mat2mask(mat.radius.*double(removed), mat.scales);
+            matdepth = mat2mask(matradius,mat.scales);
+            
+            % Update MAT encodings
+            [y,x] = find(newpts);
+            r   = matradius(newpts);
+            R   = numel(mat.scales);
+            enc = reshape(permute(imageEncoding(rgb2labNormalized(mat.input),mat.scales),[1 2 4 3]), [], C);
+            rind= containers.Map(mat.scales,1:numel(mat.scales));
+            for i=1:numel(r), r(i) = rind(r(i)); end % map scales to scale indexes
+            idx = sub2ind([H,W,R], y(:),x(:),r(:));
+            newaxis = reshape(rgb2labNormalized(zeros(H,W,C)),H*W,C);
+            newaxis(newpts,:) = enc(idx,:); % remember that encodings are in LAB!
+            newaxis = labNormalized2rgb(reshape(newaxis,H,W,C));
+            
+            % Update reconstruction
+            matreconstruction = mat2reconstruction(reshape(newaxis,H,W,C),...
+                matradius, matdepth, mat.scales);
+            
+            % Update mat fields
+            mat.radius   = matradius;
+            mat.branches = matbranches;
+            mat.axis     = newaxis;
+            mat.depth    = matdepth;
+            mat.reconstruction = matreconstruction;
+
         end
         
         function computeEncodings(mat)
@@ -83,7 +278,7 @@ classdef AMAT < handle
             zeroLabNormalized  = rgb2labNormalized(zeros(H,W,C,'single'));
             mat.input          = reshape(img, H*W, C);
             mat.reconstruction = reshape(zeroLabNormalized,H*W,C);
-            mat.axes           = zeroLabNormalized;
+            mat.axis           = zeroLabNormalized;
             mat.radius         = zeros(H,W,'single');
             mat.depth          = zeros(H,W,'single'); % #disks points(x,y) is covered by
             mat.price          = zeros(H,W,'single'); % error contributed by each point
@@ -164,8 +359,8 @@ classdef AMAT < handle
             end
             fprintf('\n')
             mat.input = labNormalized2rgb(reshape(mat.input,H,W,C));
-            mat.axes  = labNormalized2rgb(mat.axes);
-            mat.reconstruction = mat2reconstruction(mat.axes,mat.radius,mat.depth,mat.scales);
+            mat.axis  = labNormalized2rgb(mat.axis);
+            mat.reconstruction = mat2reconstruction(mat.axis,mat.radius,mat.depth,mat.scales);
             
             function update(mat)
                 mat.price(newPixelsCovered) = minCost / numNewPixelsCovered(yc,xc,rc);
@@ -186,7 +381,7 @@ classdef AMAT < handle
                 viscircles([xc,yc],rc,'Color','y','EnhanceVisibility',false);
                 title(sprintf('K: covered %d/%d, W: Top-%d disks,\nB: Top-1 disk, Y: previous disk',...
                     nnz(mat.covered),H*W,mat.vistop))
-                subplot(223); imshow(mat.axes); title('A-MAT axes')
+                subplot(223); imshow(mat.axis); title('A-MAT axes')
                 subplot(224); imshow(mat.radius,[]); title('A-MAT radii')
                 drawnow;
             end
@@ -194,7 +389,7 @@ classdef AMAT < handle
         end
         
         function visualize(mat)
-            subplot(221); imshow(mat.axes);             title('Medial axes');
+            subplot(221); imshow(mat.axis);             title('Medial axes');
             subplot(222); imshow(mat.radius,[]);        title('Radii');
             subplot(223); imshow(mat.input);            title('Original image');
             subplot(224); imshow(mat.reconstruction);   title('Reconstructed image');
@@ -237,7 +432,7 @@ classdef AMAT < handle
         end
         
         function computeDiskEncodings(mat)
-            % Fast version of imageEncoding, using convolutions with 
+            % Efficient implementation, using convolutions with 
             % circles + cumsum instead of convolutions with disks.
             [H,W,C] = size(mat.input); R = numel(mat.scales);
             cfilt = cell(1,R); cfilt{1} = double(disk(mat.scales(1)));
