@@ -18,6 +18,7 @@ classdef AMAT < handle
         cost
         branches
         scaleIdx
+        info
     end
     
     properties(Transient)
@@ -42,11 +43,11 @@ classdef AMAT < handle
             end
         end
         
-        function new = clone(old)
+        function new = clone(mat)
             new = AMAT();
-            props = properties(old);
+            props = properties(mat);
             for i=1:numel(props)
-                new.(props{i}) = old.(props{i});
+                new.(props{i}) = mat.(props{i});
             end
         end
 
@@ -194,7 +195,7 @@ classdef AMAT < handle
                 % Old branch points, radii, and respective cover.
                 branchOld = mat.branches == i;
                 radiusOld = branchOld .* double(mat.radius);
-                cover     = mat2mask(radiusOld, mat.scales)>0;
+                cover     = mat.computeDepth(radiusOld)>0;
                 % Apply post-processing and thinning to selected branch.
                 % Crop the necessary region for more efficiency.
                 % Dilation and iso-dilation are applied on the branch points, whereas
@@ -290,7 +291,7 @@ classdef AMAT < handle
             % Initializations
             [H,W,C,R]          = size(mat.encoding);
             zeroLabNormalized  = rgb2labNormalized(zeros(H,W,C));
-            mat.input          = reshape(img, H*W, C);
+            mat.input          = reshape(mat.input, H*W, C);
             mat.reconstruction = reshape(zeroLabNormalized,H*W,C);
             mat.axis           = zeroLabNormalized;
             mat.radius         = zeros(H,W);
@@ -372,9 +373,9 @@ classdef AMAT < handle
                 end
             end
             fprintf('\n')
-            mat.input = labNormalized2rgb(reshape(mat.input,H,W,C));
+            mat.input = reshape(mat.input,H,W,C);
             mat.axis  = labNormalized2rgb(mat.axis);
-            mat.reconstruction = mat2reconstruction(mat.axis,mat.radius,mat.depth,mat.scales);
+            mat.computeReconstruction();
             
             function update(mat)
                 covered(newPixelsCovered) = true;
@@ -393,18 +394,19 @@ classdef AMAT < handle
                 viscircles([xx,yy],rr,'Color','w','EnhanceVisibility',false,'Linewidth',0.5);
                 viscircles([xx(1),yy(1)],rr(1),'Color','b','EnhanceVisibility',false);
                 viscircles([xc,yc],rc,'Color','y','EnhanceVisibility',false);
-                title(sprintf('K: covered %d/%d, W: Top-%d disks,\nB: Top-1 disk, Y: previous disk',...
+                title(sprintf('Covered %d/%d, W: Top-%d disks,\nB: Top-1 disk, Y: previous disk',...
                     nnz(covered),H*W,mat.vistop))
-                subplot(223); imshow(mat.axis); title('A-MAT axes')
-                subplot(224); imshow(mat.radius,[]); title('A-MAT radii')
+                subplot(223); imshow(mat.axis); title('AMAT axes (in CIELAB)')
+                subplot(224); imshow(mat.radius,[]); title('AMAT radii')
                 drawnow;
             end
             
         end
         
         function visualize(mat)
+            cmap = jet(max(mat.radius(:)));
             subplot(221); imshow(mat.axis);             title('Medial axes');
-            subplot(222); imshow(mat.radius,[]);        title('Radii');
+            subplot(222); imshow(mat.radius,cmap);      title('Radii');
             subplot(223); imshow(mat.input);            title('Original image');
             subplot(224); imshow(mat.reconstruction);   title('Reconstructed image');
         end
@@ -437,11 +439,18 @@ classdef AMAT < handle
             for p=1:numel(yc)
                 x = xc(p); y = yc(p); 
                 r = round(mat.radius(y,x)); 
-                c = mat.input(y,x,:);
+                c = mat.axis(y,x,:);
                 rec((y-r):(y+r),(x-r):(x+r),:) = ...
                     rec((y-r):(y+r),(x-r):(x+r),:) + bsxfun(@times, diskf{mat.scaleIdx(r)}, c);
             end
             rec = bsxfun(@rdivide, rec, mat.depth);
+            % Sometimes not all pixels are covered (e.g. at image corners
+            % or after AMAT simplification), so we complete these NaN holes
+            % using inpainting.
+            if any(isnan(rec(:)))
+                rec = reshape(inpaint_nans(rec),size(rec,1),size(rec,2),[]);
+                rec = min(1, max(0,rec));
+            end
             mat.reconstruction = rec;
         end
         
@@ -521,13 +530,13 @@ classdef AMAT < handle
     end
     
     methods(Access=private)
-        function initialize(mat,img,opts)
+        function initialize(mat,img,varargin)
             defaults = {'scales',   2:41,...
                         'ws',       1e-4,...
                         'vistop',   0,...
                         'shape',    'disk'
                         };
-            opts = parseVarargin(defaults,opts);
+            opts = parseVarargin(defaults,varargin);
             if isscalar(opts('scales'))
                 mat.scales  = 2:opts('scales');
             else
@@ -536,10 +545,9 @@ classdef AMAT < handle
             mat.ws      = opts('ws');
             mat.vistop  = opts('vistop');
             mat.shape   = opts('shape');
-            mat.input   = rgb2labNormalized(im2double(img));
-            mat.initializeFilters();
-            
-            
+            mat.input   = im2double(img);
+            mat.scaleIdx= containers.Map(mat.scales, 1:numel(mat.scales));
+            mat.initializeFilters();            
         end
         
         function initializeFilters(mat)
@@ -558,13 +566,14 @@ classdef AMAT < handle
         function computeDiskEncodings(mat)
             % Efficient implementation, using convolutions with 
             % circles + cumsum instead of convolutions with disks.
+            inputlab = rgb2labNormalized(mat.input);
             [H,W,C] = size(mat.input); R = numel(mat.scales);
             cfilt = cell(1,R); cfilt{1} = double(disk(mat.scales(1)));
             for r=2:R, cfilt{r} = double(circle(mat.scales(r))); end
             enc = zeros(H,W,C,R);
             for c=1:C
                 for r=1:R
-                    enc(:,:,c,r) = conv2(mat.input(:,:,c),cfilt{r},'same');
+                    enc(:,:,c,r) = conv2(inputlab(:,:,c),cfilt{r},'same');
                 end
             end
             enc   = cumsum(enc,4);

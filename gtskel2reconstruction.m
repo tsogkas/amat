@@ -1,4 +1,6 @@
-function rec = gtskel2reconstruction(img,pts,rad)
+function [rec,comp] = gtskel2reconstruction(img,pts,rad)
+% Baseline reconstruction statistics using "oracle" segmentations from BSDS
+
 scales = 2:41;
 diskf = cell(1,numel(scales)); 
 for r=1:numel(diskf), diskf{r} = double(disk(scales(r))); end
@@ -10,7 +12,7 @@ numSkels  = size(pts,3);
 nnzPixels = zeros(numSkels,1);
 rec       = zeros(H,W,C,numSkels);
 for i=1:numSkels
-    skel = bwthin(pts(:,:,i));
+    skel = bwmorph(pts(:,:,i),'thin',inf);
     skel(border(skel,scales(1))) = 0;
     rads = double(skel) .* double(rad(:,:,i));
     % Adjust scales and skeletons
@@ -37,3 +39,4 @@ for i=1:numSkels
     rec(:,:,:,i) = reshape(inpaint_nans(rec(:,:,:,i)), H,W,[]);
     nnzPixels(i) = nnz(skel);
 end
+comp = (size(img,1)*size(img,2)) ./ nnzPixels;
