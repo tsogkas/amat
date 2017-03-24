@@ -1,4 +1,5 @@
-function [rec, comp] = seg2reconstruction(img,seg)
+function [rec, comp] = gtseg2reconstruction(img,seg)
+% Baseline reconstruction statistics using "oracle" segmentations from BSDS
 img       = im2double(img);
 numSegs   = size(seg,3);
 nnzPixels = zeros(numSegs,1);
@@ -18,4 +19,4 @@ for i=1:numSegs
     end
 end
 % Select segmentation with maximum compression and return respective rec
-comp = min(nnzPixels / (size(img,1)*size(img,2)));
+comp = nnzPixels / (size(img,1)*size(img,2));
