@@ -71,8 +71,8 @@ COMP = zeros(opts.nImages,1);
 % Evaluate models on test images and compute approximate reconstructions --
 modelName = lower(model.name);
 ticStart = tic;
-% parfor (i=1:opts.nImages, opts.parpoolSize)
-for i=1:opts.nImages
+parfor (i=1:opts.nImages, opts.parpoolSize)
+% for i=1:opts.nImages
     if isfield(imageList(i), 'isdir')
         img = imread(fullfile(opts.imPath,imageList(i).name));
         [~,iid] = fileparts(imageList(i).name);
