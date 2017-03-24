@@ -1,5 +1,9 @@
 function BMAX500 = constructBMAX500(varargin)
-% Build medial axis transform dataset based on the BSDS500
+% BMAX500 Build medial axis dataset based on the BSDS500
+% 
+% Stavros Tsogkas <tsogkas@cs.toronto.edu>
+% Last update: March 2017
+
 
 opts = {'resize',             1,... % this can be a HxW vector
         'skelThresh',         50,...% high --> aggressive skeleton pruning
@@ -32,7 +36,7 @@ catch
             'pts',[],'rad',[],'img',[],'seg',[],'bnd',[],'iid',[]), [1,nImages]);
         % For all images
         ticStart = tic;
-%         for i=1:nImages
+%         for i=1:nImages % keep this for debugging
         parfor (i=1:nImages, opts.parpoolSize)
             img = imread(fullfile(imDir,imFiles(i).name));
             gt  = load(fullfile(gtDir, gtFiles(i).name)); gt = gt.groundTruth;

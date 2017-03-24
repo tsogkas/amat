@@ -3,65 +3,96 @@ Code for the Appearance-MAT project
 
 Created by Stavros Tsogkas at the University of Toronto.
 
-### License
+## License
 
 This code is released under the MIT License (refer to the LICENSE file for details).
 
-### TODO:
-### PAPER TEXT:
-- Vary appearance threshold in grouping scheme
+## Contents
+1. [Requirements: software](#requirements-software)
+2. [Requirements: hardware](#requirements-hardware)
+3. [Directory structure](#directory-structure)
+4. [Setup](#setup)
+5. [Using the code](#using)
+6. [Citation](#citation)
 
-### HIGH PRIORITY ---------------------------------------------------------
-- run the following experiments on object proposal using edge boxes on VOC2007:
-	1. replace structured edges with our own edge result.
-	2. replace edge clustering step with our grouped boundaries in edgeBoxes.
-	3. replace edges with our medial branches.
-- Find alternative way of MAT refinement that preserves the _exact_ covers from 
-	individual branches. 
-- Change the scale-dependent cost term so that it compensates for the #disks 
-	that are covered by each disk.
+## Requirements: software
 
-### low priority ----------------------------------------------------------
-- Chnage the `mat.visualize()` function to show the reconstruction as it forms, instead
-	of showing the covered areas as black pixels.
-- Don't forget when resizing the MAT, to also multiply radius map with appropriate factor.	
-- Fix bug with large circular segments appearing because of pixels at high scales that 
-	are not merged in the proper group.
-- try replacing `reconstructionError` from summing all errors to returning the maximum
-	of the errors of all contained disks, by using the equivalent formula.
-- Bundle everything in a matlab class.
-- Figure out the reason for the discrepancy between `mat2mask(double(newpts).*radius,mat.scales)`
-	and `mat.depth + depthAdded - depthRemoved`. This is probably because the
- 	new radii are changed EVEN FOR THE POINTS THAT ARE NOT REMOVED from the old MAT.
- 	Perhaps force the pixels that remain in the new MAT take the radius values from 
- 	the old MAT?
-- Optimize `refineMAT` by only applying post processing method to a cropped input.
-- Speedup amat.
-- consider using more "spread-out" (non-linear) distribution of scales for computing the amat.
-	Denser in finer scales and coarser in larger scales. Useful for speedup too.
-- Check if we can use `bwlabel` in the grouping scheme.
-- figure out how to balance lambda, kappa (L0Smoothing) and ws (amat) parameters.
-  Use default values to begin with.
-  PERHAPS: setup code to chooce lambda and kappa based on how well they cover the 
-  boundaries of the BSDS500 validation set. See what edge detection algorithm 
-  the L0Smoothing authors use. (-->DEPENDS ON THE CHOICE OF THE EDGE DETECTION ALGORITHM).
-  Maybe directly optimize lambda and kappa values wrt to reconstruction of the image
-  by the mat.
-- Consider squares instead of disks. How would that affect the result?
-- Add constraint so the new disks cover more than a single pixel to speed up the greedy algo.
-- The uniformity/reconstruction error we are using right now is not an additive function of the total 
-	reconstruction (squared) error Sum(I-I')^2, so we cannot convincingly make the argument that 
-	we are optimizing wrt the reconstruction quality. We should analytically derive a relationship 
-	betweem the SE and the measure we are using right now (perhaps in the form of some upper bound?)
-	to sell our story better.
-- In the case where you use the sketchification with L0 gradient smoothing, find a way to invert
-	the smoothed image to the original one (to compare reconstruction quality).	
+* Linux OS (we used Ubuntu 16.04).
+* A recent version of MATLAB. All our experiments were performed using MATLAB R2016a.
+* [spb-mil code](https://github.com/tsogkas/spb-mil) for medial point detection code. 
+* [matlab-utils package](https://github.com/tsogkas/matlab-utils) for various MATLAB utility functions.
 
-### Very low priority
-- Create AMAT class. 
-- Consider changing AMAT to CMAT.
-- Add mask shapes into a separate matlab class
-- Fill in missing histogram distance metrics in histogramDistance()
-- maybe squeeze cases with sum() and max() in histogramDistance()?
-- maybe add chi2-gaussian as sub-case of chi-quadratic in histogramDistance()?
+## Requirements: hardware
+
+You can run our code in any modern computer (desktop or laptop). A GPU is *not* required (you didn't expect that, right?).
+Our (MATLAB-only) code runs at ~30-40sec for a 256x256 image on a modern desktop CPU. We are working on speeding it up.
+
+## Directory structure
+Generally:
+* All data should go under `data/`.
+* All external code should go under `external/`.
+* `amat` results, models etc should go under `output/`.
+* Project-specific results and plots are saved in the respective directories of that project. E.g.:
+  - spb-mil trained models and medial point detection results are placed under `external/spb-mil/output/models/`. 
+  - medial points detection plots are placed under `external/spb-mil/output/plots/`.
+
+Feel free to change the paths in `setPaths.m` and use symbolic links to change directory hierarchy to your preference.
+
+## Setup
+
+1. Clone the `amat` repository: `git clone git@github.com:tsogkas/amat.git`
+
+The code comes with a `startup.m` file that automatically sets up the directory structure and downloads the required packages and data.
+Running `startup` or starting MATLAB inside the `amat` folder should be enough.
+However, If you want to execute the individual steps included in `startup.m` yourself, do the following: 
+
+2. Create folders `output/`, `external/`, `data/`, `output/models/`.
+3. Clone my [spb-mil](https://github.com/tsogkas/spb-mil) repo: `git clone git@github.com:tsogkas/spb-mil.git`   
+4. Clone my [matlab-utils](https://github.com/tsogkas/matlab-utils) repo: `git clone git@github.com:tsogkas/matlab-utils.git`
+5. Download the [L0Smoothing code](http://www.cse.cuhk.edu.hk/leojia/projects/L0smoothing/L0smoothing.zip) and extract it in `external/`.
+6. Download the [BSDS500](http://www.eecs.berkeley.edu/Research/Projects/CS/vision/grouping/BSR/BSR_bsds500.tgz) dataset and benchmark code and extract it in `data/`.
+
+*NOTE: in some cases MATLAB `websave` function might cause MATLAB to crash. If you face any such problems, please download and extract the BSDS dataset manually.*
+
+## Using the code
+
+* Building the BMAX500 annotations:
+
+You should start by creating the BMAX500 annotations by running: `BMAX500 = constructBMAX500();`.
+*BMAX500* is a MATLAB struct that contains annotations for the *train*,*val* and *test* subsets.
+
+* Training the spb-MIL:
+
+You can train the spb-MIL medial point detector on BSDS500, with the default options, with the following command:
+`trainMIL('trainSet',BMAX500.train)`
+
+* Medial point detection experiments:
+
+You can evaluate the performance of the AMAT in medial point detection using the command:
+`model = testSPB('amat','testSet',BMAX500.val);`
+
+Performance statistics are contained in the `model.BMAX500.val.stats` struct.
+
+* Image reconstruction experiments:
+
+You can evaluate the performance of the AMAT and baseline methods, using the command:
+`models = testReconstruction({'spbModelPath','gtseg','gtskel','amat'},'testSet',BMAX500.val);`
+
+Performance statistics are contained in the `models{i}.BSDS500.val.stats` struct.
+
+
+<!--## Citation -->
+
+<!--If you find our code or annotations useful for your research, please cite our paper [AMAT: Medial Axis Transform for Natural Images]:-->
+
+<!--    @inproceedings{shakeri2016subcortical,-->
+<!--        Author = {Tsogkas, Stavros and Dickinson, Sven},-->
+<!--        Title = {AMAT: Medial Axis Transform for Natural},-->
+<!--        Booktitle = {International Symposium on Biomedical Imaging ({ISBI})},-->
+<!--        Year = {2016}-->
+<!--    }-->
+<!--  -->
+    
+
+
 
