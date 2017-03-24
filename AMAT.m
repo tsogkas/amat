@@ -1,6 +1,7 @@
 classdef AMAT < handle
     % TODO: add private flags for profiling
     % TODO: set properties to Transient, Private etc
+    % TODO: should setCover() be private?
     properties
         scales  = 2:41  
         ws      = 1e-4      
@@ -32,7 +33,7 @@ classdef AMAT < handle
             if nargin > 0
                 % Optionally copy from input AMAT object
                 if isa(img,'AMAT')
-                    mat = copyFromAMATObject(img);
+                    mat = img.clone();
                     img = mat.input;
                 end
                 assert(size(img,3)>=2, 'Input image must be 2D or 3D array')
@@ -41,7 +42,14 @@ classdef AMAT < handle
             end
         end
         
-        
+        function new = clone(old)
+            new = AMAT();
+            props = properties(old);
+            for i=1:numel(props)
+                new.(props{i}) = old.(props{i});
+            end
+        end
+
         function compute(mat)
             mat.computeEncodings();
             mat.computeCosts();
@@ -174,7 +182,7 @@ classdef AMAT < handle
             
             % Create a new object if there is an output
             if nargout > 0
-                mat = copyFromAMATObject(mat);
+                mat = clone(mat);
             end
             
             % The group labels are already sorted and first label is zero (background)
@@ -635,16 +643,7 @@ classdef AMAT < handle
             end
             mat.cost = diskCost;
         end
-        
-        function new = copyFromAMATObject(old)
-            assert(isa(old, 'AMAT'), 'Not an AMAT object')
-            new = AMAT();
-            props = properties(old);
-            for i=1:numel(props)
-                new.(props{i}) = old.(props{i});
-            end
-        end
-        
+                
     end
     
 end
