@@ -1,7 +1,8 @@
 # amat
-Code for the Appearance-MAT project
 
-Created by Stavros Tsogkas at the University of Toronto.
+
+[AMAT: Medial Axis Transform for Natural Images](https://arxiv.org/abs/1703.08628)
+[Stavros Tsogkas](http://tsogkas.github.io/), [Sven Dickinson](http://www.cs.toronto.edu/~sven/), arXiv, 2017.
 
 ## License
 
@@ -81,17 +82,18 @@ You can evaluate the performance of the AMAT and baseline methods, using the com
 Performance statistics are contained in the `models{i}.BSDS500.val.stats` struct.
 
 
-<!--## Citation -->
+## Citation 
 
-<!--If you find our code or annotations useful for your research, please cite our paper [AMAT: Medial Axis Transform for Natural Images]:-->
+If you find our code or annotations useful for your research, please cite our paper [AMAT: Medial Axis Transform for Natural Images]:
 
-<!--    @inproceedings{shakeri2016subcortical,-->
-<!--        Author = {Tsogkas, Stavros and Dickinson, Sven},-->
-<!--        Title = {AMAT: Medial Axis Transform for Natural},-->
-<!--        Booktitle = {International Symposium on Biomedical Imaging ({ISBI})},-->
-<!--        Year = {2016}-->
-<!--    }-->
-<!--  -->
+	@article{tsogkas2017amat,
+		Author = {Tsogkas, Stavros and Dickinson, Sven},
+		Title = {AMAT: Medial Axis Transform for Natural Images},
+		Journal = {arXiv preprint arXiv:1703.08628},
+		Year = {2017}
+	}
+
+  
     
 
 
