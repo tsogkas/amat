@@ -1,8 +1,12 @@
 # amat
 
 
-[AMAT: Medial Axis Transform for Natural Images](https://arxiv.org/abs/1703.08628)
-[Stavros Tsogkas](http://tsogkas.github.io/), [Sven Dickinson](http://www.cs.toronto.edu/~sven/), arXiv, 2017.
+<img src="teaser-horizontal.png" width="900px"/>
+
+[AMAT: Medial Axis Transform for Natural Images](https://arxiv.org/abs/1703.08628)  
+[Stavros Tsogkas](http://tsogkas.github.io/), [Sven Dickinson](http://www.cs.toronto.edu/~sven/)  
+In arXiv, 2017.
+
 
 ## License
 
