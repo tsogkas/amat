@@ -17,7 +17,7 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 2. [Requirements: hardware](#requirements-hardware)
 3. [Directory structure](#directory-structure)
 4. [Setup](#setup)
-5. [Using the code](#using)
+5. [Using the code](#using-the-code)
 6. [Citation](#citation)
 
 ## Requirements: software
@@ -38,8 +38,8 @@ Generally:
 * All external code should go under `external/`.
 * `amat` results, models etc should go under `output/`.
 * Project-specific results and plots are saved in the respective directories of that project. E.g.:
-  - spb-mil trained models and medial point detection results are placed under `external/spb-mil/output/models/`. 
-  - medial points detection plots are placed under `external/spb-mil/output/plots/`.
+  - spb-mil trained models and medial point detection results are saved in `external/spb-mil/output/models/`. 
+  - medial points detection plots are saved in `external/spb-mil/output/plots/`.
 
 Feel free to change the paths in `setPaths.m` and use symbolic links to change directory hierarchy to your preference.
 
@@ -69,26 +69,29 @@ You should start by creating the BMAX500 annotations by running: `BMAX500 = cons
 * Training the spb-MIL:
 
 You can train the spb-MIL medial point detector on BSDS500, with the default options, with the following command:
-`trainMIL('trainSet',BMAX500.train)`
+
+	trainMIL('trainSet',BMAX500.train);
 
 * Medial point detection experiments:
 
 You can evaluate the performance of the AMAT in medial point detection using the command:
-`model = testSPB('amat','testSet',BMAX500.val);`
+	
+	model = testSPB('amat','testSet',BMAX500.val);
 
 Performance statistics are contained in the `model.BMAX500.val.stats` struct.
 
 * Image reconstruction experiments:
 
 You can evaluate the performance of the AMAT and baseline methods, using the command:
-`models = testReconstruction({'spbModelPath','gtseg','gtskel','amat'},'testSet',BMAX500.val);`
+
+	models = testReconstruction({'spbModelPath','gtseg','gtskel','amat'},'testSet',BMAX500.val);
 
 Performance statistics are contained in the `models{i}.BSDS500.val.stats` struct.
 
 
 ## Citation 
 
-If you find our code or annotations useful for your research, please cite our paper [AMAT: Medial Axis Transform for Natural Images]:
+If you find our code or annotations useful for your research, please cite our paper [AMAT: Medial Axis Transform for Natural Images](https://arxiv.org/abs/1703.08628):
 
 	@article{tsogkas2017amat,
 		Author = {Tsogkas, Stavros and Dickinson, Sven},
