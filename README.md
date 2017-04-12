@@ -29,7 +29,7 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 
 ## Requirements: hardware
 
-You can run our code in any modern computer (desktop or laptop). A GPU is *not* required (you didn't expect that, right?).
+You can run our code in any modern computer (desktop or laptop).
 Our (MATLAB-only) code runs at ~30-40sec for a 256x256 image on a modern desktop CPU. We are working on speeding it up.
 
 ## Directory structure
