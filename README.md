@@ -60,10 +60,9 @@ However, If you want to execute the individual steps included in `startup.m` you
 
 ## Using the code
 
-* Building the BMAX500 annotations:
+* Download the [BMAX500](https://drive.google.com/open?id=0B_bjRXqR9K3OZ0Rub2FGVGlxZDA) annotations.
 
-You should start by creating the BMAX500 annotations by running: `BMAX500 = constructBMAX500();`.
-*BMAX500* is a MATLAB struct that contains annotations for the *train*,*val* and *test* subsets.
+*BMAX500* is a MATLAB struct that contains annotations for the *training*, and *validation* subsets. Annotations for the test subset will be released in the future.
 
 * Training the spb-MIL:
 
