@@ -24,8 +24,10 @@ This code is released under the MIT License (refer to the LICENSE file for detai
 
 * Linux OS (we used Ubuntu 16.04).
 * A recent version of MATLAB. All our experiments were performed using MATLAB R2016a.
-* [spb-mil code](https://github.com/tsogkas/spb-mil) for medial point detection code. 
-* [matlab-utils package](https://github.com/tsogkas/matlab-utils) for various MATLAB utility functions.
+* [spb-mil](https://github.com/tsogkas/spb-mil) for medial point detection code. 
+* [matlab-utils](https://github.com/tsogkas/matlab-utils) for various MATLAB utility functions.
+* [inpaint_nans](https://www.mathworks.com/matlabcentral/fileexchange/4551-inpaint-nans?focused=5242309&tab=function) for 2D image inpainting.
+* [L0Smoothing code](http://www.cse.cuhk.edu.hk/leojia/projects/L0smoothing/L0smoothing.zip) for edge-preserving image smoothing.
 
 ## Requirements: hardware
 
@@ -54,7 +56,8 @@ However, If you want to execute the individual steps included in `startup.m` you
 3. Clone my [spb-mil](https://github.com/tsogkas/spb-mil) repo: `git clone git@github.com:tsogkas/spb-mil.git`   
 4. Clone my [matlab-utils](https://github.com/tsogkas/matlab-utils) repo: `git clone git@github.com:tsogkas/matlab-utils.git`
 5. Download the [L0Smoothing code](http://www.cse.cuhk.edu.hk/leojia/projects/L0smoothing/L0smoothing.zip) and extract it in `external/`.
-6. Download the [BSDS500](http://www.eecs.berkeley.edu/Research/Projects/CS/vision/grouping/BSR/BSR_bsds500.tgz) dataset and benchmark code and extract it in `data/`.
+6. Download the [inpaint_nans code](https://www.mathworks.com/matlabcentral/mlc-downloads/downloads/submissions/4551/versions/2/download/zip) and extract it in `external/`.
+7. Download the [BSDS500](http://www.eecs.berkeley.edu/Research/Projects/CS/vision/grouping/BSR/BSR_bsds500.tgz) dataset and benchmark code and extract it in `data/`.
 
 *NOTE: in some cases MATLAB `websave` function might cause MATLAB to crash. If you face any such problems, please download and extract the BSDS dataset manually.*
 
