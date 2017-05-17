@@ -81,7 +81,7 @@ classdef AMAT < handle
                 cc(r).labels = zeros(1, cc(r).NumObjects); % zero for non-examined ccs
                 margin = ceil(marginFactor*r)+1;
                 % For all connected components at the same scale
-                for i=1:cc(r).NumObjects;
+                for i=1:cc(r).NumObjects
                     % Create proximity mask in rectangle around cc for efficiency
                     mask(:) = false; mask(cc(r).PixelIdxList{i}) = true;
                     idxcc = cc(r).PixelIdxList{i};
@@ -261,6 +261,8 @@ classdef AMAT < handle
             switch mat.shape
                 case 'disk'
                     computeDiskEncodings(mat);
+                case 'square'
+                    computeSquareEncodings(mat);
                 otherwise, error('Invalid shape')
             end            
         end
@@ -269,6 +271,8 @@ classdef AMAT < handle
             switch mat.shape
                 case 'disk'
                     computeDiskCosts(mat);
+                case 'square'
+                    computeSquareCosts(mat);
                 otherwise, error('Invalid shape')
             end
         end
@@ -300,8 +304,11 @@ classdef AMAT < handle
             % Flag border pixels that cannot be accessed by filters.
             r = mat.scales(1);
             covered = false(H,W);
-            covered([1:r,end-r+1:end], [1,end]) = true;
-            covered([1,end], [1:r,end-r+1:end]) = true;
+            if (strcmp(mat.shape, 'disk'))
+                % Flag border pixels that cannot be accessed by disk filters.
+                covered([1:r,end-r+1:end], [1,end]) = true;
+                covered([1,end], [1:r,end-r+1:end]) = true;
+            end
             BIG = 1e30;
             
             % Compute how many pixels are covered be each r-disk.
@@ -322,13 +329,20 @@ classdef AMAT < handle
             while ~all(covered(:))
                 % Find the most cost-effective disk at the current iteration
                 [minCost, indMin] = min(diskCostEffective(:));
-                if isinf(minCost),
+                if isinf(minCost)
                     warning('Stopping: selected disk has infinite cost.')
                     break;
                 end
                 
                 [yc,xc,rc] = ind2sub([H,W,R], indMin);
-                D = (x-xc).^2 + (y-yc).^2 <= mat.scales(rc)^2; % points covered by the selected disk
+                switch mat.shape
+                    case 'disk'
+                        D = (x-xc).^2 + (y-yc).^2 <= mat.scales(rc)^2; % points covered by the selected disk
+                    case 'square'
+                        D = (abs(x-xc) <= mat.scales(rc)) & (abs(y-yc) <= mat.scales(rc));
+                    otherwise, error('Invalid filter shape')
+                end
+                
                 newPixelsCovered  = D & ~covered;      % NEW pixels that are covered by D
                 if ~any(newPixelsCovered(:))
                     warning('Stopping: selected disk covers zero (0) new pixels.')
@@ -364,7 +378,6 @@ classdef AMAT < handle
                 end
                 % Make sure the same point is not selected again
                 diskCost(yc,xc,:) = BIG; diskCostEffective(yc,xc,:) = BIG;
-                
                 
                 if mat.vistop, visualizeProgress(mat,diskCostEffective); end
                 if ~isempty(printBreakPoints) && nnz(~covered) < printBreakPoints(1)
@@ -556,6 +569,8 @@ classdef AMAT < handle
             switch mat.shape
                 case 'disk'
                     f = @(x) disk(x);
+                case 'square'
+                    f = @(x) ones(2*x+1);
                 otherwise, error('Invalid filter shape')
             end
             for i=1:numScales
@@ -652,7 +667,86 @@ classdef AMAT < handle
             end
             mat.cost = diskCost;
         end
-                
+        
+        function computeSquareEncodings(mat)
+            % convert RGB to Lab
+            inputlab = rgb2labNormalized(mat.input);
+            
+            % Compute the integral image of input.
+            inputIntegral = integralImage(inputlab);
+            
+            [H,W,C] = size(mat.input);
+            R = numel(mat.scales);
+            enc = zeros(H,W,C,R);
+            
+            for i=1:R
+                r = mat.scales(i);
+                % Use integral image to compute the sum of the squres.
+                encTemp = computeSquareSumsConv(inputIntegral, r);
+                enc(:, :, :, i) = encTemp ./ squareAreas(H, W, r);
+            end
+            mat.encoding = enc;
+        end
+        
+        function computeSquareCosts(mat)
+            % compute the square costs
+            
+            [H,W,C,R] = size(mat.encoding);
+            enc = mat.encoding;
+            enc2 = enc .^ 2;
+            squareCost = zeros(H,W,C,R);
+            
+%             % heuristic square cost approach
+%             % integral images
+%             encIntegral = integralImage(enc);
+%             enc2Integral = integralImage(enc2);
+%             nnzcs = cumsum((2*(mat.scales-1)+1).^2);
+%             
+%             for r=1:R
+%                 sumMri = zeros(H,W,C);
+%                 sumMri2 = zeros(H,W,C);
+%                 for i=1:r
+%                     sumMri = sumMri + computeSquareSumsConv(encIntegral(:,:,:,i), mat.scales(r-i+1) - 1);
+%                     sumMri2 = sumMri2 + computeSquareSumsConv(enc2Integral(:,:,:,i), mat.scales(r-i+1) - 1);
+%                 end
+%                 squareCost(:,:,:,r) = enc2(:,:,:,r)*nnzcs(r) + sumMri2 - 2*enc(:,:,:,r).*sumMri;
+%             end
+            
+            % mean square error implementation.
+            input2 = rgb2labNormalized(mat.input) .^2;
+            input2Integral = integralImage(input2);
+            for i=1:R
+                r = mat.scales(i);
+                squareCost(:, :, :, i) = computeSquareSumsConv(input2Integral, r) ...
+                    - enc2(:, :, :, i) .* (2*r+1)^2;
+            end
+
+            % Same postprocesssing as computeDiskCosts
+            
+            % Fix boundary conditions. Setting scale(r)-borders to a very big cost
+            % helps us avoid selecting disks that cross the image boundaries.
+            % We do not use Inf to avoid complications in the greedy set cover
+            % algorithm, caused by inf-inf subtractions and inf/inf divisions.
+            % Also, keep in mind that max(0,NaN) = 0.
+            BIG = 1e30;
+            for r=1:R
+                scale = mat.scales(r);
+                squareCost([1:scale, end-scale+1:end],:,:,r) = BIG;
+                squareCost(:,[1:scale, end-scale+1:end],:,r) = BIG;
+            end
+            
+            % Sometimes due to numerical errors, cost are slightly negative. Fix this.
+            squareCost = max(0,squareCost);
+            
+            % Combine costs from different channels
+            if C > 1
+                wc = [0.5,0.25,0.25]; % weights for luminance and color channels
+                squareCost = squareCost(:,:,1,:)*wc(1) + squareCost(:,:,2,:)*wc(2) + squareCost(:,:,3,:)*wc(3);
+                squareCost = squeeze(squareCost);
+            end
+            mat.cost = squareCost;
+        end
+        
     end
     
 end
