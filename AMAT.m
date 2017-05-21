@@ -37,7 +37,7 @@ classdef AMAT < handle
                     mat = img.clone();
                     img = mat.input;
                 end
-                assert(size(img,3)>=2, 'Input image must be 2D or 3D array')
+                assert(ismatrix(img) || size(img,3)==3, 'Input image must be 2D or 3D array')
                 mat.initialize(img,varargin{:});
                 mat.compute();
             end
@@ -404,9 +404,9 @@ classdef AMAT < handle
         end
         
         function visualize(mat)
-            cmap = jet(max(mat.radius(:)));
+            % cmap = jet(max(mat.radius(:)));
             subplot(221); imshow(mat.axis);             title('Medial axes');
-            subplot(222); imshow(mat.radius,cmap);      title('Radii');
+            subplot(222); imshow(mat.radius,[]);      title('Radii');
             subplot(223); imshow(mat.input);            title('Original image');
             subplot(224); imshow(mat.reconstruction);   title('Reconstructed image');
         end
@@ -431,7 +431,7 @@ classdef AMAT < handle
         function rec = computeReconstruction(mat)
             diskf = cell(1,numel(mat.scales));
             for r=1:numel(diskf)
-                diskf{r} = double(repmat(mat.filters{r}, [1 1 3]));
+                diskf{r} = double(repmat(mat.filters{r}, [1 1 size(mat.input,3)]));
             end
             
             rec = zeros(size(mat.input));
@@ -648,8 +648,8 @@ classdef AMAT < handle
             if C > 1
                 wc = [0.5,0.25,0.25]; % weights for luminance and color channels
                 diskCost = diskCost(:,:,1,:)*wc(1) + diskCost(:,:,2,:)*wc(2) + diskCost(:,:,3,:)*wc(3);
-                diskCost = squeeze(diskCost);
             end
+            diskCost = squeeze(diskCost);
             mat.cost = diskCost;
         end
                 
