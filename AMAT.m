@@ -696,29 +696,19 @@ classdef AMAT < handle
             enc2 = enc .^ 2;
             squareCost = zeros(H,W,C,R);
             
-%             % heuristic square cost approach
-%             % integral images
-%             encIntegral = integralImage(enc);
-%             enc2Integral = integralImage(enc2);
-%             nnzcs = cumsum((2*(mat.scales-1)+1).^2);
-%             
-%             for r=1:R
-%                 sumMri = zeros(H,W,C);
-%                 sumMri2 = zeros(H,W,C);
-%                 for i=1:r
-%                     sumMri = sumMri + computeSquareSumsConv(encIntegral(:,:,:,i), mat.scales(r-i+1) - 1);
-%                     sumMri2 = sumMri2 + computeSquareSumsConv(enc2Integral(:,:,:,i), mat.scales(r-i+1) - 1);
-%                 end
-%                 squareCost(:,:,:,r) = enc2(:,:,:,r)*nnzcs(r) + sumMri2 - 2*enc(:,:,:,r).*sumMri;
-%             end
-            
-            % mean square error implementation.
-            input2 = rgb2labNormalized(mat.input) .^2;
-            input2Integral = integralImage(input2);
-            for i=1:R
-                r = mat.scales(i);
-                squareCost(:, :, :, i) = computeSquareSumsConv(input2Integral, r) ...
-                    - enc2(:, :, :, i) .* (2*r+1)^2;
+            % heuristic square cost approach
+            % integral images
+            encIntegral = integralImage(enc);
+            enc2Integral = integralImage(enc2);
+            nnzcs = cumsum((2*(mat.scales-1)+1).^2);
+            for r=1:R
+                sumMri = zeros(H,W,C);
+                sumMri2 = zeros(H,W,C);
+                for i=1:r
+                    sumMri = sumMri + computeSquareSumsConv(encIntegral(:,:,:,i), mat.scales(r-i+1) - 1);
+                    sumMri2 = sumMri2 + computeSquareSumsConv(enc2Integral(:,:,:,i), mat.scales(r-i+1) - 1);
+                end
+                squareCost(:,:,:,r) = enc2(:,:,:,r)*nnzcs(r) + sumMri2 - 2*enc(:,:,:,r).*sumMri;
             end
 
             % Same postprocesssing as computeDiskCosts
@@ -742,8 +732,8 @@ classdef AMAT < handle
             if C > 1
                 wc = [0.5,0.25,0.25]; % weights for luminance and color channels
                 squareCost = squareCost(:,:,1,:)*wc(1) + squareCost(:,:,2,:)*wc(2) + squareCost(:,:,3,:)*wc(3);
-                squareCost = squeeze(squareCost);
             end
+            squareCost = squeeze(squareCost);
             mat.cost = squareCost;
         end
         
