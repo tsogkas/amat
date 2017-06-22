@@ -368,6 +368,7 @@ classdef AMAT < handle
                 for d=1:numShapes
                     for r=1:R
                         scale = mat.scales(r);
+                        scale = ceil(sqrt(2) * scale);
                         x1 = max(xmin-scale,1); y1 = max(ymin-scale,1);
                         x2 = min(xmax+scale,W); y2 = min(ymax+scale,H);
                         % Find how many of the newPixelsCovered are covered by other disks.
@@ -865,7 +866,7 @@ classdef AMAT < handle
                 BIG = 1e30;
                 for r=1:R
                     scale = mat.scales(r);
-                    scale = ceil(2 * scale);
+                    scale = ceil(sqrt(2) * scale);
                     squareCost([1:scale, end-scale+1:end],:,:,r) = BIG;
                     squareCost(:,[1:scale, end-scale+1:end],:,r) = BIG;
                 end
