@@ -8,6 +8,8 @@ paths.bsds500          = fullfile(paths.data,'BSR','BSDS500','data');
 paths.bsds500gt        = fullfile(paths.bsds500, 'groundTruth');
 paths.bsds500im        = fullfile(paths.bsds500, 'images');
 paths.symmax500        = fullfile(paths.data, 'SYMMAX500');
+paths.sk506            = fullfile(paths.data, 'sk506');
+paths.whsymmax         = fullfile(paths.data, 'WH-SYMMAX');
 % paths.vgg16            = fullfile(paths.data, 'imagenet-vgg-verydeep-16.mat');
 % paths.voc2007          = fullfile(paths.data, 'VOCdevkit');
 

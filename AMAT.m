@@ -7,18 +7,20 @@ classdef AMAT < handle
         ws      = 1e-4      
         vistop  = 0  
         shape   = 'disk'
-        filters 
-        input
-        reconstruction
-        encoding
         axis
-        radius
-        depth
-        price
-        cost
         branches
-        scaleIdx
+        cost
+        depth
+        encoding
+        filters 
         info
+        input
+        price
+        radius
+        reconstruction
+        rotations
+        scaleIdx
+        shapeId
     end
     
     properties(Transient)
@@ -51,13 +53,13 @@ classdef AMAT < handle
             end
         end
 
-        function compute(mat)
+        function mat = compute(mat)
             mat.computeEncodings();
             mat.computeCosts();
             mat.setCover();
         end
         
-        function group(mat,marginFactor,colortol)
+        function mat = group(mat,marginFactor,colortol)
             if nargin < 2, marginFactor = 1; end
             if nargin < 3, colortol = 0.05; end
             
@@ -261,6 +263,10 @@ classdef AMAT < handle
             switch mat.shape
                 case 'disk'
                     computeDiskEncodings(mat);
+                case 'square'
+                    computeSquareEncodings(mat);
+                case 'mixed'
+                    computeMixedEncodings(mat);
                 otherwise, error('Invalid shape')
             end            
         end
@@ -269,6 +275,10 @@ classdef AMAT < handle
             switch mat.shape
                 case 'disk'
                     computeDiskCosts(mat);
+                case 'square'
+                    computeSquareCosts(mat);
+                case 'mixed'
+                    computeMixedCosts(mat);
                 otherwise, error('Invalid shape')
             end
         end
@@ -556,6 +566,8 @@ classdef AMAT < handle
             switch mat.shape
                 case 'disk'
                     f = @(x) disk(x);
+                case 'square'
+                    f = @(x) ones(2*x+1);
                 otherwise, error('Invalid filter shape')
             end
             for i=1:numScales
@@ -652,7 +664,168 @@ classdef AMAT < handle
             diskCost = squeeze(diskCost);
             mat.cost = diskCost;
         end
+        
+        function computeSquareEncodings(mat)
+            % Efficient implementation, using convolutions with
+            % circles + cumsum instead of convolutions with disks.
+            inputlab = rgb2labNormalized(mat.input);
+            [H,W,C] = size(mat.input); 
+            R = numel(mat.scales);
+            
+            % Square implementation
+            cfilt = cell(1,R); 
+            for r=1:R, cfilt{r} = ones(2*mat.scales(r)+1); end
+            enc = zeros(H,W,C,R);
+            for c=1:C
+                for r=1:R
+%                     enc(:,:,c,r) = conv2(inputlab(:,:,c),cfilt{r},'same');
+                    enc(:,:,c,r) = filter2(cfilt{r},inputlab(:,:,c));
+                end
+            end
+            areas = (2*mat.scales+1).^2;
+            enc   = bsxfun(@rdivide, enc, reshape(areas,1,1,1,[]));
+            mat.encoding = enc;
+            
+            % Integral image implementation
+            rmax = mat.scales(end);
+            tic;
+            inputlabIntegral = cumsum(cumsum(inputlab, 1), 2);
+%             inputlabIntegral = padarray(inputlabIntegral, [rmax+1 rmax+1], 0, 'pre');
+%             inputlabIntegral = padarray(inputlabIntegral, [rmax+1 rmax+1], 'replicate','post');
+            [H,W,C] = size(inputlabIntegral); 
+            filt = cell(1,R);
+            for r=1:R 
+                filt{r} = zeros(2*mat.scales(r)+3); 
+                filt{r}(1,1) = 1; filt{r}(end-1,end-1) = 1; 
+                filt{r}(1,end-1) = -1; filt{r}(end-1,1) = -1;
+            end
+            encIntegral = zeros(H,W,C,R);
+            for c=1:C
+                for r=1:R
+                    encIntegral(:,:,c,r) = filter2(filt{r},inputlabIntegral(:,:,c));
+                end
+            end
+            encIntegral = encIntegral((rmax+2):(end-rmax-1), (rmax+2):(end-rmax-1),:,:);
+            toc;
+            encIntegral = bsxfun(@rdivide, encIntegral, reshape(areas,1,1,1,[]));
+            mat.encoding = enc; 
+        end
+        
+        
+        function out = computeSquareSumsConv(inputIntegral, r)
+            %COMPUTESQUARESUMSCONV
+            %   inputIntegral: the integral image of an input I, geneated by calling
+            %                  integralImage(I)
+            %   r: radius
+            %   returns the square sums of the square at each pixel with radius r
+            
+            fil = zeros(2*r+3, 1);
+            fil(1) = 1;
+            fil(end-1) = -1;
+            
+            % pad the matrix to handle the border
+            paddedArray = padarray(inputIntegral, [r, r], 'replicate', 'post');
+            
+            [H,W,C] = size(paddedArray);
+            out = zeros(H,W,C);
+            
+            for c=1:C
+                % separable filter
+                out(:,:,c) = conv2(conv2(paddedArray(:,:,c), fil, 'same'), fil', 'same');
+            end
+            
+            % make the output the same as input image
+            out = out(1:end-1-r, 1:end-1-r, :);
+        end
+
+        
+        function rotatedSqrSum = computeRotatedSquareSums(integralColumn, radius, deg)
+            %COMPUTEROTATEDSQUARESUMS Summary of this function goes here
+            %   Detailed explanation goes here
+            % if the image is I, then integralColumn should be cumsum(I, 1)
+            
+            [H,W,C] = size(integralColumn);
+            
+            filter = ones(2*radius+1);
+            
+            % rotated square
+            rotatedFilter = imrotate(filter, deg);
+            
+            % make sure both the width and height of rotatedFilter are odd to make sure
+            % it has a center
+            rotatedFilter = padarray(rotatedFilter, double(mod(size(rotatedFilter), 2) == 0), 'pre');
+            padSize = floor(size(rotatedFilter) / 2);
+            
+            % pad integralColumn to deal with pixels along the border
+            cumA = padarray(padarray(integralColumn, padSize, 'pre'), [padSize(1),0], 'post', 'replicate');
+            
+            simpleRotatedFilter = getSimpleRotatedFilter(rotatedFilter);
+            
+            rotatedSqrSum = zeros(H,W,C);
+            for c=1:C
+                rotatedSqrSumC = conv2(cumA(:,:,c), simpleRotatedFilter, 'same');
+                % make sure the output size is consistent
+                rotatedSqrSum(:,:,c) = rotatedSqrSumC(padSize(1):end-padSize(1)-1, padSize(2)+1:end);
+            end
+        end
+        
+        function simpleRotatedFilter =  getSimpleRotatedFilter(filter)
+            [H,W] = size(filter);
+            [y,x] = find(filter);
+            onesInd = [y,x];
+            simpleRotatedFilter = zeros(H+1,W);
+            for w=1:W
+                wInd = onesInd(onesInd(:,2) == w);
+                wMin = min(wInd);
+                wMax = max(wInd);
+                simpleRotatedFilter(wMin,w) = 1;
+                simpleRotatedFilter(wMax+1,w) = -1;
+            end
+        end
+        
+        function out = addMask(I, y, x, msk)
+            % Add msk to image I centered at y,x
+            
+            [H,W,~] = size(I);
+            
+            % make sure fil has a center
+            msk = padarray(msk, double(mod(size(msk), 2) == 0), 'pre');
+            
+            [ry,rx,~] = size(msk);
+            ry = floor(ry / 2);
+            rx = floor(rx / 2);
+            
+            % Since we are using convolution, the image should be rotated by 180 deg.
+            msk = imrotate(msk,180);
+            
+            y1 = y - ry; y2 = y + ry; x1 = x - rx; x2 = x + rx;
+            
+            if (y-ry < 1)
+                msk = msk(2+ry-y:end,:,:);
+                y1 = 1;
+            end
+            if (x-rx < 1)
+                msk = msk(:,2+rx-x:end,:);
+                x1 = 1;
+            end
+            if (y+ry > H)
+                msk = msk(1:end-(y+ry-H),:,:);
+                y2 = H;
+            end
+            if (x+rx > W)
+                msk = msk(:,1:end-(x+rx-W),:);
+                x2 = W;
+            end
+            
+            I(y1:y2,x1:x2,:) = I(y1:y2,x1:x2,:) + msk;
+            out = I;
+            
+        end
+
+
                 
     end
+    
+    
     
 end
