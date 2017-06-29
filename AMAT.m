@@ -666,82 +666,96 @@ classdef AMAT < handle
         end
         
         function computeSquareEncodings(mat)
-            % Efficient implementation, using convolutions with
-            % circles + cumsum instead of convolutions with disks.
             inputlab = rgb2labNormalized(mat.input);
             [H,W,C] = size(mat.input); 
             R = numel(mat.scales);
             
-            % Square implementation
+            % Since square filters are separable, using filter2 + full
+            % filters is more efficient than using integral images.
             cfilt = cell(1,R); 
-            for r=1:R, cfilt{r} = ones(2*mat.scales(r)+1); end
+            for r=1:R, sfilt{r} = ones(2*mat.scales(r)+1); end
             enc = zeros(H,W,C,R);
             for c=1:C
                 for r=1:R
-%                     enc(:,:,c,r) = conv2(inputlab(:,:,c),cfilt{r},'same');
-                    enc(:,:,c,r) = filter2(cfilt{r},inputlab(:,:,c));
+                    enc(:,:,c,r) = filter2(sfilt{r},inputlab(:,:,c));
                 end
             end
             areas = (2*mat.scales+1).^2;
             enc   = bsxfun(@rdivide, enc, reshape(areas,1,1,1,[]));
-            mat.encoding = enc;
-            
-            % Integral image implementation
-            rmax = mat.scales(end);
-            tic;
-            inputlabIntegral = cumsum(cumsum(inputlab, 1), 2);
-%             inputlabIntegral = padarray(inputlabIntegral, [rmax+1 rmax+1], 0, 'pre');
-%             inputlabIntegral = padarray(inputlabIntegral, [rmax+1 rmax+1], 'replicate','post');
-            [H,W,C] = size(inputlabIntegral); 
-            filt = cell(1,R);
-            for r=1:R 
-                filt{r} = zeros(2*mat.scales(r)+3); 
-                filt{r}(1,1) = 1; filt{r}(end-1,end-1) = 1; 
-                filt{r}(1,end-1) = -1; filt{r}(end-1,1) = -1;
-            end
-            encIntegral = zeros(H,W,C,R);
+            mat.encoding = enc;            
+        end
+        
+        function computeSquareCosts(mat)
+            % Similar to computeDiskCosts() but for square filters.
+            % Because squares are separable filters, we can use the full filters
+            % and still remain efficient.
+%            [H,W,C,R] = size(mat.encoding);
+%            enc = mat.encoding;
+%            enc2 = enc .^ 2;
+%            squareCost = zeros(H,W,C,R);
+%            
+%            % heuristic square cost approach
+%            % integral images
+%            encIntegral = integralImage(enc);
+%            enc2Integral = integralImage(enc2);
+%            nnzcs = cumsum((2*(mat.scales-1)+1).^2);
+%            for r=1:R
+%                sumMri = zeros(H,W,C);
+%                sumMri2 = zeros(H,W,C);
+%                for i=1:r
+%                    sumMri = sumMri + computeSquareSumsConv(encIntegral(:,:,:,i), mat.scales(r-i+1) - 1);
+%                    sumMri2 = sumMri2 + computeSquareSumsConv(enc2Integral(:,:,:,i), mat.scales(r-i+1) - 1);
+%                end
+%                squareCost(:,:,:,r) = enc2(:,:,:,r)*nnzcs(r) + sumMri2 - 2*enc(:,:,:,r).*sumMri;
+%            end
+
+            [H,W,C,R] = size(mat.encoding);
+            sfilt = cell(1,R);
+            for r=1:R, sfilt{r} = ones(2*(mat.scales(r)-1)+1); end
+            enc = mat.encoding;
+            enc2 = enc.^2;
+            nnzcs= cumsum((2*(mat.scales-1)+1).^2); % cumsum of square areas
+
+            squareCost = zeros(H,W,C,R);
             for c=1:C
                 for r=1:R
-                    encIntegral(:,:,c,r) = filter2(filt{r},inputlabIntegral(:,:,c));
+                    sumMri  = zeros(H,W);
+                    sumMri2 = zeros(H,W);
+                    for i=1:r
+                        sumMri  = sumMri  + filter2(sfilt{r-i+1}, enc(:,:,c,i));
+                        sumMri2 = sumMri2 + filter2(sfilt{r-i+1}, enc2(:,:,c,i));
+                    end
+                    squareCost(:,:,c,r) = enc2(:,:,c,r)*nnzcs(r) + sumMri2 - 2*enc(:,:,c,r).*sumMri;
                 end
             end
-            encIntegral = encIntegral((rmax+2):(end-rmax-1), (rmax+2):(end-rmax-1),:,:);
-            toc;
-            encIntegral = bsxfun(@rdivide, encIntegral, reshape(areas,1,1,1,[]));
-            mat.encoding = enc; 
-        end
-        
-        
-        function out = computeSquareSumsConv(inputIntegral, r)
-            %COMPUTESQUARESUMSCONV
-            %   inputIntegral: the integral image of an input I, geneated by calling
-            %                  integralImage(I)
-            %   r: radius
-            %   returns the square sums of the square at each pixel with radius r
             
-            fil = zeros(2*r+3, 1);
-            fil(1) = 1;
-            fil(end-1) = -1;
-            
-            % pad the matrix to handle the border
-            paddedArray = padarray(inputIntegral, [r, r], 'replicate', 'post');
-            
-            [H,W,C] = size(paddedArray);
-            out = zeros(H,W,C);
-            
-            for c=1:C
-                % separable filter
-                out(:,:,c) = conv2(conv2(paddedArray(:,:,c), fil, 'same'), fil', 'same');
+            % Same postprocesssing as computeDiskCosts
+            % Fix boundary conditions. Setting scale(r)-borders to a very big cost
+            % helps us avoid selecting squares that cross the image boundaries.
+            % We do not use Inf to avoid complications in the greedy set cover
+            % algorithm, caused by inf-inf subtractions and inf/inf divisions.
+            % Also, keep in mind that max(0,NaN) = 0.
+            BIG = 1e30;
+            for r=1:R
+                scale = mat.scales(r);
+                squareCost([1:scale, end-scale+1:end],:,:,r) = BIG;
+                squareCost(:,[1:scale, end-scale+1:end],:,r) = BIG;
             end
             
-            % make the output the same as input image
-            out = out(1:end-1-r, 1:end-1-r, :);
+            % Sometimes due to numerical errors, costs are slightly negative.
+            squareCost = max(0,squareCost);
+            
+            % Combine costs from different channels
+            if C > 1
+                wc = [0.5,0.25,0.25]; % weights for luminance and color channels
+                squareCost = squareCost(:,:,1,:)*wc(1) + squareCost(:,:,2,:)*wc(2) + squareCost(:,:,3,:)*wc(3);
+            end
+            squareCost = squeeze(squareCost);
+            mat.cost = squareCost;
         end
-
         
         function rotatedSqrSum = computeRotatedSquareSums(integralColumn, radius, deg)
-            %COMPUTEROTATEDSQUARESUMS Summary of this function goes here
-            %   Detailed explanation goes here
+            %COMPUTEROTATEDSQUARESUMS 
             % if the image is I, then integralColumn should be cumsum(I, 1)
             
             [H,W,C] = size(integralColumn);
