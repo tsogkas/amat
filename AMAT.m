@@ -2,6 +2,7 @@ classdef AMAT < handle
     % TODO: add private flags for profiling
     % TODO: set properties to Transient, Private etc
     % TODO: should setCover() be private?
+    % TODO: add different types of filters in mat.filters
     properties
         scales  = 2:41  
         ws      = 1e-4      
@@ -18,9 +19,9 @@ classdef AMAT < handle
         price
         radius
         reconstruction
-        rotations
         scaleIdx
         shapeId
+        thetas  % in degrees
     end
     
     properties(Transient)
@@ -54,8 +55,10 @@ classdef AMAT < handle
         end
 
         function mat = compute(mat)
+            profile on;
             mat.computeEncodings();
             mat.computeCosts();
+            profile off; profile viewer;
             mat.setCover();
         end
         
@@ -544,7 +547,8 @@ classdef AMAT < handle
             defaults = {'scales',   2:41,...
                         'ws',       1e-4,...
                         'vistop',   0,...
-                        'shape',    'disk'
+                        'shape',    'disk',...
+                        'thetas',   []
                         };
             opts = parseVarargin(defaults,varargin);
             if isscalar(opts('scales'))
@@ -555,6 +559,7 @@ classdef AMAT < handle
             mat.ws      = opts('ws');
             mat.vistop  = opts('vistop');
             mat.shape   = opts('shape');
+            mat.thetas = opts('thetas');
             mat.input   = im2double(img);
             mat.scaleIdx= containers.Map(mat.scales, 1:numel(mat.scales));
             mat.initializeFilters();            
@@ -672,44 +677,28 @@ classdef AMAT < handle
             
             % Since square filters are separable, using filter2 + full
             % filters is more efficient than using integral images.
-            cfilt = cell(1,R); 
+            sfilt = cell(1,R); 
             for r=1:R, sfilt{r} = ones(2*mat.scales(r)+1); end
             enc = zeros(H,W,C,R);
             for c=1:C
                 for r=1:R
-                    enc(:,:,c,r) = filter2(sfilt{r},inputlab(:,:,c));
+                    sep = sfilt{r}(1,:);
+                    enc(:,:,c,r) = conv2(sep,sep',inputlab(:,:,c),'same');
                 end
             end
             areas = (2*mat.scales+1).^2;
             enc   = bsxfun(@rdivide, enc, reshape(areas,1,1,1,[]));
+            
+            % Optionally compute encodings for rotated squares
+            if ~isempty(mat.thetas)
+                encrot = computeRotatedSquareEncodings(mat, cumsum(inputlab,1));
+            end
             mat.encoding = enc;            
         end
         
         function computeSquareCosts(mat)
             % Similar to computeDiskCosts() but for square filters.
-            % Because squares are separable filters, we can use the full filters
-            % and still remain efficient.
-%            [H,W,C,R] = size(mat.encoding);
-%            enc = mat.encoding;
-%            enc2 = enc .^ 2;
-%            squareCost = zeros(H,W,C,R);
-%            
-%            % heuristic square cost approach
-%            % integral images
-%            encIntegral = integralImage(enc);
-%            enc2Integral = integralImage(enc2);
-%            nnzcs = cumsum((2*(mat.scales-1)+1).^2);
-%            for r=1:R
-%                sumMri = zeros(H,W,C);
-%                sumMri2 = zeros(H,W,C);
-%                for i=1:r
-%                    sumMri = sumMri + computeSquareSumsConv(encIntegral(:,:,:,i), mat.scales(r-i+1) - 1);
-%                    sumMri2 = sumMri2 + computeSquareSumsConv(enc2Integral(:,:,:,i), mat.scales(r-i+1) - 1);
-%                end
-%                squareCost(:,:,:,r) = enc2(:,:,:,r)*nnzcs(r) + sumMri2 - 2*enc(:,:,:,r).*sumMri;
-%            end
-
-            [H,W,C,R] = size(mat.encoding);
+            [H,W,C,R,S] = size(mat.encoding);
             sfilt = cell(1,R);
             for r=1:R, sfilt{r} = ones(2*(mat.scales(r)-1)+1); end
             enc = mat.encoding;
@@ -722,8 +711,11 @@ classdef AMAT < handle
                     sumMri  = zeros(H,W);
                     sumMri2 = zeros(H,W);
                     for i=1:r
-                        sumMri  = sumMri  + filter2(sfilt{r-i+1}, enc(:,:,c,i));
-                        sumMri2 = sumMri2 + filter2(sfilt{r-i+1}, enc2(:,:,c,i));
+                        % Squares are separable so we can speed-up conv
+                        onesrow = sfilt{r-i+1}(1,:);
+                        onescol = sfilt{r-i+1}(:,1);
+                        sumMri  = sumMri  + conv2(onesrow, onescol, enc(:,:,c,i), 'same');
+                        sumMri2 = sumMri2 + conv2(onesrow, onescol, enc2(:,:,c,i),'same');
                     end
                     squareCost(:,:,c,r) = enc2(:,:,c,r)*nnzcs(r) + sumMri2 - 2*enc(:,:,c,r).*sumMri;
                 end
@@ -754,6 +746,43 @@ classdef AMAT < handle
             mat.cost = squareCost;
         end
         
+        function enc = computeRotatedSquareEncodings(mat,integralColumns)
+            [H,W,C] = size(mat.input); R = numel(mat.scales);
+            % Non-rotated square filters
+            sfilt = cell(1,R); 
+            for r=1:R, sfilt{r} = ones(2*mat.scales(r)+1); end
+            
+            O = numel(mat.thetas);
+            enc = zeros(H,W,C,R,O);
+            for o=1:O 
+                % Create appropriate filter for use for integralColumns
+                for r=1:R
+                    rotfilt = imrotate(sfilt{r},mat.thetas(o));
+                    csum = cumsum(rotfilt,1);
+                    % Find first nonzero points for each column
+                    [y,x] = find(csum == 1);
+                    indsMinusOne = sub2ind(size(rotfilt), y-1,x);
+                    % Find last nonzero points for each column
+                    [~,y] = max(csum,[],1);
+                    x = 1:size(rotfilt,2);
+                    indsPlusOne = sub2ind(size(rotfilt), y,x);
+                    indsPlusOne(rotfilt(indsPlusOne) == 0) = [];
+                    % Reset filter
+                    rotfilt(:) = 0;
+                    rotfilt(indsMinusOne) = -1;
+                    rotfilt(indsPlusOne) = 1;
+                    % Pad filter to make odd-sized
+                    
+                    % Convolve to compute sum
+                    
+                end
+                
+            end
+        end
+        
+        function computeRotatedSquareCosts(mat)
+        end
+        
         function rotatedSqrSum = computeRotatedSquareSums(integralColumn, radius, deg)
             %COMPUTEROTATEDSQUARESUMS 
             % if the image is I, then integralColumn should be cumsum(I, 1)
@@ -780,20 +809,6 @@ classdef AMAT < handle
                 rotatedSqrSumC = conv2(cumA(:,:,c), simpleRotatedFilter, 'same');
                 % make sure the output size is consistent
                 rotatedSqrSum(:,:,c) = rotatedSqrSumC(padSize(1):end-padSize(1)-1, padSize(2)+1:end);
-            end
-        end
-        
-        function simpleRotatedFilter =  getSimpleRotatedFilter(filter)
-            [H,W] = size(filter);
-            [y,x] = find(filter);
-            onesInd = [y,x];
-            simpleRotatedFilter = zeros(H+1,W);
-            for w=1:W
-                wInd = onesInd(onesInd(:,2) == w);
-                wMin = min(wInd);
-                wMax = max(wInd);
-                simpleRotatedFilter(wMin,w) = 1;
-                simpleRotatedFilter(wMax+1,w) = -1;
             end
         end
         
