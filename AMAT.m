@@ -2,7 +2,6 @@ classdef AMAT < handle
     % TODO: add private flags for profiling
     % TODO: set properties to Transient, Private etc
     % TODO: should setCover() be private?
-    % TODO: add different types of filters in mat.filters
     properties
         scales  = 2:41  
         ws      = 1e-4      
@@ -302,6 +301,8 @@ classdef AMAT < handle
             %       where scaleTerm is a term that favors selecting disks of larger
             %       radii. Such a term is necessary, to resolve selection of disks in
             %       the case where diskCost is zero for more than on radii.
+            % NOTE: Even when using other types of shapes too (e.g.
+            % squares), we still refer to them as "disks".
             %
             % TODO: is there a way to first sort scores and then pick the next one in
             %       queue, to avoid min(diskCostEffective(:)) in each iteration?
@@ -316,10 +317,12 @@ classdef AMAT < handle
             mat.depth          = zeros(H,W); % #disks points(x,y) is covered by
             mat.price          = zeros(H,W); % error contributed by each point
             % Flag border pixels that cannot be accessed by filters.
-            r = mat.scales(1);
             covered = false(H,W);
-            covered([1:r,end-r+1:end], [1,end]) = true;
-            covered([1,end], [1:r,end-r+1:end]) = true;
+            if strcmp(mat.shape, 'disk')
+                r = mat.scales(1);
+                covered([1:r,end-r+1:end], [1,end]) = true;
+                covered([1,end], [1:r,end-r+1:end]) = true;
+            end
             BIG = 1e30;
             
             % Compute how many pixels are covered be each r-disk.
@@ -346,7 +349,18 @@ classdef AMAT < handle
                 end
                 
                 [yc,xc,rc] = ind2sub([H,W,R], indMin);
-                D = (x-xc).^2 + (y-yc).^2 <= mat.scales(rc)^2; % points covered by the selected disk
+                
+                % points covered by the selected disk
+                switch mat.shape
+                    case 'disk'
+                        D = (x-xc).^2 + (y-yc).^2 <= mat.scales(rc)^2; 
+                    case 'square'
+                        D = abs(x-xc)<=mat.scales(rc) & abs(y-yc)<=mat.scales(rc); 
+                    case 'mixed' 
+                        error('Mix of disks and squares not supported yet')
+                    otherwise, error('Shape is not supported')
+                end
+                
                 newPixelsCovered  = D & ~covered;      % NEW pixels that are covered by D
                 if ~any(newPixelsCovered(:))
                     warning('Stopping: selected disk covers zero (0) new pixels.')
@@ -576,7 +590,7 @@ classdef AMAT < handle
                 case 'disk'
                     mat.filters = cell(1, numScales);
                     for i=1:numScales
-                        mat.filters{i} = AMAT.disk(mat.scales(i))); 
+                        mat.filters{i} = AMAT.disk(mat.scales(i)); 
                     end
                 case 'square'
                     numShapes = 1 + numel(mat.thetas);
@@ -717,8 +731,8 @@ classdef AMAT < handle
             % Optionally compute encodings for rotated squares
             if ~isempty(mat.thetas)
                 encrot = computeRotatedSquareEncodings(mat, cumsum(inputlab,1));
+                enc = cat(5, enc, encrot);
             end
-            enc = cat(5, enc, encrot);            
         end
 
         function enc = computeRotatedSquareEncodings(mat,integralColumns)
@@ -787,31 +801,27 @@ classdef AMAT < handle
                 end
             end
             
+            % Same postprocesssing as computeDiskCosts
+            BIG = 1e30;
+            for r=1:R
+                scale = mat.scales(r);
+                squareCost([1:scale, end-scale+1:end],:,:,r,:) = BIG;
+                squareCost(:,[1:scale, end-scale+1:end],:,r,:) = BIG;
+            end
+                        
+            % Compute costs for rotated squares
             if ~isempty(mat.thetas)
                 O = numel(mat.thetas);
                 encrot  = enc(:,:,:,:,end-O+1:end);
                 enc2rot = enc2(:,:,:,:,end-O+1:end);
                 squareRotCost = computeRotatedSquareCosts(mat,encrot,enc2rot);
-            end
-            
-            % Concatenate rotated and axis-aligned square costs
-            squareCost = cat(5,squareCost, squareRotCost);
-            
-            % Same postprocesssing as computeDiskCosts
-            % Fix boundary conditions. Setting scale(r)-borders to a very big cost
-            % helps us avoid selecting squares that cross the image boundaries.
-            % We do not use Inf to avoid complications in the greedy set cover
-            % algorithm, caused by inf-inf subtractions and inf/inf divisions.
-            % Also, keep in mind that max(0,NaN) = 0.
-            BIG = 1e30;
-            for r=1:R
-                scale = mat.scales(r);
-                scalerot = ceil(sqrt(2)*mat.scales(r)); % square "radius"
-                squareCost([1:scale, end-scale+1:end],:,:,r,:) = BIG;
-                squareCost(:,[1:scale, end-scale+1:end],:,r,:) = BIG;
-                squareRotCost([1:scalerot, end-scalerot+1:end],:,:,r,:) = BIG;
-                squareRotCost(:,[1:scalerot, end-scalerot+1:end],:,r,:) = BIG;
-            end
+                for r=1:R
+                    scalerot = ceil(sqrt(2)*mat.scales(r)); % square "radius"
+                    squareRotCost([1:scalerot, end-scalerot+1:end],:,:,r,:) = BIG;
+                    squareRotCost(:,[1:scalerot, end-scalerot+1:end],:,r,:) = BIG;
+                end
+                squareCost = cat(5,squareCost, squareRotCost);
+            end            
             
             % Sometimes due to numerical errors, costs are slightly negative.
             squareCost = max(0,squareCost);
@@ -878,48 +888,7 @@ classdef AMAT < handle
             end
             squareRotCost = squareRotCost(pad+1:end-pad, pad+1:end-pad,:,:,:);
         end
-                
-        function out = addMask(I, y, x, msk)
-            % Add msk to image I centered at y,x
-            
-            [H,W,~] = size(I);
-            
-            % make sure fil has a center
-            msk = padarray(msk, double(mod(size(msk), 2) == 0), 'pre');
-            
-            [ry,rx,~] = size(msk);                sfilt = ones(2*mat.scales(r)+1);
-
-            ry = floor(ry / 2);
-            rx = floor(rx / 2);
-            
-            % Since we are using convolution, the image should be rotated by 180 deg.
-            msk = imrotate(msk,180);
-            
-            y1 = y - ry; y2 = y + ry; x1 = x - rx; x2 = x + rx;
-            
-            if (y-ry < 1)
-                msk = msk(2+ry-y:end,:,:);
-                y1 = 1;
-            end
-            if (x-rx < 1)
-                msk = msk(:,2+rx-x:end,:);
-                x1 = 1;
-            end
-            if (y+ry > H)
-                msk = msk(1:end-(y+ry-H),:,:);
-                y2 = H;
-            end
-            if (x+rx > W)
-                msk = msk(:,1:end-(x+rx-W),:);
-                x2 = W;
-            end
-            
-            I(y1:y2,x1:x2,:) = I(y1:y2,x1:x2,:) + msk;
-            out = I;
-            
-        end
-        
-                
+                                
     end
     
     methods (Static)
