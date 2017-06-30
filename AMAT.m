@@ -263,13 +263,16 @@ classdef AMAT < handle
         end
         
         function computeEncodings(mat)
+            inputlab = rgb2labNormalized(mat.input);
             switch mat.shape
                 case 'disk'
-                    computeDiskEncodings(mat);
+                    mat.encoding = computeDiskEncodings(mat,inputlab);
                 case 'square'
-                    computeSquareEncodings(mat);
+                    mat.encoding = computeSquareEncodings(mat,inputlab);
                 case 'mixed'
-                    computeMixedEncodings(mat);
+                    encd = computeDiskEncodings(mat,inputlab);
+                    encs = computeSquareEncodings(mat,inputlab);
+                    mat.encoding = cat(5,encd,encs);
                 otherwise, error('Invalid shape')
             end            
         end
@@ -277,11 +280,13 @@ classdef AMAT < handle
         function computeCosts(mat)
             switch mat.shape
                 case 'disk'
-                    computeDiskCosts(mat);
+                    mat.cost = computeDiskCosts(mat);
                 case 'square'
-                    computeSquareCosts(mat);
+                    mat.cost = computeSquareCosts(mat);
                 case 'mixed'
-                    computeMixedCosts(mat);
+                    dcost = computeDiskCosts(mat);
+                    scost = computeSquareCosts(mat);
+                    mat.cost = cat(4, dcost, scost);
                 otherwise, error('Invalid shape')
             end
         end
@@ -567,26 +572,47 @@ classdef AMAT < handle
         
         function initializeFilters(mat)
             numScales = numel(mat.scales);
-            mat.filters = cell(1, numScales);
             switch mat.shape
                 case 'disk'
-                    f = @(x) disk(x);
+                    mat.filters = cell(1, numScales);
+                    for i=1:numScales
+                        mat.filters{i} = AMAT.disk(mat.scales(i))); 
+                    end
                 case 'square'
-                    f = @(x) ones(2*x+1);
+                    numShapes = 1 + numel(mat.thetas);
+                    mat.filters = cell(numShapes, numScales);
+                    for i=1:numScales
+                        mat.filters{1,i} = AMAT.square(mat.scales(i)); 
+                    end
+                case 'mixed'
+                    numShapes = 2 + numel(mat.thetas);
+                    mat.filters = cell(numShapes, numScales);
+                    
+                    % disks
+                    for i=1:numScales
+                        mat.filters{1,i} = AMAT.disk(mat.scales(i));
+                    end
+                    % squares without rotation
+                    for i=1:numScales
+                        mat.filters{2,i} = AMAT.square(mat.scales(i));
+                    end
                 otherwise, error('Invalid filter shape')
             end
-            for i=1:numScales
-                mat.filters{i} = double(f(mat.scales(i))); 
+            % squares with rotations
+            k = size(mat.filters,1); % dimension corresponding to square
+            for d=1:numel(mat.thetas)
+                for i=1:numScales
+                    mat.filters{k+d,i} = AMAT.square(mat.scales(i), mat.thetas(d));
+                end
             end
         end
         
-        function computeDiskEncodings(mat)
+        function enc = computeDiskEncodings(mat,inputlab)
             % Efficient implementation, using convolutions with 
             % circles + cumsum instead of convolutions with disks.
-            inputlab = rgb2labNormalized(mat.input);
             [H,W,C] = size(mat.input); R = numel(mat.scales);
-            cfilt = cell(1,R); cfilt{1} = double(disk(mat.scales(1)));
-            for r=2:R, cfilt{r} = double(circle(mat.scales(r))); end
+            cfilt = cell(1,R); cfilt{1} = AMAT.disk(mat.scales(1));
+            for r=2:R, cfilt{r} = AMAT.circle(mat.scales(r)); end
             enc = zeros(H,W,C,R);
             for c=1:C
                 for r=1:R
@@ -599,7 +625,7 @@ classdef AMAT < handle
             mat.encoding = enc;
         end
         
-        function computeDiskCosts(mat)
+        function diskCost = computeDiskCosts(mat)
             % This function computes a heuristic that represents the 
             % ability to reconstruct a disk-shaped part of the input image
             % using the mean RGB values computed over the same area.
@@ -621,17 +647,19 @@ classdef AMAT < handle
             % D_rk*enc2 + conv2(enc2) + 2 .* enc .* conv2(enc)
             % Given an r-disk, filters(r-i+1) is a mask that marks the 
             % centers of all contained i-disks.
-            [H,W,C,R] = size(mat.encoding);
-            cfilt     = cell(1,R);
-            cfilt{1}  = double(disk(mat.scales(1)-1));
-            for r=2:R, cfilt{r} = double(circle(mat.scales(r-1))); end
+            
             % Precompute necessary quantitities. We use circular filters applied on
             % cumulative sums instead of disk filters, for efficiency.
-            enc      = mat.encoding;
-            enc2     = enc.^2;
-            enccsum  = cumsum(enc,4);
-            enc2csum = cumsum(enc2,4);
-            nnzcd    = cumsum(cumsum(cellfun(@nnz, cfilt)));
+            % Disk costs are always the first channel
+            enc       = mat.encoding(:,:,:,:,1); 
+            enc2      = enc.^2;
+            enccsum   = cumsum(enc,4);
+            enc2csum  = cumsum(enc2,4);
+            [H,W,C,R] = size(enc);
+            cfilt     = cell(1,R);
+            cfilt{1}  = AMAT.disk(mat.scales(1)-1);
+            for r=2:R, cfilt{r} = AMAT.circle(mat.scales(r-1)); end
+            nnzcd = cumsum(cumsum(cellfun(@nnz, cfilt)));
             
             diskCost = zeros(H,W,C,R);
             for c=1:C
@@ -667,22 +695,19 @@ classdef AMAT < handle
                 diskCost = diskCost(:,:,1,:)*wc(1) + diskCost(:,:,2,:)*wc(2) + diskCost(:,:,3,:)*wc(3);
             end
             diskCost = squeeze(diskCost);
-            mat.cost = diskCost;
         end
         
-        function computeSquareEncodings(mat)
-            inputlab = rgb2labNormalized(mat.input);
+        function enc = computeSquareEncodings(mat,inputlab)
             [H,W,C] = size(mat.input); 
             R = numel(mat.scales);
             
             % Since square filters are separable, using filter2 + full
             % filters is more efficient than using integral images.
-            sfilt = cell(1,R); 
-            for r=1:R, sfilt{r} = ones(2*mat.scales(r)+1); end
+            squareIndex = min(2,size(mat.filters,1));
             enc = zeros(H,W,C,R);
             for c=1:C
                 for r=1:R
-                    sep = sfilt{r}(1,:);
+                    sep = mat.filters{squareIndex,r}(1,:);
                     enc(:,:,c,r) = conv2(sep,sep',inputlab(:,:,c),'same');
                 end
             end
@@ -693,18 +718,60 @@ classdef AMAT < handle
             if ~isempty(mat.thetas)
                 encrot = computeRotatedSquareEncodings(mat, cumsum(inputlab,1));
             end
-            mat.encoding = enc;            
+            enc = cat(5, enc, encrot);            
+        end
+
+        function enc = computeRotatedSquareEncodings(mat,integralColumns)
+            % Pad integralColumns image with max size of rotated filter.
+            pad = ceil(sqrt(2)*mat.scales(end)); % square radius
+            integralColumns = padarray(integralColumns,[pad,pad],0,'pre');
+            integralColumns = padarray(integralColumns,[pad,pad],'replicate','post');
+            [H,W,C] = size(integralColumns); 
+            R = numel(mat.scales);
+            O = numel(mat.thetas);
+            % Rotated square filters and integral filters
+            squareIndex = min(2,size(mat.filters,1));
+            rotfilt = cell(O,R);
+            pfilt   = cell(O,R);
+            for r=1:R
+                for o=1:O
+                    rotfilt{o,r} = mat.filters{squareIndex,r};
+                    % Make sure that the border has a zero-border
+                    pfilt{o,r} = padarray(rotfilt{o,r}, [1 1],0);
+                    pfilt{o,r} = [-diff(pfilt{o,r}); zeros(1,size(pfilt{o,r},2))];
+                    % Make sure filter is odd-sized
+                    pad = ~isodd(size(pfilt{o,r}));
+                    pfilt{o,r} = padarray(pfilt{o,r}, pad, 0, 'post');
+                end
+            end
+            % Areas of rotated square filters
+            areas = cellfun(@nnz, rotfilt);
+            
+            % Compute heuristic encodings for rotated square filters
+            enc = zeros(H,W,C,R,O);
+            for o=1:O 
+                for r=1:R
+                    for c=1:C
+                        enc(:,:,c,r,o) = filter2(pfilt{o,r}, integralColumns)/areas(o,r);
+                    end
+                end
+            end
+            enc = enc(pad+1:end-pad,pad+1:end-pad,:,:,:);
         end
         
-        function computeSquareCosts(mat)
+        function squareCost = computeSquareCosts(mat)
             % Similar to computeDiskCosts() but for square filters.
-            [H,W,C,R,S] = size(mat.encoding);
-            sfilt = cell(1,R);
-            for r=1:R, sfilt{r} = ones(2*(mat.scales(r)-1)+1); end
-            enc = mat.encoding;
+            % If we only use square filters, then enc is the first channel,
+            % otherwise it's the second channel
+            squareIndex = min(2,size(mat.encoding,5));
+            enc = mat.encoding(:,:,:,:,squareIndex);
             enc2 = enc.^2;
-            nnzcs= cumsum((2*(mat.scales-1)+1).^2); % cumsum of square areas
+            [H,W,C,R] = size(enc);
+            sfilt = cell(1,R); sfilt{1} = AMAT.square(mat.scales(1)-1);
+            for r=2:R, sfilt{r} = AMAT.square(mat.scales(r-1)); end
+            nnzcs= cumsum(cellfun(@nnz,sfilt)); % cumsum of square areas
 
+            % Compute costs for axis-aligned squares
             squareCost = zeros(H,W,C,R);
             for c=1:C
                 for r=1:R
@@ -712,14 +779,23 @@ classdef AMAT < handle
                     sumMri2 = zeros(H,W);
                     for i=1:r
                         % Squares are separable so we can speed-up conv
-                        onesrow = sfilt{r-i+1}(1,:);
-                        onescol = sfilt{r-i+1}(:,1);
-                        sumMri  = sumMri  + conv2(onesrow, onescol, enc(:,:,c,i), 'same');
-                        sumMri2 = sumMri2 + conv2(onesrow, onescol, enc2(:,:,c,i),'same');
+                        fones = sfilt{r-i+1}(1,:);
+                        sumMri  = sumMri  + conv2(fones, fones', enc(:,:,c,i), 'same');
+                        sumMri2 = sumMri2 + conv2(fones, fones', enc2(:,:,c,i),'same');
                     end
                     squareCost(:,:,c,r) = enc2(:,:,c,r)*nnzcs(r) + sumMri2 - 2*enc(:,:,c,r).*sumMri;
                 end
             end
+            
+            if ~isempty(mat.thetas)
+                O = numel(mat.thetas);
+                encrot  = enc(:,:,:,:,end-O+1:end);
+                enc2rot = enc2(:,:,:,:,end-O+1:end);
+                squareRotCost = computeRotatedSquareCosts(mat,encrot,enc2rot);
+            end
+            
+            % Concatenate rotated and axis-aligned square costs
+            squareCost = cat(5,squareCost, squareRotCost);
             
             % Same postprocesssing as computeDiskCosts
             % Fix boundary conditions. Setting scale(r)-borders to a very big cost
@@ -730,8 +806,11 @@ classdef AMAT < handle
             BIG = 1e30;
             for r=1:R
                 scale = mat.scales(r);
-                squareCost([1:scale, end-scale+1:end],:,:,r) = BIG;
-                squareCost(:,[1:scale, end-scale+1:end],:,r) = BIG;
+                scalerot = ceil(sqrt(2)*mat.scales(r)); % square "radius"
+                squareCost([1:scale, end-scale+1:end],:,:,r,:) = BIG;
+                squareCost(:,[1:scale, end-scale+1:end],:,r,:) = BIG;
+                squareRotCost([1:scalerot, end-scalerot+1:end],:,:,r,:) = BIG;
+                squareRotCost(:,[1:scalerot, end-scalerot+1:end],:,r,:) = BIG;
             end
             
             % Sometimes due to numerical errors, costs are slightly negative.
@@ -740,78 +819,66 @@ classdef AMAT < handle
             % Combine costs from different channels
             if C > 1
                 wc = [0.5,0.25,0.25]; % weights for luminance and color channels
-                squareCost = squareCost(:,:,1,:)*wc(1) + squareCost(:,:,2,:)*wc(2) + squareCost(:,:,3,:)*wc(3);
+                squareCost = squareCost(:,:,1,:,:)*wc(1) + ...
+                             squareCost(:,:,2,:,:)*wc(2) + ...
+                             squareCost(:,:,3,:,:)*wc(3);
             end
             squareCost = squeeze(squareCost);
-            mat.cost = squareCost;
         end
-        
-        function enc = computeRotatedSquareEncodings(mat,integralColumns)
-            [H,W,C] = size(mat.input); R = numel(mat.scales);
-            % Non-rotated square filters
-            sfilt = cell(1,R); 
-            for r=1:R, sfilt{r} = ones(2*mat.scales(r)+1); end
-            
-            O = numel(mat.thetas);
-            enc = zeros(H,W,C,R,O);
-            for o=1:O 
-                % Create appropriate filter for use for integralColumns
-                for r=1:R
-                    rotfilt = imrotate(sfilt{r},mat.thetas(o));
-                    csum = cumsum(rotfilt,1);
-                    % Find first nonzero points for each column
-                    [y,x] = find(csum == 1);
-                    indsMinusOne = sub2ind(size(rotfilt), y-1,x);
-                    % Find last nonzero points for each column
-                    [~,y] = max(csum,[],1);
-                    x = 1:size(rotfilt,2);
-                    indsPlusOne = sub2ind(size(rotfilt), y,x);
-                    indsPlusOne(rotfilt(indsPlusOne) == 0) = [];
-                    % Reset filter
-                    rotfilt(:) = 0;
-                    rotfilt(indsMinusOne) = -1;
-                    rotfilt(indsPlusOne) = 1;
-                    % Pad filter to make odd-sized
-                    
-                    % Convolve to compute sum
-                    
-                end
                 
+        function squareRotCost = computeRotatedSquareCosts(mat,enc,enc2)
+            % Integral columns used to efficiently compute sums inside
+            % areas of rotated squares
+            encic  = cumsum(enc,1);
+            enc2ic = cumsum(enc2,1);
+            pad    = ceil(sqrt(2)*mat.scales(end));
+            encic  = padarray(encic,  [pad pad],0,'pre');
+            encic  = padarray(encic,  [pad pad],'replicate','post');
+            enc2ic = padarray(enc2ic, [pad pad],0,'pre');
+            enc2ic = padarray(enc2ic, [pad pad],'replicate','post');
+            [H,W,C] = size(encic); 
+            R = numel(mat.scales);
+            O = numel(mat.thetas);
+            
+            % Rotated square filters and integral filters
+            sfilt   = cell(1,R);
+            rotfilt = cell(O,R);
+            pfilt   = cell(O,R);
+            sfilt{1}= AMAT.square(mat.scales(1)-1);
+            for r=2:R, sfilt{r} = AMAT.square(mat.scales(r-1)); end
+            for r=1:R
+                for o=1:O
+                    rotfilt{o,r} = imrotate(sfilt,mat.thetas(o));
+                    % Make sure that the border has a zero-border
+                    pfilt{o,r} = padarray(rotfilt{o,r}, [1 1],0);
+                    pfilt{o,r} = [-diff(pfilt{o,r}); zeros(1,size(pfilt{o,r},2))];
+                    % Make sure filter is odd-sized
+                    pad = ~isodd(size(pfilt{o,r}));
+                    pfilt{o,r} = padarray(pfilt{o,r}, pad, 0, 'post');
+                end
             end
-        end
-        
-        function computeRotatedSquareCosts(mat)
-        end
-        
-        function rotatedSqrSum = computeRotatedSquareSums(integralColumn, radius, deg)
-            %COMPUTEROTATEDSQUARESUMS 
-            % if the image is I, then integralColumn should be cumsum(I, 1)
-            
-            [H,W,C] = size(integralColumn);
-            
-            filter = ones(2*radius+1);
-            
-            % rotated square
-            rotatedFilter = imrotate(filter, deg);
-            
-            % make sure both the width and height of rotatedFilter are odd to make sure
-            % it has a center
-            rotatedFilter = padarray(rotatedFilter, double(mod(size(rotatedFilter), 2) == 0), 'pre');
-            padSize = floor(size(rotatedFilter) / 2);
-            
-            % pad integralColumn to deal with pixels along the border
-            cumA = padarray(padarray(integralColumn, padSize, 'pre'), [padSize(1),0], 'post', 'replicate');
-            
-            simpleRotatedFilter = getSimpleRotatedFilter(rotatedFilter);
-            
-            rotatedSqrSum = zeros(H,W,C);
-            for c=1:C
-                rotatedSqrSumC = conv2(cumA(:,:,c), simpleRotatedFilter, 'same');
-                % make sure the output size is consistent
-                rotatedSqrSum(:,:,c) = rotatedSqrSumC(padSize(1):end-padSize(1)-1, padSize(2)+1:end);
+            % Areas of rotated square filters
+            nnzcs = cumsum(cellfun(@nnz, rotfilt),2);
+
+            % Compute heuristic costs for rotated square filters
+            squareRotCost = zeros(H,W,C,R,O);
+            for o=1:O
+                for c=1:C
+                    for r=1:R
+                        sumMri  = zeros(H,W);
+                        sumMri2 = zeros(H,W);
+                        for i=1:r
+                            sumMri  = sumMri  + filter2(pfilt{o,r-i+1}, encic(:,:,c,i));
+                            sumMri2 = sumMri2 + filter2(pfilt{o,r-i+1}, enc2ic(:,:,c,i));
+                        end
+                        squareRotCost(:,:,c,r,o) = enc2(:,:,c,r,o)*nnzcs(o,r) + ...
+                            sumMri2 - 2*enc(:,:,c,r,o).*sumMri;
+                    end
+                end
             end
+            squareRotCost = squareRotCost(pad+1:end-pad, pad+1:end-pad,:,:,:);
         end
-        
+                
         function out = addMask(I, y, x, msk)
             % Add msk to image I centered at y,x
             
@@ -820,7 +887,8 @@ classdef AMAT < handle
             % make sure fil has a center
             msk = padarray(msk, double(mod(size(msk), 2) == 0), 'pre');
             
-            [ry,rx,~] = size(msk);
+            [ry,rx,~] = size(msk);                sfilt = ones(2*mat.scales(r)+1);
+
             ry = floor(ry / 2);
             rx = floor(rx / 2);
             
@@ -850,11 +918,30 @@ classdef AMAT < handle
             out = I;
             
         end
-
-
+        
                 
     end
     
+    methods (Static)
+        function d = disk(r)
+            r = double(r); % make sure r can take negative values
+            [x,y] = meshgrid(-r:r, -r:r);
+            d = double(x.^2 + y.^2 <= r^2);
+        end
+        
+        function s = square(r,theta)
+            s = ones(2*r+1);
+            if nargin > 1
+                s = imrotate(s,theta);
+            end
+        end
+        
+        function c = circle(r)
+            r = double(r); % make sure r can take negative values
+            [x,y] = meshgrid(-r:r, -r:r);
+            c = double((x.^2 + y.^2 <= r^2) & (x.^2 + y.^2 > (r-1)^2));
+        end
+    end
     
     
 end
