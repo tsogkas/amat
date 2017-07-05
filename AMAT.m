@@ -7,11 +7,12 @@ classdef AMAT < handle
         ws      = 1e-4      
         vistop  = 0  
         shape   = 'disk'
-        rotations = [22.5, 45, 67.5]
+        rotations = [11.25, 22.5, 33.75 45, 56.25, 67.5, 78.75]
         filters 
         input
         reconstruction
         encoding
+        encodingRotated
         axis
         radius
         shapeId
@@ -267,6 +268,8 @@ classdef AMAT < handle
                     computeSquareEncodings(mat);
                 case 'mixed'
                     computeMixedEncodings(mat);
+                case 'mixed2'
+                    computeMixedEncodings2(mat);
                 otherwise, error('Invalid shape')
             end            
         end
@@ -279,6 +282,8 @@ classdef AMAT < handle
                     computeSquareCosts(mat);
                 case 'mixed'
                     computeMixedCosts(mat);
+                case 'mixed2'
+                    computeMixedCosts2(mat)
                 otherwise, error('Invalid shape')
             end
         end
@@ -299,7 +304,7 @@ classdef AMAT < handle
             %       queue, to avoid min(diskCostEffective(:)) in each iteration?
             
             % Initializations
-            [H,W,C,R,S]          = size(mat.encoding);
+            [H,W,C,R,S]        = size(mat.encoding);
             zeroLabNormalized  = rgb2labNormalized(zeros(H,W,C));
             mat.input          = reshape(mat.input, H*W, C);
             mat.reconstruction = reshape(zeroLabNormalized,H*W,C);
@@ -359,7 +364,7 @@ classdef AMAT < handle
                 ymin = min(yy); ymax = max(yy);
                 newPixelsCovered = double(newPixelsCovered);
                 
-                if (strcmp(mat.shape, 'mixed'))
+                if (strcmp(mat.shape, 'mixed') || strcmp(mat.shape, 'mixed2'))
                     numShapes = 2 + numel(mat.rotations);
                 else
                     numShapes = 1;
@@ -455,7 +460,7 @@ classdef AMAT < handle
         end
         
         function rec = computeReconstruction(mat)
-            if (strcmp(mat.shape, 'mixed'))
+            if (strcmp(mat.shape, 'mixed') || strcmp(mat.shape, 'mixed2'))
                 diskf = cell(2+numel(mat.rotations),numel(mat.scales));
             else
                 diskf = cell(1,numel(mat.scales));
@@ -584,7 +589,7 @@ classdef AMAT < handle
         function initializeFilters(mat)
             numScales = numel(mat.scales);
             
-            if (strcmp(mat.shape, 'mixed'))
+            if (strcmp(mat.shape, 'mixed') || strcmp(mat.shape, 'mixed2'))
                 degrees = mat.rotations;
                 numShapes = 2 + numel(degrees);
                 mat.filters = cell(numShapes, numScales);
@@ -782,7 +787,7 @@ classdef AMAT < handle
         end
         
         function computeMixedEncodings(mat)
-             % convert RGB to Lab
+            % convert RGB to Lab
             inputlab = rgb2labNormalized(mat.input);
             
             % Compute the integral column of input.
@@ -808,6 +813,48 @@ classdef AMAT < handle
                 end
             end
             mat.encoding = enc;
+        end
+        
+        function computeMixedEncodings2(mat)
+             % convert RGB to Lab
+            inputlab = rgb2labNormalized(mat.input);
+            
+            [H,W,C] = size(mat.input);
+            R = numel(mat.scales);
+            
+            degrees = mat.rotations;
+            encRotated = cell(1,2+numel(degrees));
+            enc = zeros(H,W,C,R,2+numel(degrees));
+            
+            mat.computeDiskEncodings();
+            encRotated{1} = mat.encoding;
+            enc(:,:,:,:,1) = mat.encoding;
+            
+            mat.computeSquareEncodings();
+            encRotated{2} = mat.encoding;
+            enc(:,:,:,:,2) = mat.encoding;
+            
+            
+            for d=1:numel(degrees)
+                rotatedInput = imrotate(inputlab, -degrees(d));
+                
+                % integral image of rotatedInput
+                inputIntegral = integralImage(rotatedInput);
+                
+                [h,w,c] = size(rotatedInput);
+                encd = zeros(h,w,c,R);
+                
+                for i=1:R
+                    r = mat.scales(i);
+                    % Use integral image to compute the sum of the squres.
+                    encTemp = computeSquareSumsConv(inputIntegral, r);
+                    encd(:,:,:,i) = encTemp ./ squareAreas(h,w,r);
+                    enc(:,:,:,i,d+2) = imcropCenter(imrotate(encd(:,:,:,i), degrees(d)), H,W);
+                end
+                encRotated{d+2} = encd;
+            end
+            mat.encoding = enc;
+            mat.encodingRotated = encRotated;
         end
         
         function computeMixedCosts(mat)
@@ -854,6 +901,80 @@ classdef AMAT < handle
                         sumMri2 = sumMri2 + computeRotatedSquareSums(enc2IntegralColumn(:,:,:,i), mat.scales(r-i+1)-1, degrees(d));
                     end
                     squareCost(:,:,:,r) = enc2(:,:,:,r)*nnzcs(r) + sumMri2 - 2*enc(:,:,:,r).*sumMri;
+                end
+                
+                % Same postprocesssing as computeDiskCosts
+                
+                % Fix boundary conditions. Setting scale(r)-borders to a very big cost
+                % helps us avoid selecting disks that cross the image boundaries.
+                % We do not use Inf to avoid complications in the greedy set cover
+                % algorithm, caused by inf-inf subtractions and inf/inf divisions.
+                % Also, keep in mind that max(0,NaN) = 0.
+                BIG = 1e30;
+                for r=1:R
+                    scale = mat.scales(r);
+                    scale = ceil(sqrt(2) * scale);
+                    squareCost([1:scale, end-scale+1:end],:,:,r) = BIG;
+                    squareCost(:,[1:scale, end-scale+1:end],:,r) = BIG;
+                end
+                
+                % Sometimes due to numerical errors, cost are slightly negative. Fix this.
+                squareCost = max(0,squareCost);
+                
+                % Combine costs from different channels
+                if C > 1
+                    wc = [0.5,0.25,0.25]; % weights for luminance and color channels
+                    squareCost = squareCost(:,:,1,:)*wc(1) + squareCost(:,:,2,:)*wc(2) + squareCost(:,:,3,:)*wc(3);
+                end
+                squareCost = squeeze(squareCost);
+                mixedCost(:,:,:,d+2) = squareCost;
+            end
+            
+            mat.cost = mixedCost;
+        end
+        
+        function computeMixedCosts2(mat)
+            enc = mat.encoding;
+            [H,W,C,R,S] = size(enc);
+            mixedCost = zeros(H,W,R,S);
+            
+            % disk costs
+            mat.encoding = enc(:,:,:,:,1);
+            mat.computeDiskCosts();
+            mixedCost(:,:,:,1) = mat.cost;
+            
+            % square costs without rotations
+            mat.encoding = enc(:,:,:,:,2);
+            mat.computeSquareCosts();
+            mixedCost(:,:,:,2) = mat.cost;
+            
+            mat.encoding = enc;
+            
+            degrees = mat.rotations;
+            
+            for d=1:numel(degrees)
+                % compute the square costs
+                
+                enc = mat.encodingRotated{d+2};
+                enc2 = enc .^ 2;
+                squareCost = zeros(H,W,C,R);
+                [h,w,c,~] = size(enc);
+                
+                
+                % heuristic square cost approach
+                % integral images
+                encIntegral = integralImage(enc);
+                enc2Integral = integralImage(enc2);
+                nnzcs = cumsum((2*(mat.scales-1)+1).^2);
+                for r=1:R
+                    sumMri = zeros(h,w,c);
+                    sumMri2 = zeros(h,w,c);
+                    for i=1:r
+                        sumMri = sumMri + computeSquareSumsConv(encIntegral(:,:,:,i), mat.scales(r-i+1) - 1);
+                        sumMri2 = sumMri2 + computeSquareSumsConv(enc2Integral(:,:,:,i), mat.scales(r-i+1) - 1);
+                    end
+                    squareCostTemp = enc2(:,:,:,r)*nnzcs(r) + sumMri2 - 2*enc(:,:,:,r).*sumMri;
+                    squareCost(:,:,:,r) = imcropCenter(imrotate(squareCostTemp, degrees(d)),H,W);
                 end
                 
                 % Same postprocesssing as computeDiskCosts
