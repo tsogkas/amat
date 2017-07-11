@@ -325,7 +325,7 @@ classdef AMAT < handle
             end
             BIG = 1e30;
             
-            % Compute how many pixels are covered be each r-disk.
+            % Compute how many pixels are covered by each r-disk.
             diskAreas = cellfun(@nnz,mat.filters);
             diskCost  = mat.cost;
             numNewPixelsCovered = repmat(reshape(diskAreas,1,1,[]), [H,W]);
@@ -888,7 +888,17 @@ classdef AMAT < handle
             end
             squareRotCost = squareRotCost(pad+1:end-pad, pad+1:end-pad,:,:,:);
         end
-                                
+        
+        function setCoverMex(mat)
+            % It's easier to compute CIE Lab zeros in MATLAB
+            [H,W,C,~]          = size(mat.encoding);
+            zeroLabNormalized  = rgb2labNormalized(zeros(H,W,C));
+            [mat.reconstruction, mat.axis, mat.radius, mat.depth, mat.price] = ...
+                setCoverGreedyMex(mat,zeroLabNormalized);
+            mat.axis = labNormalized2rgb(mat.axis);
+            mat.computeReconstruction()
+        end
+                                        
     end
     
     methods (Static)
