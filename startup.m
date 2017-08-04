@@ -43,4 +43,5 @@ end
 addpath(genpath('external/spb-mil/'))
 addpath('external/L0smoothing/code')
 addpath('external/matlab-utils')
+addpath('cpp')
 disp('-- Added external packages to matlab path: CHECK!')

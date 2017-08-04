@@ -1,0 +1,27 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "taskName": "AMAT-cpp-debug",
+            "command": "g++ -g cpp/main.cpp cpp/AMAT.cpp -o cpp/AMAT-cpp-debug",
+            "type": "shell",
+            "group": "build"
+        },
+
+        {
+            "taskName": "AMAT-mex-debug",
+            "command": "/usr/local/matlab/bin/mex -g cpp/mexFunction.cpp cpp/AMAT.cpp -output cpp/setCoverGreedy",
+            "type": "shell",
+            "group": "build"            
+        },
+        
+        {
+            "taskName": "AMAT-mex",
+            "command": "/usr/local/matlab/bin/mex -O cpp/mexFunction.cpp cpp/AMAT.cpp -output cpp/setCoverGreedy",
+            "type": "shell",
+            "group": "build"            
+        }
+    ]
+}

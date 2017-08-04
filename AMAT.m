@@ -54,13 +54,36 @@ classdef AMAT < handle
         end
 
         function mat = compute(mat)
-            profile on;
+%             profile on;
             mat.computeEncodings();
             mat.computeCosts();
-            profile off; profile viewer;
+%             profile off; profile viewer;
             mat.setCover();
+%             mat.setCoverMex();
         end
         
+        function initialize(mat,img,varargin)
+            defaults = {'scales',   2:41,...
+                        'ws',       1e-4,...
+                        'vistop',   0,...
+                        'shape',    'disk',...
+                        'thetas',   []
+                        };
+            opts = parseVarargin(defaults,varargin);
+            if isscalar(opts('scales'))
+                mat.scales  = 2:opts('scales');
+            else
+                mat.scales  = opts('scales');
+            end
+            mat.ws      = opts('ws');
+            mat.vistop  = opts('vistop');
+            mat.shape   = opts('shape');
+            mat.thetas = opts('thetas');
+            mat.input   = im2double(img);
+            mat.scaleIdx= containers.Map(mat.scales, 1:numel(mat.scales));
+            mat.initializeFilters();            
+        end
+                
         function mat = group(mat,marginFactor,colortol)
             if nargin < 2, marginFactor = 1; end
             if nargin < 3, colortol = 0.05; end
@@ -343,6 +366,7 @@ classdef AMAT < handle
             while ~all(covered(:))
                 % Find the most cost-effective disk at the current iteration
                 [minCost, indMin] = min(diskCostEffective(:));
+                % disp(indMin);
                 if isinf(minCost),
                     warning('Stopping: selected disk has infinite cost.')
                     break;
@@ -362,6 +386,7 @@ classdef AMAT < handle
                 end
                 
                 newPixelsCovered  = D & ~covered;      % NEW pixels that are covered by D
+                disp(nnz(newPixelsCovered))
                 if ~any(newPixelsCovered(:))
                     warning('Stopping: selected disk covers zero (0) new pixels.')
                     break;
@@ -558,32 +583,20 @@ classdef AMAT < handle
             end
             seg = max(segments,[],3);  
         end
+
+        function setCoverMex(mat)
+            % It's easier to compute CIE Lab zeros in MATLAB
+            [H,W,C,~]          = size(mat.encoding);
+            zeroLabNormalized  = rgb2labNormalized(zeros(H,W,C));
+            [mat.reconstruction, mat.axis, mat.radius, mat.depth, mat.price] = ...
+                setCoverGreedy(mat,zeroLabNormalized);
+            mat.axis = labNormalized2rgb(mat.axis);
+            mat.computeReconstruction()
+        end        
         
-    end
+    end % end of public methods
     
     methods(Access=private)
-        function initialize(mat,img,varargin)
-            defaults = {'scales',   2:41,...
-                        'ws',       1e-4,...
-                        'vistop',   0,...
-                        'shape',    'disk',...
-                        'thetas',   []
-                        };
-            opts = parseVarargin(defaults,varargin);
-            if isscalar(opts('scales'))
-                mat.scales  = 2:opts('scales');
-            else
-                mat.scales  = opts('scales');
-            end
-            mat.ws      = opts('ws');
-            mat.vistop  = opts('vistop');
-            mat.shape   = opts('shape');
-            mat.thetas = opts('thetas');
-            mat.input   = im2double(img);
-            mat.scaleIdx= containers.Map(mat.scales, 1:numel(mat.scales));
-            mat.initializeFilters();            
-        end
-        
         function initializeFilters(mat)
             numScales = numel(mat.scales);
             switch mat.shape
@@ -887,16 +900,6 @@ classdef AMAT < handle
                 end
             end
             squareRotCost = squareRotCost(pad+1:end-pad, pad+1:end-pad,:,:,:);
-        end
-        
-        function setCoverMex(mat)
-            % It's easier to compute CIE Lab zeros in MATLAB
-            [H,W,C,~]          = size(mat.encoding);
-            zeroLabNormalized  = rgb2labNormalized(zeros(H,W,C));
-            [mat.reconstruction, mat.axis, mat.radius, mat.depth, mat.price] = ...
-                setCoverGreedyMex(mat,zeroLabNormalized);
-            mat.axis = labNormalized2rgb(mat.axis);
-            mat.computeReconstruction()
         end
                                         
     end

@@ -1,15 +1,16 @@
 // Interface with MATLAB -------------------------------------------------------
-#include "matrix.h"
 #include "mex.h"
+#include "matrix.h"
+#include "AMAT.h"
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
 {
     // Parse inputs
-    mxArray *mxMat = prhs[0];
-    mxArray *mxZeroLabNormalized = prhs[1];
+    const mxArray *mxMat = prhs[0];
+    const mxArray *mxZeroLabNormalized = prhs[1];
 
     // Initialize outputs
-    const mxArray *mxEncoding = mxGetField(mxMat, 0, "encoding");
+    const mxArray *mxEncoding = mxGetProperty(mxMat, 0, "encoding");
     const mwSize *dims = mxGetDimensions(mxEncoding); // [H,W,C,R]
     mxArray *mxReconstruction = mxDuplicateArray(mxZeroLabNormalized);
     mxArray *mxAxis   = mxDuplicateArray(mxZeroLabNormalized);
@@ -28,24 +29,24 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[] )
     const size_t height      = dims[0]; 
     const size_t width       = dims[1];
     const size_t numChannels = dims[2];
-    const size_t numScales R = dims[3];
-    const double *encoding   = mxGetPr(mxEncoding); 
-    const double *cost       = mxGetPr(mxGetField(mxMat, 0, "cost"))
-    const double *scales     = mxGetPr(mxGetField(mxMat, 0, "scales"));
+    const size_t numScales   = dims[3];
+    const double *encoding   = mxGetPr(mxEncoding);
+    const double *cost       = mxGetPr(mxGetProperty(mxMat, 0, "cost"));
+    const double *scales     = mxGetPr(mxGetProperty(mxMat, 0, "scales"));
     const double *filters[numScales];
-    const double ws = mxGetScalar(mxGetField(mxMat, 0, "ws"));
-    const mxArray *mxFilters = mxGetField(mxMat, 0, "filters");
+    const double ws = mxGetScalar(mxGetProperty(mxMat, 0, "ws"));
     for (size_t r=0; r<numScales; ++r) {
-        filters[r] = mxGetPr(mxGetCell(mxFilters, r)) ;
+        filters[r] = mxGetPr(mxGetCell(mxGetProperty(mxMat, 0, "filters"), r)) ;
     }
-    const std::string shape  = mxArrayToString(mxGetField(mxMat, 0, "shape"));
+    const std::string shape = mxArrayToString(mxGetProperty(mxMat, 0, "shape"));
 
 
 
     // Do the work
     setCover(reconstruction, axis, radius, depth, price, // outputs
-            encoding, cost, scales, filters, ws, shape,
-            height, width, numChannels, numScales); // rest
+        encoding, cost, scales, filters, ws, shape,      // rest
+        height, width, numChannels, numScales
+    ); 
 
     // Assign outputs to plhs
     plhs[0] = mxReconstruction;
