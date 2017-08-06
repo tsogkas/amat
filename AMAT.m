@@ -366,7 +366,7 @@ classdef AMAT < handle
             while ~all(covered(:))
                 % Find the most cost-effective disk at the current iteration
                 [minCost, indMin] = min(diskCostEffective(:));
-                % disp(indMin);
+                disp(indMin);
                 if isinf(minCost),
                     warning('Stopping: selected disk has infinite cost.')
                     break;
@@ -386,7 +386,6 @@ classdef AMAT < handle
                 end
                 
                 newPixelsCovered  = D & ~covered;      % NEW pixels that are covered by D
-                disp(nnz(newPixelsCovered))
                 if ~any(newPixelsCovered(:))
                     warning('Stopping: selected disk covers zero (0) new pixels.')
                     break;

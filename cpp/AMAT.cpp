@@ -84,7 +84,7 @@ void setCover(
     // at each iteration of the greedy algorithm.
     double minDiskCostEffective       = BIG;
     double secondMinDiskCostEffective = BIG;
-    size_t idxMinDiskCostEffective, idxSecondMinDiskCostEffective;
+    size_t idxMinDiskCostEffective = -1, idxSecondMinDiskCostEffective = -1;
     for (size_t i=0; i < numImagePixels*numScales; ++i) {
         if (diskCostEffective[i] < minDiskCostEffective) {
             // min1 < min2 --> newMin < min1
@@ -100,9 +100,12 @@ void setCover(
 
         }
     }
+    assert(idxMinDiskCostEffective > 0 && idxSecondMinDiskCostEffective > 0);
+    assert(idxMinDiskCostEffective != idxSecondMinDiskCostEffective);
 
     // Start executing the greedy algorithm
-    while ( numPixelsCovered < numImagePixels ) {
+    while (numPixelsCovered < numImagePixels)
+    {
 
         std::cout << "idxMinCost: " << idxMinDiskCostEffective << std::endl;
         // If selected cost is inf return error
@@ -167,6 +170,7 @@ void setCover(
         minDiskCostEffective = secondMinDiskCostEffective;
         idxMinDiskCostEffective = idxSecondMinDiskCostEffective;
         secondMinDiskCostEffective = BIG;
+        idxSecondMinDiskCostEffective = -1;
 
         // TODO: make this run in parallel
         // Update costs and other quantities
@@ -214,7 +218,9 @@ void setCover(
                         minDiskCostEffective = diskCostEffective[idx];
                         idxMinDiskCostEffective = idx;
                     }
-                    else if (diskCostEffective[idx] < secondMinDiskCostEffective) {
+                    else if (diskCostEffective[idx] < secondMinDiskCostEffective &&
+                             idx != idxMinDiskCostEffective) 
+                    {
                         secondMinDiskCostEffective = diskCostEffective[idx];
                         idxSecondMinDiskCostEffective = idx;
                     }
