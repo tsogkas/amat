@@ -345,7 +345,7 @@ classdef AMAT < handle
                 covered([1:r,end-r+1:end], [1,end]) = true;
                 covered([1,end], [1:r,end-r+1:end]) = true;
             end
-            BIG = 1e30;
+            BIG = 1e60;
             
             % Compute how many pixels are covered by each r-disk.
             diskAreas = cellfun(@nnz,mat.filters);
@@ -358,19 +358,27 @@ classdef AMAT < handle
                 reshape(mat.ws ./ mat.scales, 1,1,[]));
 
             % Keep track of the two lowest costs
+            % WARNING: after selecting a disk remember to set the cost of
+            % all other r-disks with the same center to BIG.
             [minCost,idxMinCost] = min(diskCostEffective(:));
-            diskCostEffective(idxMinCost) = BIG;
+            [yc,xc,rc] = ind2sub(size(diskCostEffective), idxMinCost);
+            diskCostEffective(yc,xc,:) = BIG;
             [secondMinCost,idxSecondMinCost] = min(diskCostEffective(:));
-            [yc,xc,rc]    = ind2sub(size(diskCostEffective), idxMinCost);
-            [yc2,xc2,rc2] = ind2sub(size(diskCostEffective), idxSecondMinCost);
-            
+            [ycQueue,xcQueue,rcQueue] = ind2sub(size(diskCostEffective), idxSecondMinCost);
+                                    
             % Print remaining pixels to be covered in these points
             printBreakPoints = floor((4:-1:1).*(numRows*numCols/5));
             
+            % GREEDY ALGORITHM STARTS HERE --------------------------------
             fprintf('Pixels remaining: ');
             [x,y] = meshgrid(1:numCols,1:numRows);
             while ~all(covered(:))
-                disp(sub2ind(size(diskCostEffective), yc,xc,rc))
+%                 [minCost, idxMinCost] = min(diskCostEffective(:));
+%                 [yc,xc,rc] = ind2sub(size(diskCostEffective), idxMinCost);
+%                 disp(sub2ind(size(diskCostEffective), yc,xc,rc))
+%                 if (sub2ind(size(diskCostEffective), yc,xc,rc) == 2055544)
+%                     keyboard;
+%                 end
                 if isinf(minCost),
                     warning('Stopping: selected disk has infinite cost.')
                     break;
@@ -387,7 +395,7 @@ classdef AMAT < handle
                     otherwise, error('Shape is not supported')
                 end
                 
-                newPixelsCovered  = D & ~covered;      % NEW pixels that are covered by D
+                newPixelsCovered = D & ~covered;      % NEW pixels that are covered by D
                 if ~any(newPixelsCovered(:))
                     keyboard;
                     warning('Stopping: selected disk covers zero (0) new pixels.')
@@ -400,22 +408,18 @@ classdef AMAT < handle
                 mat.depth(D) = mat.depth(D) + 1;
                 mat.axis(yc,xc,:) = mat.encoding(yc,xc,:,rc);
                 mat.radius(yc,xc) = mat.scales(rc);    
-                
-                % Now secondMinCost is minCost
-                xc = xc2; yc = yc2; rc = rc2;
-                xc2 = -1; yc2 = -1; rc2 = -1;  % invalid values for indices
-                minCost = secondMinCost;
-                secondMinCost = BIG;
-
+                                
                 % Update costs
                 [yy,xx] = find(newPixelsCovered);
-                xmin = min(xx); xmax = max(xx);
-                ymin = min(yy); ymax = max(yy);
+                xminCovered = min(xx); xmaxCovered = max(xx);
+                yminCovered = min(yy); ymaxCovered = max(yy);
                 newPixelsCovered = double(newPixelsCovered);
                 for r=1:numScales
                     scale = mat.scales(r);
-                    x1 = max(xmin-scale,1); y1 = max(ymin-scale,1);
-                    x2 = min(xmax+scale,numCols); y2 = min(ymax+scale,numRows);
+                    x1 = max(xminCovered-scale,1); 
+                    y1 = max(yminCovered-scale,1);
+                    x2 = min(xmaxCovered+scale,numCols); 
+                    y2 = min(ymaxCovered+scale,numRows);
                     % Find how many of the newPixelsCovered are covered by other disks.
                     numPixelsSubtracted = ...
                         conv2(newPixelsCovered(y1:y2,x1:x2), mat.filters{r},'same');
@@ -426,15 +430,29 @@ classdef AMAT < handle
                     % the locations that have been affected, for efficiency.
                     diskCost(y1:y2,x1:x2, r) = diskCost(y1:y2,x1:x2, r) - ...
                         numPixelsSubtracted .* diskCostPerPixel(y1:y2,x1:x2, r);
-%                     tmp = diskCost(y1:y2,x1:x2, r) ./ max(eps,numNewPixelsCovered(y1:y2,x1:x2, r));
-%                     tmp(numNewPixelsCovered(y1:y2,x1:x2, r) == 0) = BIG;
-%                     diskCostPerPixel(y1:y2,x1:x2, r) = tmp;
                     diskCostPerPixel(y1:y2,x1:x2, r) = diskCost(y1:y2,x1:x2, r) ./ ...
                         max(eps,numNewPixelsCovered(y1:y2,x1:x2, r)) + ... % avoid 0/0
                         BIG*(numNewPixelsCovered(y1:y2,x1:x2, r) == 0);    % x/0 = inf
                     diskCostEffective(y1:y2,x1:x2, r) = ...
                         diskCostPerPixel(y1:y2,x1:x2, r) + mat.ws/mat.scales(r);
-                    % Get minimum of affected disk costs and update mins.
+                end
+                % Make sure disk with the same center is not selected again
+                diskCost(yc,xc,:) = BIG; diskCostEffective(yc,xc,:) = BIG;
+                                
+                % Now secondMinCost becomes minCost
+                xc = xcQueue; yc = ycQueue; rc = rcQueue;
+                minCost = diskCostEffective(yc,xc,rc);
+                xcQueue = -1; ycQueue = -1; rcQueue = -1;  % invalid values for indices
+                secondMinCost = BIG;
+
+                % Compute the new minimum
+                for r=1:numScales
+                    scale = mat.scales(r);
+                    x1 = max(xminCovered-scale,1); 
+                    y1 = max(yminCovered-scale,1);
+                    x2 = min(xmaxCovered+scale,numCols); 
+                    y2 = min(ymaxCovered+scale,numRows);
+                    % Get minimum of updated disk costs and update mins.
                     [minOverCols, idxRow] = min(diskCostEffective(y1:y2,x1:x2, r),[],1);
                     [minOverRows, idxCol] = min(minOverCols,[],2);
                     idxRow = idxRow(idxCol);    
@@ -442,18 +460,21 @@ classdef AMAT < handle
                     newxc = x1 + idxCol - 1;
                     newyc = y1 + idxRow - 1;
                     if newMinCost < minCost
-                        secondMinCost = minCost;
+                        if xcQueue ~= newxc || ycQueue ~= newyc
+                            secondMinCost = minCost;
+                            ycQueue = yc; xcQueue = xc; rcQueue = rc;
+                        else
+                            secondMinCost = BIG;
+                            ycQueue = -1; xcQueue = -1; rcQueue = -1;
+                        end
                         minCost = newMinCost;
-                        yc2 = yc; xc2 = xc; rc2 = rc;
                         yc = newyc; xc = newxc; rc = r;
-                    elseif newMinCost < secondMinCost && ...
-                            (newyc ~= yc || newxc ~= xc || r ~= rc)
+                    elseif newMinCost < secondMinCost && (newyc ~= yc || newxc ~= xc)
                         secondMinCost = newMinCost;
-                        yc2 = newyc; xc2 = newxc; rc2 = r;
+                        ycQueue = newyc; xcQueue = newxc; rcQueue = r;
                     end
+                    assert(diskCostEffective(yc,xc,rc) == minCost)
                 end
-                % Make sure the same point is not selected again
-                diskCost(yc,xc,:) = BIG; diskCostEffective(yc,xc,:) = BIG;
                 
                 % Visualize progress
                 if mat.vistop 
@@ -729,7 +750,7 @@ classdef AMAT < handle
             % We do not use Inf to avoid complications in the greedy set cover
             % algorithm, caused by inf-inf subtractions and inf/inf divisions.
             % Also, keep in mind that max(0,NaN) = 0.
-            BIG = 1e30;
+            BIG = 1e60;
             for r=1:numScales
                 scale = mat.scales(r);
                 diskCost([1:scale, end-scale+1:end],:,:,r) = BIG;
@@ -838,7 +859,7 @@ classdef AMAT < handle
             end
             
             % Same postprocesssing as computeDiskCosts
-            BIG = 1e30;
+            BIG = 1e60;
             for r=1:numScales
                 scale = mat.scales(r);
                 squareCost([1:scale, end-scale+1:end],:,:,r,:) = BIG;
