@@ -3,8 +3,7 @@ classdef AMAT < handle
     % TODO: set properties to Transient, Private etc
     % TODO: should setCover() be private?
     properties
-        scales  = 2:41
-%         scales  = [2:10,12:2:20,23:3:32,36,40];
+        scales  = 2:41  
         ws      = 1e-4      
         vistop  = 0  
         shape   = 'disk'
@@ -63,7 +62,7 @@ classdef AMAT < handle
         end
         
         function initialize(mat,img,varargin)
-            defaults = {'scales',   mat.scales,...
+            defaults = {'scales',   2:41,...
                         'ws',       1e-4,...
                         'vistop',   0,...
                         'shape',    'disk',...
@@ -357,7 +356,7 @@ classdef AMAT < handle
             diskCostPerPixel = diskCost ./ numNewPixelsCovered;
             diskCostEffective = bsxfun(@plus, diskCostPerPixel, ...
                 reshape(mat.ws ./ mat.scales, 1,1,[]));
-
+                                    
             % Print remaining pixels to be covered in these points
             printBreakPoints = floor((4:-1:1).*(numRows*numCols/5));
             
@@ -365,9 +364,7 @@ classdef AMAT < handle
             fprintf('Pixels remaining: ');
             [x,y] = meshgrid(1:numCols,1:numRows);
             while ~all(covered(:))
-                [minCost, idxMinCost] = min(diskCostEffective(:));
-                [yc,xc,rc] = ind2sub(size(diskCostEffective), idxMinCost);
-
+                
                 if isinf(minCost),
                     warning('Stopping: selected disk has infinite cost.')
                     break;
@@ -427,7 +424,7 @@ classdef AMAT < handle
                 end
                 % Make sure disk with the same center is not selected again
                 diskCost(yc,xc,:) = BIG; diskCostEffective(yc,xc,:) = BIG;
-                                                
+                
                 % Visualize progress
                 if mat.vistop 
                     % Sort costs in ascending order to visualize updated top disks.
