@@ -3,7 +3,8 @@ classdef AMAT < handle
     % TODO: set properties to Transient, Private etc
     % TODO: should setCover() be private?
     properties
-        scales  = 2:41  
+        scales  = 2:41
+%         scales  = [2:10,12:2:20,23:3:32,36,40];
         ws      = 1e-4      
         vistop  = 0  
         shape   = 'disk'
@@ -62,7 +63,7 @@ classdef AMAT < handle
         end
         
         function initialize(mat,img,varargin)
-            defaults = {'scales',   2:41,...
+            defaults = {'scales',   mat.scales,...
                         'ws',       1e-4,...
                         'vistop',   0,...
                         'shape',    'disk',...
@@ -357,15 +358,6 @@ classdef AMAT < handle
             diskCostEffective = bsxfun(@plus, diskCostPerPixel, ...
                 reshape(mat.ws ./ mat.scales, 1,1,[]));
 
-            % Keep track of the two lowest costs
-            % WARNING: after selecting a disk remember to set the cost of
-            % all other r-disks with the same center to BIG.
-            [minCost,idxMinCost] = min(diskCostEffective(:));
-            [yc,xc,rc] = ind2sub(size(diskCostEffective), idxMinCost);
-            diskCostEffective(yc,xc,:) = BIG;
-            [secondMinCost,idxSecondMinCost] = min(diskCostEffective(:));
-            [ycQueue,xcQueue,rcQueue] = ind2sub(size(diskCostEffective), idxSecondMinCost);
-                                    
             % Print remaining pixels to be covered in these points
             printBreakPoints = floor((4:-1:1).*(numRows*numCols/5));
             
@@ -373,12 +365,9 @@ classdef AMAT < handle
             fprintf('Pixels remaining: ');
             [x,y] = meshgrid(1:numCols,1:numRows);
             while ~all(covered(:))
-%                 [minCost, idxMinCost] = min(diskCostEffective(:));
-%                 [yc,xc,rc] = ind2sub(size(diskCostEffective), idxMinCost);
-%                 disp(sub2ind(size(diskCostEffective), yc,xc,rc))
-%                 if (sub2ind(size(diskCostEffective), yc,xc,rc) == 2055544)
-%                     keyboard;
-%                 end
+                [minCost, idxMinCost] = min(diskCostEffective(:));
+                [yc,xc,rc] = ind2sub(size(diskCostEffective), idxMinCost);
+
                 if isinf(minCost),
                     warning('Stopping: selected disk has infinite cost.')
                     break;
@@ -438,44 +427,7 @@ classdef AMAT < handle
                 end
                 % Make sure disk with the same center is not selected again
                 diskCost(yc,xc,:) = BIG; diskCostEffective(yc,xc,:) = BIG;
-                                
-                % Now secondMinCost becomes minCost
-                xc = xcQueue; yc = ycQueue; rc = rcQueue;
-                minCost = diskCostEffective(yc,xc,rc);
-                xcQueue = -1; ycQueue = -1; rcQueue = -1;  % invalid values for indices
-                secondMinCost = BIG;
-
-                % Compute the new minimum
-                for r=1:numScales
-                    scale = mat.scales(r);
-                    x1 = max(xminCovered-scale,1); 
-                    y1 = max(yminCovered-scale,1);
-                    x2 = min(xmaxCovered+scale,numCols); 
-                    y2 = min(ymaxCovered+scale,numRows);
-                    % Get minimum of updated disk costs and update mins.
-                    [minOverCols, idxRow] = min(diskCostEffective(y1:y2,x1:x2, r),[],1);
-                    [minOverRows, idxCol] = min(minOverCols,[],2);
-                    idxRow = idxRow(idxCol);    
-                    newMinCost = minOverRows;
-                    newxc = x1 + idxCol - 1;
-                    newyc = y1 + idxRow - 1;
-                    if newMinCost < minCost
-                        if xcQueue ~= newxc || ycQueue ~= newyc
-                            secondMinCost = minCost;
-                            ycQueue = yc; xcQueue = xc; rcQueue = rc;
-                        else
-                            secondMinCost = BIG;
-                            ycQueue = -1; xcQueue = -1; rcQueue = -1;
-                        end
-                        minCost = newMinCost;
-                        yc = newyc; xc = newxc; rc = r;
-                    elseif newMinCost < secondMinCost && (newyc ~= yc || newxc ~= xc)
-                        secondMinCost = newMinCost;
-                        ycQueue = newyc; xcQueue = newxc; rcQueue = r;
-                    end
-                    assert(diskCostEffective(yc,xc,rc) == minCost)
-                end
-                
+                                                
                 % Visualize progress
                 if mat.vistop 
                     % Sort costs in ascending order to visualize updated top disks.
