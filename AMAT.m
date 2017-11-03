@@ -364,7 +364,10 @@ classdef AMAT < handle
             fprintf('Pixels remaining: ');
             [x,y] = meshgrid(1:numCols,1:numRows);
             while ~all(covered(:))
-                
+                % Get disk with min cost
+                [minCost, idxMinCost] = min(diskCostEffective(:));
+                [yc,xc,rc] = ind2sub(size(diskCostEffective), idxMinCost);
+
                 if isinf(minCost),
                     warning('Stopping: selected disk has infinite cost.')
                     break;
