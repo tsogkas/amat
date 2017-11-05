@@ -23,7 +23,7 @@ classdef AMAT < handle
         thetas  % in degrees
     end
     
-    properties(Transient)
+    properties(Transient)        
     end
     
     properties(Access=private)
@@ -56,9 +56,9 @@ classdef AMAT < handle
         function mat = compute(mat)
             mat.computeEncodings();
             mat.computeCosts();
-            profile on;
+%             profile on;
             mat.setCover();
-            profile off; profile viewer;
+%             profile off; profile viewer;
         end
         
         function initialize(mat,img,varargin)
@@ -339,7 +339,7 @@ classdef AMAT < handle
             mat.depth          = zeros(numRows,numCols); % #disks points(x,y) is covered by
             mat.price          = zeros(numRows,numCols); % error contributed by each point
             % Flag border pixels that cannot be accessed by filters.
-            covered = false(numRows,numCols);
+            covered= false(numRows,numCols);
             if strcmp(mat.shape, 'disk')
                 r = mat.scales(1);
                 covered([1:r,end-r+1:end], [1,end]) = true;
@@ -364,7 +364,10 @@ classdef AMAT < handle
             fprintf('Pixels remaining: ');
             [x,y] = meshgrid(1:numCols,1:numRows);
             while ~all(covered(:))
-                
+                % Get disk with min cost
+                [minCost, idxMinCost] = min(diskCostEffective(:));
+                [yc,xc,rc] = ind2sub(size(diskCostEffective), idxMinCost);
+
                 if isinf(minCost),
                     warning('Stopping: selected disk has infinite cost.')
                     break;
@@ -587,6 +590,20 @@ classdef AMAT < handle
             mat.computeReconstruction()
         end        
         
+        function s = saveobj(mat)
+            s = struct;
+            s.input             = im2uint8(mat.input);
+            s.reconstruction    = im2uint8(mat.reconstruction);
+            s.axis              = im2uint8(mat.axis);
+            s.radius            = uint16(mat.radius);
+            s.depth             = uint16(mat.depth);
+            s.ws        = mat.ws;
+            s.shape     = mat.shape;
+            s.scales    = mat.scales;
+            s.scaleIdx  = mat.scaleIdx;
+            s.filters   = mat.filters;
+            for i=1:numel(s.filters), s.filters{i} = logical(s.filters{i}); end
+        end
     end % end of public methods
     
     methods(Access=private)
@@ -915,6 +932,25 @@ classdef AMAT < handle
             r = double(r); % make sure r can take negative values
             [x,y] = meshgrid(-r:r, -r:r);
             c = double((x.^2 + y.^2 <= r^2) & (x.^2 + y.^2 > (r-1)^2));
+        end
+        
+        function mat = loadobj(s)
+            if isstruct(s)
+                mat = AMAT();
+                fnames = fieldnames(s);
+                for i=1:numel(fnames)
+                    mat.(fnames{i}) = s.(fnames{i});
+                end
+                for i=1:numel(mat.filters)
+                    mat.filters{i} = double(mat.filters{i});
+                end
+                mat.axis            = im2double(mat.axis);
+                mat.input           = im2double(mat.input);
+                mat.reconstruction  = im2double(mat.reconstruction);
+            else
+                mat = s;
+            end
+            
         end
     end
     

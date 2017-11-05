@@ -9,7 +9,11 @@ paths.bsds500gt        = fullfile(paths.bsds500, 'groundTruth');
 paths.bsds500im        = fullfile(paths.bsds500, 'images');
 paths.symmax500        = fullfile(paths.data, 'SYMMAX500');
 % paths.vgg16            = fullfile(paths.data, 'imagenet-vgg-verydeep-16.mat');
-% paths.voc2007          = fullfile(paths.data, 'VOCdevkit');
+
+% VOC-PASCAL
+paths.voc2007.root     = fullfile(paths.data, 'VOCdevkit', 'VOC2007');
+paths.voc2007.sets     = fullfile(paths.voc2007.root, 'ImageSets');
+paths.voc2007.images   = fullfile(paths.voc2007.root, 'JPEGImages');
 
 % amat
 paths.amat.output      = fullfile(paths.amat.root, 'output');
