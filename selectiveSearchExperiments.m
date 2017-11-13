@@ -24,19 +24,23 @@ ks = ks(1:2);
 load('GroundTruthVOC2007test.mat'); % Loads gtBoxes, gtImIds, gtIms, testIms
 paths = setPaths();
 VOCImgPath = fullfile(paths.voc2007.images,'%s.jpg');
+VOCxmlPath = fullfile(paths.voc2007.xml,'%s.xml');
 
 
 %% Extract boxes
+parpoolOpen(4);
 disp(['Boxes smaller than ' num2str(minBoxWidth) ' pixels will be removed.']);
 disp('Obtaining boxes for Pascal 2007 test set...');
 numImages = numel(testIms); 
 boxesSS = cell(numImages, 1);
 boxesAMAT = cell(numImages, 1);
 
-for i=1:numImages
-    fprintf('%d ', i);
+parfor i=1:numImages
+    fprintf('Computing boxes for image %d/%d.\n', i, numImages);
     
     % Compute SS boxes
+    boxesT    = {};
+    priorityT = {};
     img = imread(sprintf(VOCImgPath, testIms{i}));
     idx = 1;
     for j=1:length(ks)
@@ -70,7 +74,6 @@ for i=1:numImages
     boxesAMAT{i} = boxesAMAT{i}(sortIds,:);
 
 end
-fprintf('\n');
 
 % Filter boxes
 for i=1:numel(boxesSS)
@@ -82,9 +85,53 @@ for i=1:numel(boxesAMAT)
     boxesAMAT{i} = BoxRemoveDuplicates(boxesAMAT{i});
 end
 
-
+save('output/boxes/boxesSS.mat', 'boxesSS');
+save('output/boxes/boxesAMAT.mat', 'boxesAMAT')
 
 %%
+if ~exist('boxesSS', 'var'), load('output/boxes/boxesSS.mat'); end
+if ~exist('boxesAMAT', 'var'), load('output/boxes/boxesAMAT.mat'); end
+visualize = 0;
+threshIOU = 0.5;
+
+numImages = numel(testIms); 
+numBoxesTotal = 0;
+numBoxesFoundSS = 0;
+numBoxesFoundAMAT = 0;
+ticStart = tic;
+for i=1:numImages
+    rec = VOCreadrecxml(sprintf(VOCxmlPath, testIms{i}));
+    img = imread(sprintf(VOCImgPath, testIms{i}));
+    bboxGT = cat(1, rec.objects(:).bbox);
+    numBoxesGT = size(bboxGT,1);
+    numBoxesTotal = numBoxesTotal + numBoxesGT;
+    
+    % Compute IOU scores of all box proposals and GT boxes.
+    iouScoresSS   = zeros(size(boxesSS{i}, 1), numBoxesGT);
+    iouScoresAMAT = zeros(size(boxesAMAT{i}, 1), numBoxesGT);
+    for b=1:numBoxesGT
+        iouScoresSS(:,b)    = iou(boxesSS{i},   bboxGT(b,:));
+        iouScoresAMAT(:,b)  = iou(boxesAMAT{i}, bboxGT(b,:));
+    end
+    
+    % Find proposals with max IOU score
+    [iouBestSS,  idxBestSS]   = max(iouScoresSS,   [], 1);
+    [iouBestAMAT,idxBestAMAT] = max(iouScoresAMAT, [], 1);
+    
+    numBoxesFoundSS = numBoxesFoundSS + nnz(iouBestSS > 0.5);
+    numBoxesFoundAMAT = numBoxesFoundAMAT + nnz(iouBestAMAT > 0.5);
+    
+    % Visualize results
+    if visualize
+        imshow(img);
+        drawBoxes(bboxGT, 'color','b');
+        drawBoxes(boxesSS{i}(idxBestSS,:), 'color', 'm');
+        drawBoxes(boxesAMAT{i}(idxBestAMAT,:), 'color', 'y');
+    end
+    progress('Computing box overlaps...', i, numImages,ticStart, 3);
+end
+
+
 disp('Evaluating the SS boxes on Pascal 2007...')
 [boxAboSS, boxMaboSS, boScoresSS, avgNumBoxesSS] = ...
     BoxAverageBestOverlap(gtBoxes, gtImIds, boxesSS);

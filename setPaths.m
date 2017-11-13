@@ -14,11 +14,12 @@ paths.symmax500        = fullfile(paths.data, 'SYMMAX500');
 paths.voc2007.root     = fullfile(paths.data, 'VOCdevkit', 'VOC2007');
 paths.voc2007.sets     = fullfile(paths.voc2007.root, 'ImageSets');
 paths.voc2007.images   = fullfile(paths.voc2007.root, 'JPEGImages');
+paths.voc2007.xml      = fullfile(paths.voc2007.root, 'Annotations');
 
 % amat
 paths.amat.output      = fullfile(paths.amat.root, 'output');
 paths.amat.models      = fullfile(paths.amat.output, 'models');
-% paths.amat.precomputed = fullfile(paths.amat.output, 'precomputed');
+paths.amat.precomputed = fullfile(paths.amat.output, 'precomputed');
 % paths.amat.boxes       = fullfile(paths.amat.output, 'boxes');
 
 % spb-mil

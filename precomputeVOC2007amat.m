@@ -1,7 +1,4 @@
-% Precompute AMATs for all images in VOC2007
-
-% Train, val, trainval, or test
-set = 'test'; 
+function precomputeVOC2007amat(set)
 
 % Create directory to put data 
 paths = setPaths();
@@ -15,13 +12,22 @@ imageIds = textscan(fid, '%s'); imageIds = imageIds{1};
 fclose(fid);
 
 % Compute AMATs
-parfor i=1:numel(imageIds)
-    img = imread(fullfile(paths.voc2007.images, [imageIds{i}, '.jpg']));
-    imgSmoothed = L0Smoothing(img);
-    imgSmoothedResized = imresize(imgSmoothed, 0.5, 'bilinear');
-    mat = AMAT(imgSmoothedResized);
-    parsave(fullfile(savePath, ['amat_' imageIds{i}, '.mat']), mat)
+numImages = numel(imageIds);
+parfor i=1:numImages
+    matfilePath = fullfile(savePath, ['amat_' imageIds{i}, '.mat']);
+    if ~exist(matfilePath, 'file')
+        fprintf('Computing VOC2007 AMATs, %s set, %d/%d\n', set, i, numImages)
+        img = imread(fullfile(paths.voc2007.images, [imageIds{i}, '.jpg']));
+        imgSmoothed = L0Smoothing(img);
+        imgSmoothedResized = imresize(imgSmoothed, 0.5, 'bilinear');
+        mat = AMAT(imgSmoothedResized);
+        parsave(matfilePath, mat)
+    end
 end
+
+function parsave(matfilePath, mat)
+save(matfilePath, 'mat')
+
 
 
 

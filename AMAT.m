@@ -947,6 +947,8 @@ classdef AMAT < handle
                 mat.axis            = im2double(mat.axis);
                 mat.input           = im2double(mat.input);
                 mat.reconstruction  = im2double(mat.reconstruction);
+                mat.radius          = double(mat.radius);
+                mat.depth           = double(mat.depth);
             else
                 mat = s;
             end
