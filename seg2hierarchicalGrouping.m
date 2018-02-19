@@ -1,5 +1,7 @@
 function [boxes, hierarchy, priority] = ...
     seg2hierarchicalGrouping(colourIm, blobIndIm, blobBoxes, neighbours, functionHandles)
+% Copied part of the Image2HierarchicalGrouping() function, found in the
+% original Selective Search code.
 
 numBlobs = size(blobBoxes,1);
 
