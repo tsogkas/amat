@@ -57,8 +57,8 @@ classdef AMAT < handle
             mat.computeEncodings();
             mat.computeCosts();
 %             profile on;
-%             mat.setCover();
-            mat.setCoverCoarseToFine();
+            mat.setCover();
+%             mat.setCoverFast();
 %             profile off; profile viewer;
         end
         
@@ -404,7 +404,9 @@ classdef AMAT < handle
                 xminCovered = min(xx); xmaxCovered = max(xx);
                 yminCovered = min(yy); ymaxCovered = max(yy);
                 newPixelsCovered = double(newPixelsCovered);
+%                 profile on;
                 for r=1:numScales
+                    tic;
                     scale = mat.scales(r);
                     x1 = max(xminCovered-scale,1); 
                     y1 = max(yminCovered-scale,1);
@@ -425,7 +427,9 @@ classdef AMAT < handle
                         BIG*(numNewPixelsCovered(y1:y2,x1:x2, r) == 0);    % x/0 = inf
                     diskCostEffective(y1:y2,x1:x2, r) = ...
                         diskCostPerPixel(y1:y2,x1:x2, r) + mat.ws/mat.scales(r);
+                    toc;
                 end
+%                 profile off; profile viewer
                 % Make sure disk with the same center is not selected again
                 diskCost(yc,xc,:) = BIG; diskCostEffective(yc,xc,:) = BIG;
                 
@@ -457,7 +461,117 @@ classdef AMAT < handle
             mat.computeReconstruction();            
         end
         
-        function setCoverCoarseToFine(mat)
+        function setCoverFast(mat)
+            % Initializations
+            [numRows,numCols,numChannels,numScales] = size(mat.encoding);
+            zeroLabNormalized  = rgb2labNormalized(zeros(numRows,numCols,numChannels));
+            mat.input          = reshape(mat.input, numRows*numCols, numChannels);
+            mat.reconstruction = reshape(zeroLabNormalized,numRows*numCols,numChannels);
+            mat.axis           = zeroLabNormalized;
+            mat.radius         = zeros(numRows,numCols);
+            mat.depth          = zeros(numRows,numCols); % #disks points(x,y) is covered by
+            mat.price          = zeros(numRows,numCols); % error contributed by each point
+            % Flag border pixels that cannot be accessed by filters.
+            covered= false(numRows,numCols);
+            if strcmp(mat.shape, 'disk')
+                r = mat.scales(1);
+                covered([1:r,end-r+1:end], [1,end]) = true;
+                covered([1,end], [1:r,end-r+1:end]) = true;
+            end
+            BIG = 1e60;
+            
+            % Compute how many pixels are covered by each r-disk.
+            diskAreas = cellfun(@nnz,mat.filters);
+            diskCost  = mat.cost;
+            numNewPixelsCovered = repmat(reshape(diskAreas,1,1,[]), [numRows,numCols]);
+            
+            % Add scale-dependent cost term to favor the selection of larger disks.
+            diskCostPerPixel = diskCost ./ numNewPixelsCovered;
+            diskCostEffective = bsxfun(@plus, diskCostPerPixel, ...
+                reshape(mat.ws ./ mat.scales, 1,1,[]));
+            idxDiskCost = reshape(1:numel(diskCostEffective), numRows, numCols, numScales);
+            isSelectable = false(size(diskCostEffective));
+            for r=1:numScales
+                isSelectable(:,:,r) = border([numRows, numCols], mat.scales(r));
+            end
+            isSelectable = ~isSelectable;
+            
+            numTop = 100; % # of disks with minimum cost added at each iteration
+            while ~all(covered(:))
+%                 [costSorted, idxSorted] = sort(diskCostEffective(:));
+                mask = isSelectable & numNewPixelsCovered > 0;
+                idxSorted = idxDiskCost(mask);
+                [costSorted, idxSortedTemp] = sort(diskCostEffective(mask));
+                idxSorted = idxSorted(idxSortedTemp);
+                % Find points with minimum cost at the current scale
+                minCost = costSorted(1:numTop);
+                idxMinCost = idxSorted(1:numTop);
+                D = false(numRows,numCols);
+                % Place the disks on the image
+                [yv,xv,rv] = ind2sub(size(diskCost), idxMinCost);
+                for i=1:numel(yv)
+                    yc = yv(i); xc = xv(i); rc = rv(i);
+                    scale = mat.scales(rc);
+                    % D will contain several disks instead of a single new disk.
+                    D(yc-scale:yc+scale, xc-scale:xc+scale) = ...
+                        D(yc-scale:yc+scale, xc-scale:xc+scale) + mat.filters{rc};
+                    mat.depth(yc-scale:yc+scale, xc-scale:xc+scale) = ...
+                        mat.depth(yc-scale:yc+scale, xc-scale:xc+scale) + mat.filters{rc};
+%                     mat.price(yc-scale:yc+scale, xc-scale:xc+scale) = ...
+%                         mat.price(yc-scale:yc+scale, xc-scale:xc+scale) + minCost(yc,xc);
+                    mat.axis(yc,xc,:) = mat.encoding(yc,xc,:,rc);
+                    mat.radius(yc,xc) = scale;    
+                end
+                
+                % NEW pixels that are covered by D
+                newPixelsCovered = D & ~covered;      
+                if ~any(newPixelsCovered(:))
+                    keyboard;
+                    warning('Stopping: selected disk covers zero (0) new pixels.')
+                    break;
+                end
+                covered(newPixelsCovered) = true;
+                
+                % Update costs
+                [yy,xx] = find(newPixelsCovered);
+                xminCovered = min(xx); xmaxCovered = max(xx);
+                yminCovered = min(yy); ymaxCovered = max(yy);
+                newPixelsCovered = double(newPixelsCovered);
+                for r=1:numScales
+                    x1 = max(xminCovered-mat.scales(r),1); 
+                    y1 = max(yminCovered-mat.scales(r),1);
+                    x2 = min(xmaxCovered+mat.scales(r),numCols); 
+                    y2 = min(ymaxCovered+mat.scales(r),numRows);
+                    % Find how many of the newPixelsCovered are covered by other disks.
+                    numPixelsSubtracted = ...
+                        conv2(newPixelsCovered(y1:y2,x1:x2), mat.filters{r},'same');                    
+                    % and subtract the respective counts from those disks.
+                    numNewPixelsCovered(y1:y2,x1:x2, r) = ...
+                        numNewPixelsCovered(y1:y2,x1:x2, r) - numPixelsSubtracted;
+                    % update diskCost, diskCostPerPixel, and diskCostEfficiency *only* for
+                    % the locations that have been affected, for efficiency.
+                    diskCost(y1:y2,x1:x2, r) = diskCost(y1:y2,x1:x2, r) - ...
+                        numPixelsSubtracted .* diskCostPerPixel(y1:y2,x1:x2, r);
+                    diskCostPerPixel(y1:y2,x1:x2, r) = diskCost(y1:y2,x1:x2, r) ./ ...
+                        max(eps,numNewPixelsCovered(y1:y2,x1:x2, r)) + ... % avoid 0/0
+                        BIG*(numNewPixelsCovered(y1:y2,x1:x2, r) == 0);    % x/0 = inf
+                    diskCostEffective(y1:y2,x1:x2, r) = ...
+                        diskCostPerPixel(y1:y2,x1:x2, r) + mat.ws/mat.scales(r);
+                end
+                % Make sure disk with the same center is not selected again
+                for i=1:numel(yv)
+                    diskCost(yv(i),xv(i),:) = BIG; 
+                    diskCostEffective(yv(i),xv(i),:) = BIG; 
+                    isSelectable(yv(i),xv(i),:) = false;
+                end
+                fprintf('Covered %d/%d\n', nnz(covered), numRows*numCols);
+            end
+            mat.input = reshape(mat.input,numRows,numCols,numChannels);
+            mat.axis  = labNormalized2rgb(mat.axis);
+            mat.computeReconstruction();     
+        end
+
+        function setCoverShockGraph(mat)
             % Initializations
             [numRows,numCols,numChannels,numScales] = size(mat.encoding);
             zeroLabNormalized  = rgb2labNormalized(zeros(numRows,numCols,numChannels));
@@ -486,134 +600,17 @@ classdef AMAT < handle
             diskCostEffective = bsxfun(@plus, diskCostPerPixel, ...
                 reshape(mat.ws ./ mat.scales, 1,1,[]));
             
-%             while ~all(covered(:))
-%                 % Find points with minimum cost at the current scale
-%                 [minCost, idxMinCost] = min(diskCostEffective,[],3);
-%                 rc = max(max(idxMinCost.* double(~border(idxMinCost, mat.scales(1)))));
-%                 % Make sure that respective disks are inside the image
-%                 idxMinCost = (idxMinCost == rc) ;
-%                 D = false(size(idxMinCost));
-%                 % Place the disks on the image
-%                 scale = mat.scales(rc);
-%                 [yv,xv] = find(idxMinCost);
-%                 for i=1:numel(yv)
-%                     yc = yv(i); xc = xv(i);
-%                     % D will contain several disks instead of a single new disk.
-%                     D(yc-scale:yc+scale, xc-scale:xc+scale) = ...
-%                         D(yc-scale:yc+scale, xc-scale:xc+scale) + mat.filters{rc};
-%                     mat.depth(yc-scale:yc+scale, xc-scale:xc+scale) = ...
-%                         mat.depth(yc-scale:yc+scale, xc-scale:xc+scale) + 1;
-% %                     mat.price(yc-scale:yc+scale, xc-scale:xc+scale) = ...
-% %                         mat.price(yc-scale:yc+scale, xc-scale:xc+scale) + minCost(yc,xc);
-%                     mat.axis(yc,xc,:) = mat.encoding(yc,xc,:,rc);
-%                     mat.radius(yc,xc) = scale;    
-%                 end
-%                 % NEW pixels that are covered by D
-%                 newPixelsCovered = D & ~covered;      
-%                 if ~any(newPixelsCovered(:))
-%                     keyboard;
-%                     warning('Stopping: selected disk covers zero (0) new pixels.')
-%                     break;
-%                 end
-%                 covered(newPixelsCovered) = true;
-%                 % Update costs
-%                 [yy,xx] = find(newPixelsCovered);
-%                 xminCovered = min(xx); xmaxCovered = max(xx);
-%                 yminCovered = min(yy); ymaxCovered = max(yy);
-%                 newPixelsCovered = double(newPixelsCovered);
-%                 for r=1:numScales
-%                     x1 = max(xminCovered-mat.scales(r),1); 
-%                     y1 = max(yminCovered-mat.scales(r),1);
-%                     x2 = min(xmaxCovered+mat.scales(r),numCols); 
-%                     y2 = min(ymaxCovered+mat.scales(r),numRows);
-%                     % Find how many of the newPixelsCovered are covered by other disks.
-%                     numPixelsSubtracted = ...
-%                         conv2(newPixelsCovered(y1:y2,x1:x2), mat.filters{r},'same');
-%                     % and subtract the respective counts from those disks.
-%                     numNewPixelsCovered(y1:y2,x1:x2, r) = ...
-%                         numNewPixelsCovered(y1:y2,x1:x2, r) - numPixelsSubtracted;
-%                     % update diskCost, diskCostPerPixel, and diskCostEfficiency *only* for
-%                     % the locations that have been affected, for efficiency.
-%                     diskCost(y1:y2,x1:x2, r) = diskCost(y1:y2,x1:x2, r) - ...
-%                         numPixelsSubtracted .* diskCostPerPixel(y1:y2,x1:x2, r);
-%                     diskCostPerPixel(y1:y2,x1:x2, r) = diskCost(y1:y2,x1:x2, r) ./ ...
-%                         max(eps,numNewPixelsCovered(y1:y2,x1:x2, r)) + ... % avoid 0/0
-%                         BIG*(numNewPixelsCovered(y1:y2,x1:x2, r) == 0);    % x/0 = inf
-%                     diskCostEffective(y1:y2,x1:x2, r) = ...
-%                         diskCostPerPixel(y1:y2,x1:x2, r) + mat.ws/mat.scales(r);
-%                 end
-%                 % Make sure disk with the same center is not selected again
-%                 idx = sub2ind(size(diskCost),yv(:),xv(:), repmat(rc,[length(yv),1]));
-%                 diskCost(idx) = BIG; diskCostEffective(idx) = BIG;  
-%             end
+            [maxScores, maxScales] = max(diskCostEffective,[],3); 
             
-            for rc=numScales:-1:1
-                scale = mat.scales(rc);
-                % Find points with minimum cost at the current scale
-                [minCost, idxMinCost] = min(diskCostEffective,[],3);
-                % Make sure that respective disks are inside the image
-                idxMinCost = (idxMinCost == rc) & ~border(idxMinCost, mat.scales(rc));
-                if ~any(idxMinCost(:)), continue; end
-                D = false(size(idxMinCost));
-                % Place the disks on the image
-                [yv,xv] = find(idxMinCost);
-                for i=1:numel(yv)
-                    yc = yv(i); xc = xv(i);
-                    % D will contain several disks instead of a single new disk.
-                    D(yc-scale:yc+scale, xc-scale:xc+scale) = ...
-                        D(yc-scale:yc+scale, xc-scale:xc+scale) + mat.filters{rc};
-                    mat.depth(yc-scale:yc+scale, xc-scale:xc+scale) = ...
-                        mat.depth(yc-scale:yc+scale, xc-scale:xc+scale) + 1;
-%                     mat.price(yc-scale:yc+scale, xc-scale:xc+scale) = ...
-%                         mat.price(yc-scale:yc+scale, xc-scale:xc+scale) + minCost(yc,xc);
-                    mat.axis(yc,xc,:) = mat.encoding(yc,xc,:,rc);
-                    mat.radius(yc,xc) = scale;    
-                end
-                
-                % NEW pixels that are covered by D
-                newPixelsCovered = D & ~covered;      
-                if ~any(newPixelsCovered(:))
-                    keyboard;
-                    warning('Stopping: selected disk covers zero (0) new pixels.')
-                    break;
-                end
-                covered(newPixelsCovered) = true;
-                % Update costs
-                [yy,xx] = find(newPixelsCovered);
-                xminCovered = min(xx); xmaxCovered = max(xx);
-                yminCovered = min(yy); ymaxCovered = max(yy);
-                newPixelsCovered = double(newPixelsCovered);
-                for r=1:numScales
-                    x1 = max(xminCovered-mat.scales(r),1); 
-                    y1 = max(yminCovered-mat.scales(r),1);
-                    x2 = min(xmaxCovered+mat.scales(r),numCols); 
-                    y2 = min(ymaxCovered+mat.scales(r),numRows);
-                    % Find how many of the newPixelsCovered are covered by other disks.
-                    numPixelsSubtracted = ...
-                        conv2(newPixelsCovered(y1:y2,x1:x2), mat.filters{r},'same');
-                    % and subtract the respective counts from those disks.
-                    numNewPixelsCovered(y1:y2,x1:x2, r) = ...
-                        numNewPixelsCovered(y1:y2,x1:x2, r) - numPixelsSubtracted;
-                    % update diskCost, diskCostPerPixel, and diskCostEfficiency *only* for
-                    % the locations that have been affected, for efficiency.
-                    diskCost(y1:y2,x1:x2, r) = diskCost(y1:y2,x1:x2, r) - ...
-                        numPixelsSubtracted .* diskCostPerPixel(y1:y2,x1:x2, r);
-                    diskCostPerPixel(y1:y2,x1:x2, r) = diskCost(y1:y2,x1:x2, r) ./ ...
-                        max(eps,numNewPixelsCovered(y1:y2,x1:x2, r)) + ... % avoid 0/0
-                        BIG*(numNewPixelsCovered(y1:y2,x1:x2, r) == 0);    % x/0 = inf
-                    diskCostEffective(y1:y2,x1:x2, r) = ...
-                        diskCostPerPixel(y1:y2,x1:x2, r) + mat.ws/mat.scales(r);
-                end
-                % Make sure disk with the same center is not selected again
-                idx = sub2ind(size(diskCost),yv(:),xv(:), repmat(rc,[length(yv),1]));
-                diskCost(idx) = BIG; diskCostEffective(idx) = BIG;
+
+            while ~all(covered(:))
+
             end
             mat.input = reshape(mat.input,numRows,numCols,numChannels);
             mat.axis  = labNormalized2rgb(mat.axis);
             mat.computeReconstruction();     
-            
-            
         end
+
         
         function visualize(mat)
             % cmap = jet(max(mat.radius(:)));

@@ -38,6 +38,15 @@ else
 end
 addpath('external/L0smoothing/code')
 
+% inpaint_nans ------------------------------------------------------------
+if isdir('./external/Inpaint_nans')  
+    disp('-- L0smoothing: CHECK!')
+else
+    disp('Downloading L0smoothing code...')
+    unzip('http://www.cse.cuhk.edu.hk/leojia/projects/L0smoothing/L0smoothing.zip','external')
+end
+addpath('external/Inpaint_nans')
+
 % BSDR500 -----------------------------------------------------------------
 if isdir('./data/BSR')  
     disp('-- BSDS500: CHECK!')
