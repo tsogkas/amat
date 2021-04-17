@@ -54,34 +54,56 @@ classdef AMAT < handle
         end
 
         function mat = compute(mat)
-            profile on;
             mat.computeEncodings();
             mat.computeCosts();
-            profile off; profile viewer;
+            profile on;
             mat.setCover();
+            profile off; profile viewer;
         end
         
+        function initialize(mat,img,varargin)
+            defaults = {'scales',   2:41,...
+                        'ws',       1e-4,...
+                        'vistop',   0,...
+                        'shape',    'disk',...
+                        'thetas',   []
+                        };
+            opts = parseVarargin(defaults,varargin);
+            if isscalar(opts('scales'))
+                mat.scales  = 2:opts('scales');
+            else
+                mat.scales  = opts('scales');
+            end
+            mat.ws      = opts('ws');
+            mat.vistop  = opts('vistop');
+            mat.shape   = opts('shape');
+            mat.thetas = opts('thetas');
+            mat.input   = im2double(img);
+            mat.scaleIdx= containers.Map(mat.scales, 1:numel(mat.scales));
+            mat.initializeFilters();            
+        end
+                
         function mat = group(mat,marginFactor,colortol)
             if nargin < 2, marginFactor = 1; end
             if nargin < 3, colortol = 0.05; end
             
             % Compute individual radius maps and connected components
-            R = numel(mat.scales);
-            for r=R:-1:1
+            numScales = numel(mat.scales);
+            for r=numScales:-1:1
                 cc(r) = bwconncomp(mat.radius == mat.scales(r));
             end
             
             % Initialize mask and maxLabel
-            [H,W,C] = size(mat.input);
-            mask = false(H,W);  % proximity mask
+            [numRows,numCols,numChannels] = size(mat.input);
+            mask = false(numRows,numCols);  % proximity mask
             maxLabel = 1;       % initialize maxLabel
             % Convert to Lab and reshape axis encodings for convenience
             if colortol
-                mataxis = reshape(rgb2labNormalized(mat.axis), H*W,C);
+                mataxis = reshape(rgb2labNormalized(mat.axis), numRows*numCols,numChannels);
             end
             
             % For all scales
-            for r=1:R
+            for r=1:numScales
                 cc(r).labels = zeros(1, cc(r).NumObjects); % zero for non-examined ccs
                 margin = ceil(marginFactor*r)+1;
                 % For all connected components at the same scale
@@ -89,9 +111,9 @@ classdef AMAT < handle
                     % Create proximity mask in rectangle around cc for efficiency
                     mask(:) = false; mask(cc(r).PixelIdxList{i}) = true;
                     idxcc = cc(r).PixelIdxList{i};
-                    [y,x] = ind2sub([H,W], idxcc);
-                    xmin = max(1,min(x)-margin); xmax = min(W,max(x)+margin);
-                    ymin = max(1,min(y)-margin); ymax = min(H,max(y)+margin);
+                    [y,x] = ind2sub([numRows,numCols], idxcc);
+                    xmin = max(1,min(x)-margin); xmax = min(numCols,max(x)+margin);
+                    ymin = max(1,min(y)-margin); ymax = min(numRows,max(y)+margin);
                     mask(ymin:ymax,xmin:xmax) = bwdist(mask(ymin:ymax,xmin:xmax)) <= margin;
                     
                     % The cc is assigned a new label, unless it has already been merged
@@ -130,8 +152,8 @@ classdef AMAT < handle
             end
             
             % Construct label map
-            matbranches = zeros(H,W);
-            for r=1:R
+            matbranches = zeros(numRows,numCols);
+            for r=1:numScales
                 for i=1:cc(r).NumObjects
                     matbranches(cc(r).PixelIdxList{i}) = cc(r).labels(i);
                 end
@@ -192,9 +214,9 @@ classdef AMAT < handle
             
             % The group labels are already sorted and first label is zero (background)
             numBranches = max(mat.branches(:));
-            [H,W,C]     = size(mat.input);
-            matbranches = zeros(H,W);
-            matradius   = zeros(H,W);
+            [numRows,numCols,numChannels]     = size(mat.input);
+            matbranches = zeros(numRows,numCols);
+            matradius   = zeros(numRows,numCols);
             for i=1:numBranches
                 % Old branch points, radii, and respective cover.
                 branchOld = mat.branches == i;
@@ -248,14 +270,14 @@ classdef AMAT < handle
             % Update MAT encodings
             [y,x] = find(newpts);
             r   = matradius(newpts);
-            R   = numel(mat.scales);
-            enc = reshape(permute(mat.encoding,[1 2 4 3]), [], C);
+            numScales   = numel(mat.scales);
+            enc = reshape(permute(mat.encoding,[1 2 4 3]), [], numChannels);
             for i=1:numel(r), r(i) = mat.scaleIdx(r(i)); end % map scales to scale indexes
-            idx = sub2ind([H,W,R], y(:),x(:),r(:));
-            newaxis = reshape(rgb2labNormalized(zeros(H,W,C)),H*W,C);
+            idx = sub2ind([numRows,numCols,numScales], y(:),x(:),r(:));
+            newaxis = reshape(rgb2labNormalized(zeros(numRows,numCols,numChannels)),numRows*numCols,numChannels);
             newaxis(newpts,:) = enc(idx,:); % remember that encodings are in LAB!
             
-            mat.axis = labNormalized2rgb(reshape(newaxis,H,W,C));
+            mat.axis = labNormalized2rgb(reshape(newaxis,numRows,numCols,numChannels));
             mat.branches = matbranches;            
             mat.computeReconstruction();
             
@@ -297,7 +319,7 @@ classdef AMAT < handle
             % - Disk cost: cost incurred by selecting ena r-disk, centered at (i,j).
             % - numNewPixelsCovered: number of NEW pixels covered by a selected disk.
             % - Cost per pixel: diskCost / numNewPixelsCovered.
-            % - Disk cost effective: adjusted normalized cost: costPerPixel + scaleTerm
+            % - Disk cost effective: adjusted normalized cost: diskCostPerPixel + scaleTerm
             %       where scaleTerm is a term that favors selecting disks of larger
             %       radii. Such a term is necessary, to resolve selection of disks in
             %       the case where diskCost is zero for more than on radii.
@@ -308,48 +330,49 @@ classdef AMAT < handle
             %       queue, to avoid min(diskCostEffective(:)) in each iteration?
             
             % Initializations
-            [H,W,C,R]          = size(mat.encoding);
-            zeroLabNormalized  = rgb2labNormalized(zeros(H,W,C));
-            mat.input          = reshape(mat.input, H*W, C);
-            mat.reconstruction = reshape(zeroLabNormalized,H*W,C);
+            [numRows,numCols,numChannels,numScales] = size(mat.encoding);
+            zeroLabNormalized  = rgb2labNormalized(zeros(numRows,numCols,numChannels));
+            mat.input          = reshape(mat.input, numRows*numCols, numChannels);
+            mat.reconstruction = reshape(zeroLabNormalized,numRows*numCols,numChannels);
             mat.axis           = zeroLabNormalized;
-            mat.radius         = zeros(H,W);
-            mat.depth          = zeros(H,W); % #disks points(x,y) is covered by
-            mat.price          = zeros(H,W); % error contributed by each point
+            mat.radius         = zeros(numRows,numCols);
+            mat.depth          = zeros(numRows,numCols); % #disks points(x,y) is covered by
+            mat.price          = zeros(numRows,numCols); % error contributed by each point
             % Flag border pixels that cannot be accessed by filters.
-            covered = false(H,W);
+            covered = false(numRows,numCols);
             if strcmp(mat.shape, 'disk')
                 r = mat.scales(1);
                 covered([1:r,end-r+1:end], [1,end]) = true;
                 covered([1,end], [1:r,end-r+1:end]) = true;
             end
-            BIG = 1e30;
+            BIG = 1e60;
             
-            % Compute how many pixels are covered be each r-disk.
+            % Compute how many pixels are covered by each r-disk.
             diskAreas = cellfun(@nnz,mat.filters);
             diskCost  = mat.cost;
-            numNewPixelsCovered = repmat(reshape(diskAreas,1,1,[]), [H,W]);
+            numNewPixelsCovered = repmat(reshape(diskAreas,1,1,[]), [numRows,numCols]);
             
             % Add scale-dependent cost term to favor the selection of larger disks.
-            costPerPixel = diskCost ./ numNewPixelsCovered;
-            diskCostEffective = bsxfun(@plus, costPerPixel, ...
+            diskCostPerPixel = diskCost ./ numNewPixelsCovered;
+            diskCostEffective = bsxfun(@plus, diskCostPerPixel, ...
                 reshape(mat.ws ./ mat.scales, 1,1,[]));
-            
+                                    
             % Print remaining pixels to be covered in these points
-            printBreakPoints = floor((4:-1:1).*(H*W/5));
+            printBreakPoints = floor((4:-1:1).*(numRows*numCols/5));
             
+            % GREEDY ALGORITHM STARTS HERE --------------------------------
             fprintf('Pixels remaining: ');
-            [x,y] = meshgrid(1:W,1:H);
+            [x,y] = meshgrid(1:numCols,1:numRows);
             while ~all(covered(:))
-                % Find the most cost-effective disk at the current iteration
-                [minCost, indMin] = min(diskCostEffective(:));
+                % Get disk with min cost
+                [minCost, idxMinCost] = min(diskCostEffective(:));
+                [yc,xc,rc] = ind2sub(size(diskCostEffective), idxMinCost);
+
                 if isinf(minCost),
                     warning('Stopping: selected disk has infinite cost.')
                     break;
                 end
-                
-                [yc,xc,rc] = ind2sub([H,W,R], indMin);
-                
+                                
                 % points covered by the selected disk
                 switch mat.shape
                     case 'disk'
@@ -361,78 +384,76 @@ classdef AMAT < handle
                     otherwise, error('Shape is not supported')
                 end
                 
-                newPixelsCovered  = D & ~covered;      % NEW pixels that are covered by D
+                newPixelsCovered = D & ~covered;      % NEW pixels that are covered by D
                 if ~any(newPixelsCovered(:))
+                    keyboard;
                     warning('Stopping: selected disk covers zero (0) new pixels.')
                     break;
                 end
                 
                 % Update MAT
-                update(mat)
+                covered(newPixelsCovered) = true;
+                mat.price(newPixelsCovered) = minCost / numNewPixelsCovered(yc,xc,rc);
+                mat.depth(D) = mat.depth(D) + 1;
+                mat.axis(yc,xc,:) = mat.encoding(yc,xc,:,rc);
+                mat.radius(yc,xc) = mat.scales(rc);    
+                                
                 % Update costs
                 [yy,xx] = find(newPixelsCovered);
-                xmin = min(xx); xmax = max(xx);
-                ymin = min(yy); ymax = max(yy);
+                xminCovered = min(xx); xmaxCovered = max(xx);
+                yminCovered = min(yy); ymaxCovered = max(yy);
                 newPixelsCovered = double(newPixelsCovered);
-                for r=1:R
+                for r=1:numScales
                     scale = mat.scales(r);
-                    x1 = max(xmin-scale,1); y1 = max(ymin-scale,1);
-                    x2 = min(xmax+scale,W); y2 = min(ymax+scale,H);
+                    x1 = max(xminCovered-scale,1); 
+                    y1 = max(yminCovered-scale,1);
+                    x2 = min(xmaxCovered+scale,numCols); 
+                    y2 = min(ymaxCovered+scale,numRows);
                     % Find how many of the newPixelsCovered are covered by other disks.
                     numPixelsSubtracted = ...
                         conv2(newPixelsCovered(y1:y2,x1:x2), mat.filters{r},'same');
                     % and subtract the respective counts from those disks.
                     numNewPixelsCovered(y1:y2,x1:x2, r) = ...
                         numNewPixelsCovered(y1:y2,x1:x2, r) - numPixelsSubtracted;
-                    % update diskCost, costPerPixel, and diskCostEfficiency *only* for
+                    % update diskCost, diskCostPerPixel, and diskCostEfficiency *only* for
                     % the locations that have been affected, for efficiency.
                     diskCost(y1:y2,x1:x2, r) = diskCost(y1:y2,x1:x2, r) - ...
-                        numPixelsSubtracted .* costPerPixel(y1:y2,x1:x2, r);
-                    costPerPixel(y1:y2,x1:x2, r) = diskCost(y1:y2,x1:x2, r) ./ ...
+                        numPixelsSubtracted .* diskCostPerPixel(y1:y2,x1:x2, r);
+                    diskCostPerPixel(y1:y2,x1:x2, r) = diskCost(y1:y2,x1:x2, r) ./ ...
                         max(eps,numNewPixelsCovered(y1:y2,x1:x2, r)) + ... % avoid 0/0
                         BIG*(numNewPixelsCovered(y1:y2,x1:x2, r) == 0);    % x/0 = inf
                     diskCostEffective(y1:y2,x1:x2, r) = ...
-                        costPerPixel(y1:y2,x1:x2, r) + mat.ws/mat.scales(r);
+                        diskCostPerPixel(y1:y2,x1:x2, r) + mat.ws/mat.scales(r);
                 end
-                % Make sure the same point is not selected again
+                % Make sure disk with the same center is not selected again
                 diskCost(yc,xc,:) = BIG; diskCostEffective(yc,xc,:) = BIG;
                 
-                
-                if mat.vistop, visualizeProgress(mat,diskCostEffective); end
+                % Visualize progress
+                if mat.vistop 
+                    % Sort costs in ascending order to visualize updated top disks.
+                    [~, indSorted] = sort(diskCost(:),'ascend');
+                    [yy,xx,rr] = ind2sub([numRows,numCols,numScales], indSorted(1:mat.vistop));
+                    subplot(221); imshow(reshape(mat.input, numRows,numCols,[]));
+                    viscircles([xc,yc],rc, 'Color','k','EnhanceVisibility',false); title('Selected disk');
+                    subplot(222); imshow(bsxfun(@times, reshape(mat.input,numRows,numCols,[]), double(~covered)));
+                    viscircles([xx,yy],rr,'Color','w','EnhanceVisibility',false,'Linewidth',0.5);
+                    viscircles([xx(1),yy(1)],rr(1),'Color','b','EnhanceVisibility',false);
+                    viscircles([xc,yc],rc,'Color','y','EnhanceVisibility',false);
+                    title(sprintf('Covered %d/%d, numCols: Top-%d disks,\nB: Top-1 disk, Y: previous disk',...
+                        nnz(covered),numRows*numCols,mat.vistop))
+                    subplot(223); imshow(mat.axis); title('AMAT axes (in CIELAB)')
+                    subplot(224); imshow(mat.radius,[]); title('AMAT radii')
+                    drawnow;
+                end
                 if ~isempty(printBreakPoints) && nnz(~covered) < printBreakPoints(1)
                     fprintf('%d...',printBreakPoints(1))
                     printBreakPoints(1) = [];
                 end
             end
             fprintf('\n')
-            mat.input = reshape(mat.input,H,W,C);
+            mat.input = reshape(mat.input,numRows,numCols,numChannels);
             mat.axis  = labNormalized2rgb(mat.axis);
-            mat.computeReconstruction();
-            
-            function update(mat)
-                covered(newPixelsCovered) = true;
-                mat.price(newPixelsCovered) = minCost / numNewPixelsCovered(yc,xc,rc);
-                mat.depth(D) = mat.depth(D) + 1;
-                mat.axis(yc,xc,:) = mat.encoding(yc,xc,:,rc);
-                mat.radius(yc,xc) = mat.scales(rc);    
-            end
-            function visualizeProgress(mat,diskCost)
-                % Sort costs in ascending order to visualize updated top disks.
-                [~, indSorted] = sort(diskCost(:),'ascend');
-                [yy,xx,rr] = ind2sub([H,W,R], indSorted(1:mat.vistop));
-                subplot(221); imshow(reshape(mat.input, H,W,[]));
-                viscircles([xc,yc],rc, 'Color','k','EnhanceVisibility',false); title('Selected disk');
-                subplot(222); imshow(bsxfun(@times, reshape(mat.input,H,W,[]), double(~covered)));
-                viscircles([xx,yy],rr,'Color','w','EnhanceVisibility',false,'Linewidth',0.5);
-                viscircles([xx(1),yy(1)],rr(1),'Color','b','EnhanceVisibility',false);
-                viscircles([xc,yc],rc,'Color','y','EnhanceVisibility',false);
-                title(sprintf('Covered %d/%d, W: Top-%d disks,\nB: Top-1 disk, Y: previous disk',...
-                    nnz(covered),H*W,mat.vistop))
-                subplot(223); imshow(mat.axis); title('AMAT axes (in CIELAB)')
-                subplot(224); imshow(mat.radius,[]); title('AMAT radii')
-                drawnow;
-            end
-            
+            mat.computeReconstruction();            
         end
         
         function visualize(mat)
@@ -503,9 +524,9 @@ classdef AMAT < handle
             end
             
             % Compute the depth contribution of each branch separately.
-            [H,W] = size(mat.depth);
+            [numRows,numCols] = size(mat.depth);
             numBranches = max(mat.branches(:));
-            depthBranch = zeros(H,W,numBranches);
+            depthBranch = zeros(numRows,numCols,numBranches);
             for i=1:numBranches
                 depthBranch(:,:,i) = mat.computeDepth(mat.radius .* double(mat.branches == i));
             end
@@ -531,8 +552,8 @@ classdef AMAT < handle
             % Discard small segments
             if minSegment > 0
                 if minSegment < 1   % ratio of the min segment area over image area
-                    small = areaSorted/(H*W) < minSegment;
-                elseif minSegment < H*W  % #pixels of min segment
+                    small = areaSorted/(numRows*numCols) < minSegment;
+                elseif minSegment < numRows*numCols  % #pixels of min segment
                     small = areaSorted < minSegment;
                 else
                     error('minSegment is larger than the size of the image')
@@ -547,7 +568,7 @@ classdef AMAT < handle
             
             % Keep segments that cover at least (minCoverage*100) % of the image area.
             if minCoverage < 1
-                cumAreaSorted = cumsum(areaSorted)/(H*W);
+                cumAreaSorted = cumsum(areaSorted)/(numRows*numCols);
                 numSegmentsKeep = find(cumAreaSorted >= minCoverage, 1);
                 if isempty(numSegmentsKeep)
                     numSegmentsKeep = numel(cumAreaSorted);
@@ -558,32 +579,20 @@ classdef AMAT < handle
             end
             seg = max(segments,[],3);  
         end
+
+        function setCoverMex(mat)
+            % It's easier to compute CIE Lab zeros in MATLAB
+            [numRows,numCols,numChannels,~]          = size(mat.encoding);
+            zeroLabNormalized  = rgb2labNormalized(zeros(numRows,numCols,numChannels));
+            [mat.reconstruction, mat.axis, mat.radius, mat.depth, mat.price] = ...
+                setCoverGreedy(mat,zeroLabNormalized);
+            mat.axis = labNormalized2rgb(mat.axis);
+            mat.computeReconstruction()
+        end        
         
-    end
+    end % end of public methods
     
     methods(Access=private)
-        function initialize(mat,img,varargin)
-            defaults = {'scales',   2:41,...
-                        'ws',       1e-4,...
-                        'vistop',   0,...
-                        'shape',    'disk',...
-                        'thetas',   []
-                        };
-            opts = parseVarargin(defaults,varargin);
-            if isscalar(opts('scales'))
-                mat.scales  = 2:opts('scales');
-            else
-                mat.scales  = opts('scales');
-            end
-            mat.ws      = opts('ws');
-            mat.vistop  = opts('vistop');
-            mat.shape   = opts('shape');
-            mat.thetas = opts('thetas');
-            mat.input   = im2double(img);
-            mat.scaleIdx= containers.Map(mat.scales, 1:numel(mat.scales));
-            mat.initializeFilters();            
-        end
-        
         function initializeFilters(mat)
             numScales = numel(mat.scales);
             switch mat.shape
@@ -624,12 +633,12 @@ classdef AMAT < handle
         function enc = computeDiskEncodings(mat,inputlab)
             % Efficient implementation, using convolutions with 
             % circles + cumsum instead of convolutions with disks.
-            [H,W,C] = size(mat.input); R = numel(mat.scales);
-            cfilt = cell(1,R); cfilt{1} = AMAT.disk(mat.scales(1));
-            for r=2:R, cfilt{r} = AMAT.circle(mat.scales(r)); end
-            enc = zeros(H,W,C,R);
-            for c=1:C
-                for r=1:R
+            [numRows,numCols,numChannels] = size(mat.input); numScales = numel(mat.scales);
+            cfilt = cell(1,numScales); cfilt{1} = AMAT.disk(mat.scales(1));
+            for r=2:numScales, cfilt{r} = AMAT.circle(mat.scales(r)); end
+            enc = zeros(numRows,numCols,numChannels,numScales);
+            for c=1:numChannels
+                for r=1:numScales
                     enc(:,:,c,r) = conv2(inputlab(:,:,c),cfilt{r},'same');
                 end
             end
@@ -669,17 +678,17 @@ classdef AMAT < handle
             enc2      = enc.^2;
             enccsum   = cumsum(enc,4);
             enc2csum  = cumsum(enc2,4);
-            [H,W,C,R] = size(enc);
-            cfilt     = cell(1,R);
+            [numRows,numCols,numChannels,numScales] = size(enc);
+            cfilt     = cell(1,numScales);
             cfilt{1}  = AMAT.disk(mat.scales(1)-1);
-            for r=2:R, cfilt{r} = AMAT.circle(mat.scales(r-1)); end
+            for r=2:numScales, cfilt{r} = AMAT.circle(mat.scales(r-1)); end
             nnzcd = cumsum(cumsum(cellfun(@nnz, cfilt)));
             
-            diskCost = zeros(H,W,C,R);
-            for c=1:C
-                for r=1:R
-                    sumMri  = zeros(H,W);
-                    sumMri2 = zeros(H,W);
+            diskCost = zeros(numRows,numCols,numChannels,numScales);
+            for c=1:numChannels
+                for r=1:numScales
+                    sumMri  = zeros(numRows,numCols);
+                    sumMri2 = zeros(numRows,numCols);
                     for i=1:r
                         sumMri  = sumMri  + conv2(enccsum(:,:,c,i), cfilt{r-i+1},'same');
                         sumMri2 = sumMri2 + conv2(enc2csum(:,:,c,i),cfilt{r-i+1},'same');
@@ -693,8 +702,8 @@ classdef AMAT < handle
             % We do not use Inf to avoid complications in the greedy set cover
             % algorithm, caused by inf-inf subtractions and inf/inf divisions.
             % Also, keep in mind that max(0,NaN) = 0.
-            BIG = 1e30;
-            for r=1:R
+            BIG = 1e60;
+            for r=1:numScales
                 scale = mat.scales(r);
                 diskCost([1:scale, end-scale+1:end],:,:,r) = BIG;
                 diskCost(:,[1:scale, end-scale+1:end],:,r) = BIG;
@@ -704,7 +713,7 @@ classdef AMAT < handle
             diskCost = max(0,diskCost);
             
             % Combine costs from different channels
-            if C > 1
+            if numChannels > 1
                 wc = [0.5,0.25,0.25]; % weights for luminance and color channels
                 diskCost = diskCost(:,:,1,:)*wc(1) + diskCost(:,:,2,:)*wc(2) + diskCost(:,:,3,:)*wc(3);
             end
@@ -712,15 +721,15 @@ classdef AMAT < handle
         end
         
         function enc = computeSquareEncodings(mat,inputlab)
-            [H,W,C] = size(mat.input); 
-            R = numel(mat.scales);
+            [numRows,numCols,numChannels] = size(mat.input); 
+            numScales = numel(mat.scales);
             
             % Since square filters are separable, using filter2 + full
             % filters is more efficient than using integral images.
             squareIndex = min(2,size(mat.filters,1));
-            enc = zeros(H,W,C,R);
-            for c=1:C
-                for r=1:R
+            enc = zeros(numRows,numCols,numChannels,numScales);
+            for c=1:numChannels
+                for r=1:numScales
                     sep = mat.filters{squareIndex,r}(1,:);
                     enc(:,:,c,r) = conv2(sep,sep',inputlab(:,:,c),'same');
                 end
@@ -740,14 +749,14 @@ classdef AMAT < handle
             pad = ceil(sqrt(2)*mat.scales(end)); % square radius
             integralColumns = padarray(integralColumns,[pad,pad],0,'pre');
             integralColumns = padarray(integralColumns,[pad,pad],'replicate','post');
-            [H,W,C] = size(integralColumns); 
-            R = numel(mat.scales);
+            [numRows,numCols,numChannels] = size(integralColumns); 
+            numScales = numel(mat.scales);
             O = numel(mat.thetas);
             % Rotated square filters and integral filters
             squareIndex = min(2,size(mat.filters,1));
-            rotfilt = cell(O,R);
-            pfilt   = cell(O,R);
-            for r=1:R
+            rotfilt = cell(O,numScales);
+            pfilt   = cell(O,numScales);
+            for r=1:numScales
                 for o=1:O
                     rotfilt{o,r} = mat.filters{squareIndex,r};
                     % Make sure that the border has a zero-border
@@ -762,10 +771,10 @@ classdef AMAT < handle
             areas = cellfun(@nnz, rotfilt);
             
             % Compute heuristic encodings for rotated square filters
-            enc = zeros(H,W,C,R,O);
+            enc = zeros(numRows,numCols,numChannels,numScales,O);
             for o=1:O 
-                for r=1:R
-                    for c=1:C
+                for r=1:numScales
+                    for c=1:numChannels
                         enc(:,:,c,r,o) = filter2(pfilt{o,r}, integralColumns)/areas(o,r);
                     end
                 end
@@ -780,17 +789,17 @@ classdef AMAT < handle
             squareIndex = min(2,size(mat.encoding,5));
             enc = mat.encoding(:,:,:,:,squareIndex);
             enc2 = enc.^2;
-            [H,W,C,R] = size(enc);
-            sfilt = cell(1,R); sfilt{1} = AMAT.square(mat.scales(1)-1);
-            for r=2:R, sfilt{r} = AMAT.square(mat.scales(r-1)); end
+            [numRows,numCols,numChannels,numScales] = size(enc);
+            sfilt = cell(1,numScales); sfilt{1} = AMAT.square(mat.scales(1)-1);
+            for r=2:numScales, sfilt{r} = AMAT.square(mat.scales(r-1)); end
             nnzcs= cumsum(cellfun(@nnz,sfilt)); % cumsum of square areas
 
             % Compute costs for axis-aligned squares
-            squareCost = zeros(H,W,C,R);
-            for c=1:C
-                for r=1:R
-                    sumMri  = zeros(H,W);
-                    sumMri2 = zeros(H,W);
+            squareCost = zeros(numRows,numCols,numChannels,numScales);
+            for c=1:numChannels
+                for r=1:numScales
+                    sumMri  = zeros(numRows,numCols);
+                    sumMri2 = zeros(numRows,numCols);
                     for i=1:r
                         % Squares are separable so we can speed-up conv
                         fones = sfilt{r-i+1}(1,:);
@@ -802,8 +811,8 @@ classdef AMAT < handle
             end
             
             % Same postprocesssing as computeDiskCosts
-            BIG = 1e30;
-            for r=1:R
+            BIG = 1e60;
+            for r=1:numScales
                 scale = mat.scales(r);
                 squareCost([1:scale, end-scale+1:end],:,:,r,:) = BIG;
                 squareCost(:,[1:scale, end-scale+1:end],:,r,:) = BIG;
@@ -815,7 +824,7 @@ classdef AMAT < handle
                 encrot  = enc(:,:,:,:,end-O+1:end);
                 enc2rot = enc2(:,:,:,:,end-O+1:end);
                 squareRotCost = computeRotatedSquareCosts(mat,encrot,enc2rot);
-                for r=1:R
+                for r=1:numScales
                     scalerot = ceil(sqrt(2)*mat.scales(r)); % square "radius"
                     squareRotCost([1:scalerot, end-scalerot+1:end],:,:,r,:) = BIG;
                     squareRotCost(:,[1:scalerot, end-scalerot+1:end],:,r,:) = BIG;
@@ -827,7 +836,7 @@ classdef AMAT < handle
             squareCost = max(0,squareCost);
             
             % Combine costs from different channels
-            if C > 1
+            if numChannels > 1
                 wc = [0.5,0.25,0.25]; % weights for luminance and color channels
                 squareCost = squareCost(:,:,1,:,:)*wc(1) + ...
                              squareCost(:,:,2,:,:)*wc(2) + ...
@@ -846,17 +855,17 @@ classdef AMAT < handle
             encic  = padarray(encic,  [pad pad],'replicate','post');
             enc2ic = padarray(enc2ic, [pad pad],0,'pre');
             enc2ic = padarray(enc2ic, [pad pad],'replicate','post');
-            [H,W,C] = size(encic); 
-            R = numel(mat.scales);
+            [numRows,numCols,numChannels] = size(encic); 
+            numScales = numel(mat.scales);
             O = numel(mat.thetas);
             
             % Rotated square filters and integral filters
-            sfilt   = cell(1,R);
-            rotfilt = cell(O,R);
-            pfilt   = cell(O,R);
+            sfilt   = cell(1,numScales);
+            rotfilt = cell(O,numScales);
+            pfilt   = cell(O,numScales);
             sfilt{1}= AMAT.square(mat.scales(1)-1);
-            for r=2:R, sfilt{r} = AMAT.square(mat.scales(r-1)); end
-            for r=1:R
+            for r=2:numScales, sfilt{r} = AMAT.square(mat.scales(r-1)); end
+            for r=1:numScales
                 for o=1:O
                     rotfilt{o,r} = imrotate(sfilt,mat.thetas(o));
                     % Make sure that the border has a zero-border
@@ -871,12 +880,12 @@ classdef AMAT < handle
             nnzcs = cumsum(cellfun(@nnz, rotfilt),2);
 
             % Compute heuristic costs for rotated square filters
-            squareRotCost = zeros(H,W,C,R,O);
+            squareRotCost = zeros(numRows,numCols,numChannels,numScales,O);
             for o=1:O
-                for c=1:C
-                    for r=1:R
-                        sumMri  = zeros(H,W);
-                        sumMri2 = zeros(H,W);
+                for c=1:numChannels
+                    for r=1:numScales
+                        sumMri  = zeros(numRows,numCols);
+                        sumMri2 = zeros(numRows,numCols);
                         for i=1:r
                             sumMri  = sumMri  + filter2(pfilt{o,r-i+1}, encic(:,:,c,i));
                             sumMri2 = sumMri2 + filter2(pfilt{o,r-i+1}, enc2ic(:,:,c,i));
@@ -888,7 +897,7 @@ classdef AMAT < handle
             end
             squareRotCost = squareRotCost(pad+1:end-pad, pad+1:end-pad,:,:,:);
         end
-                                
+                                        
     end
     
     methods (Static)

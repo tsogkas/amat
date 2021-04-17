@@ -5,7 +5,7 @@
 
 [AMAT: Medial Axis Transform for Natural Images](https://arxiv.org/abs/1703.08628)  
 [Stavros Tsogkas](http://tsogkas.github.io/), [Sven Dickinson](http://www.cs.toronto.edu/~sven/)  
-In arXiv, 2017.
+In International Conference on Computer Vision (ICCV), 2017.
 
 
 ## License
@@ -97,7 +97,7 @@ If you find our code or annotations useful for your research, please cite our pa
 	@article{tsogkas2017amat,
 		Author = {Tsogkas, Stavros and Dickinson, Sven},
 		Title = {AMAT: Medial Axis Transform for Natural Images},
-		Journal = {arXiv preprint arXiv:1703.08628},
+		Journal = {ICCV},
 		Year = {2017}
 	}
 
