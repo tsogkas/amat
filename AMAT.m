@@ -391,7 +391,7 @@ classdef AMAT < handle
                     break;
                 end
                 
-                % Update MAT
+                % Update 
                 covered(newPixelsCovered) = true;
                 mat.price(newPixelsCovered) = minCost / numNewPixelsCovered(yc,xc,rc);
                 mat.depth(D) = mat.depth(D) + 1;
